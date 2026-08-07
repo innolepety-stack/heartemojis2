@@ -13,8 +13,8 @@ import {
 /* ============================== CONFIG ============================== */
 
 const LOGIN_CODES = {
-  "0303": { code: "0303", name: "무츄" },
-  "0217": { code: "0217", name: "하루" },
+  "0303": { code: "0303", name: "muchuu" },
+  "0217": { code: "0217", name: "haru" },
 };
 
 const SKILL_LIST = [
@@ -685,7 +685,7 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
           <div className="coc-label" style={{marginBottom:5}}>세션 제목</div>
-          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 인스머스의 그림자" style={{marginBottom:14}} autoFocus/>
+          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="시나리오 이름을 입력해 주세요" style={{marginBottom:14}} autoFocus/>
           <div className="coc-label" style={{marginBottom:5}}>날짜</div>
           <input type="date" className="coc-input coc-mono" value={date} onChange={e=>setDate(e.target.value)} style={{marginBottom:18}}/>
           {error&&<div style={{color:"var(--accent)",fontSize:11.5,marginBottom:12,whiteSpace:"pre-wrap"}}>{error}</div>}
