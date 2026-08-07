@@ -18,27 +18,43 @@ import {
 
 /* ============================== HELPER & STORAGE ============================== */
 
+// 고유 ID 생성
 const newId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+
+// 간단한 시간 포맷팅
 const fmtTime = (ts) => {
   if (!ts) return "";
   const d = new Date(ts);
   return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 };
+
+// 1d100 굴림
 const d100 = () => Math.floor(Math.random() * 100) + 1;
 
+// LocalStorage 기반 비동기 인터페이스 (브라우저 저장소 동기화용)
 const storeGet = async (key) => {
   try {
     const val = localStorage.getItem(key);
     return val ? JSON.parse(val) : null;
-  } catch (e) { return null; }
+  } catch (e) {
+    return null;
+  }
 };
 
 const storeSet = async (key, val) => {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { console.error(e); }
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (e) {
+    console.error(e);
+  }
 };
 
 const storeDelete = async (key) => {
-  try { localStorage.removeItem(key); } catch (e) { console.error(e); }
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.error(e);
+  }
 };
 
 const storeListValues = async (prefix) => {
@@ -58,41 +74,197 @@ const storeListValues = async (prefix) => {
 /* ============================== CONSTANTS & INITIAL DATA ============================== */
 
 const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
-const CHAR_LABEL = { STR: "근력", CON: "건강", SIZ: "크기", DEX: "민첩성", APP: "외모", INT: "지능", POW: "정신력", EDU: "교육" };
+const CHAR_LABEL = {
+  STR: "근력",
+  CON: "건강",
+  SIZ: "크기",
+  DEX: "민첩성",
+  APP: "외모",
+  INT: "지능",
+  POW: "정신력",
+  EDU: "교육",
+};
+
 const SKILL_LIST = [
-  ["관찰력", 25], ["듣기", 20], ["자료 조사", 20], ["심리학", 10], ["설득", 10], ["말재주", 15], ["위협", 15], 
-  ["오컬트", 5], ["의료", 1], ["응급처치", 30], ["회피", 30], ["근접 전투(육탄전)", 25], ["사격(권총)", 20], 
-  ["운전", 20], ["은밀행동", 20], ["열쇠공", 1]
+  ["관찰력", 25],
+  ["듣기", 20],
+  ["자료 조사", 20],
+  ["심리학", 10],
+  ["설득", 10],
+  ["말재주", 15],
+  ["위협", 15],
+  ["오컬트", 5],
+  ["의료", 1],
+  ["응급처치", 30],
+  ["회피", 30],
+  ["근접 전투(육탄전)", 25],
+  ["사격(권총)", 20],
+  ["운전", 20],
+  ["은밀행동", 20],
+  ["열쇠공", 1],
 ];
 
-const blankProfile = (name = "탐사자") => ({ name, avatar: "" });
+const blankProfile = (name = "탐사자") => ({
+  name,
+  avatar: "",
+});
 
 const blankCharSheet = (name = "새 탐사자") => ({
-  name, occupation: "조사관", age: 28, sex: "기타", residence: "서울", birthplace: "서울", avatar: "",
-  characteristics: { STR: 50, CON: 50, SIZ: 50, DEX: 50, APP: 50, INT: 50, POW: 50, EDU: 50 },
-  derived: { HP: 10, maxHP: 10, MP: 10, maxMP: 10, SAN: 50, maxSAN: 99, Luck: 50 },
-  skills: Object.fromEntries(SKILL_LIST), backstory: "", inventory: ""
+  name,
+  occupation: "조사관",
+  age: 28,
+  sex: "기타",
+  residence: "서울",
+  birthplace: "서울",
+  avatar: "",
+  characteristics: {
+    STR: 50,
+    CON: 50,
+    SIZ: 50,
+    DEX: 50,
+    APP: 50,
+    INT: 50,
+    POW: 50,
+    EDU: 50,
+  },
+  derived: {
+    HP: 10,
+    maxHP: 10,
+    MP: 10,
+    maxMP: 10,
+    SAN: 50,
+    maxSAN: 99,
+    Luck: 50,
+  },
+  skills: Object.fromEntries(SKILL_LIST),
+  backstory: "",
+  inventory: "",
 });
 
 const THEMES = {
-  sky: { bg: "#f4f7fb", cardBg: "#ffffff", panelBg: "#edf2f9", border: "#d0dbe7", borderSoft: "#e2e9f3", text: "#1e293b", textDim: "#475569", textFaint: "#94a3b8", accent: "#3b82f6", accentSoft: "#60a5fa", accentDeep: "#1d4ed8", purple: "#7c3aed", green: "#10b981" },
-  dark: { bg: "#0f172a", cardBg: "#1e293b", panelBg: "#334155", border: "#475569", borderSoft: "#334155", text: "#f8fafc", textDim: "#cbd5e1", textFaint: "#64748b", accent: "#60a5fa", accentSoft: "#93c5fd", accentDeep: "#3b82f6", purple: "#a78bfa", green: "#34d399" }
+  sky: {
+    bg: "#f4f7fb",
+    cardBg: "#ffffff",
+    panelBg: "#edf2f9",
+    border: "#d0dbe7",
+    borderSoft: "#e2e9f3",
+    text: "#1e293b",
+    textDim: "#475569",
+    textFaint: "#94a3b8",
+    accent: "#3b82f6",
+    accentSoft: "#60a5fa",
+    accentDeep: "#1d4ed8",
+    purple: "#7c3aed",
+    green: "#10b981",
+  },
+  dark: {
+    bg: "#0f172a",
+    cardBg: "#1e293b",
+    panelBg: "#334155",
+    border: "#475569",
+    borderSoft: "#334155",
+    text: "#f8fafc",
+    textDim: "#cbd5e1",
+    textFaint: "#64748b",
+    accent: "#60a5fa",
+    accentSoft: "#93c5fd",
+    accentDeep: "#3b82f6",
+    purple: "#a78bfa",
+    green: "#34d399",
+  },
 };
 
-const themeVars = (t) => ({ "--bg": t.bg, "--bg-card": t.cardBg, "--bg-panel": t.panelBg, "--border": t.border, "--border-soft": t.borderSoft, "--text": t.text, "--text-dim": t.textDim, "--text-faint": t.textFaint, "--accent": t.accent, "--accent-soft": t.accentSoft, "--accent-deep": t.accentDeep, "--purple-c": t.purple, "--green": t.green });
+const themeVars = (t) => ({
+  "--bg": t.bg,
+  "--bg-card": t.cardBg,
+  "--bg-panel": t.panelBg,
+  "--border": t.border,
+  "--border-soft": t.borderSoft,
+  "--text": t.text,
+  "--text-dim": t.textDim,
+  "--text-faint": t.textFaint,
+  "--accent": t.accent,
+  "--accent-soft": t.accentSoft,
+  "--accent-deep": t.accentDeep,
+  "--purple-c": t.purple,
+  "--green": t.green,
+});
 
-/* ============================== CSS STYLES (마루부리 폰트 추가) ============================== */
+/* ============================== CSS STYLES ============================== */
 
 const CSS = `
-  @font-face {
-    font-family: 'MaruBuri';
-    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_20-10-21@1.0/MaruBuri-Regular.woff') format('woff');
-    font-weight: normal;
-    font-style: normal;
+  .coc-root {
+    background-color: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  .coc-root, .coc-root * {
-    font-family: 'MaruBuri', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  .coc-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
   }
+  .coc-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: opacity 0.2s;
+  }
+  .coc-btn:hover { opacity: 0.9; }
+  .coc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .coc-btn.ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .coc-btn.ghost:hover { background: var(--bg-panel); }
+  .coc-btn.ghost.active {
+    background: var(--bg-panel);
+    color: var(--accent-deep);
+    border-color: var(--accent);
+  }
+  .coc-btn.small { padding: 4px 10px; font-size: 12px; }
+  .coc-input, .coc-select, .coc-textarea {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+  }
+  .coc-input:focus, .coc-select:focus, .coc-textarea:focus {
+    border-color: var(--accent);
+  }
+  .coc-tabbar { display: flex; gap: 4px; background: var(--bg-panel); padding: 4px; border-radius: 8px; }
+  .coc-tab {
+    padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; color: var(--text-dim);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .coc-tab.active { background: var(--bg-card); color: var(--accent-deep); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .chat-tab-bar { display: flex; gap: 8px; margin-bottom: 8px; }
+  .chat-tab { font-size: 11px; font-weight: 600; color: var(--text-faint); cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  .chat-tab.active { color: var(--accent-deep); background: var(--bg-panel); }
+  .coc-mono { font-family: monospace; }
+  .coc-avatar { object-fit: cover; }
+  .coc-seal {
+    background: var(--bg-panel); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--accent);
+  }
+  .coc-divider { height: 1px; background: var(--border-soft); margin: 12px 0; }
+  .coc-label { font-size: 12px; font-weight: 700; color: var(--text-dim); }
+  .coc-scroll::-webkit-scrollbar { width: 6px; }
+  .coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 `;
 
 /* ============================== COMPONENT: LOGIN ============================== */
@@ -363,13 +535,14 @@ function SettingsTab({ currentTheme, setCurrentTheme }) {
 /* ============================== ROOM DETAIL / CHAT ============================== */
 
 function RoomView({ room, userCode, profile, onBack }) {
-  const [activeTab, setActiveTab] = useState("chat");
+  const [activeTab, setActiveTab] = useState("chat"); // 'chat' | 'chars' | 'memo'
   const [chars, setChars] = useState([]);
   const [myChar, setMyChar] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [chatTab, setChatTab] = useState("main");
+  // 다이스 & 메시지 입력 관련 State
+  const [chatTab, setChatTab] = useState("main"); // 'main' | 'anon' | 'dice'
   const [msgText, setMsgText] = useState("");
   const [anonName, setAnonName] = useState("익명");
   const [anonText, setAnonText] = useState("");
@@ -379,6 +552,7 @@ function RoomView({ room, userCode, profile, onBack }) {
   const chatScrollRef = useRef(null);
   const isGM = room.creatorCode === userCode;
 
+  // 데이터 로드 & 실시간 동기화
   const refreshData = useCallback(async () => {
     const [msgEntries, charEntries, memoData] = await Promise.all([
       storeListValues(`chat:${room.id}:`),
@@ -409,6 +583,7 @@ function RoomView({ room, userCode, profile, onBack }) {
     }
   }, [messages, activeTab]);
 
+  // 메시지 전송
   const sendMessage = async (payload) => {
     const msg = {
       id: newId(),
@@ -444,6 +619,7 @@ function RoomView({ room, userCode, profile, onBack }) {
     await storeDelete(`chat:${room.id}:${msgId}`);
   };
 
+  // 판정 / 주사위 로직
   const rollDiceCheck = async () => {
     if (!selectedStat) return;
     let targetVal = 50;
@@ -485,6 +661,7 @@ function RoomView({ room, userCode, profile, onBack }) {
 
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", flexDirection: "column", height: "calc(100vh - 90px)" }}>
+      {/* 상단 헤더 */}
       <div
         className="coc-card"
         style={{ padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}
@@ -515,8 +692,10 @@ function RoomView({ room, userCode, profile, onBack }) {
         </div>
       </div>
 
+      {/* 탭 1: 세션 채팅 */}
       {activeTab === "chat" && (
         <div className="coc-card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", padding: 12 }}>
+          {/* 메시지 리스트 영역 */}
           <div ref={chatScrollRef} className="coc-scroll" style={{ flex: 1, overflowY: "auto", paddingRight: 6, display: "flex", flexDirection: "column", gap: 10 }}>
             {loading ? (
               <div style={{ textAlign: "center", color: "var(--text-faint)", padding: 20 }}>채팅 기록 불러오는 중...</div>
@@ -531,6 +710,7 @@ function RoomView({ room, userCode, profile, onBack }) {
                   return (
                     <div
                       key={m.id}
+                      className="anon-msg"
                       style={{ background: "var(--bg-panel)", border: "1px dashed var(--border)", borderRadius: 8, padding: "8px 12px", position: "relative" }}
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -542,7 +722,7 @@ function RoomView({ room, userCode, profile, onBack }) {
                       <div style={{ fontSize: 13, whiteSpace: "pre-wrap", color: "var(--text)" }}>{m.content}</div>
                       {(isMe || isGM) && (
                         <button
-                          className="coc-btn ghost small"
+                          className="msg-actions coc-btn ghost small"
                           onClick={() => handleDeleteMsg(m.id)}
                           style={{ position: "absolute", top: 4, right: 4, padding: 3 }}
                         >
@@ -613,7 +793,7 @@ function RoomView({ room, userCode, profile, onBack }) {
                       </div>
                     </div>
                     {(isMe || isGM) && (
-                      <button className="coc-btn ghost small" onClick={() => handleDeleteMsg(m.id)} style={{ padding: 3, alignSelf: "center" }}>
+                      <button className="msg-actions coc-btn ghost small" onClick={() => handleDeleteMsg(m.id)} style={{ padding: 3, alignSelf: "center" }}>
                         <Trash2 size={10} />
                       </button>
                     )}
@@ -623,6 +803,7 @@ function RoomView({ room, userCode, profile, onBack }) {
             )}
           </div>
 
+          {/* 하단 입력 패널 */}
           <div style={{ borderTop: "1px solid var(--border-soft)", paddingTop: 8, marginTop: 6 }}>
             <div className="chat-tab-bar">
               <div className={`chat-tab ${chatTab === "main" ? "active" : ""}`} onClick={() => setChatTab("main")}>
@@ -716,6 +897,7 @@ function RoomView({ room, userCode, profile, onBack }) {
         </div>
       )}
 
+      {/* 탭 2: 탐사자 시트 관리 */}
       {activeTab === "chars" && (
         <div className="coc-card coc-scroll" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
           {myChar ? (
@@ -780,6 +962,7 @@ function RoomView({ room, userCode, profile, onBack }) {
         </div>
       )}
 
+      {/* 탭 3: 공유 메모 */}
       {activeTab === "memo" && (
         <div className="coc-card" style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -814,10 +997,11 @@ function RoomView({ room, userCode, profile, onBack }) {
 export default function App() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState({ name: "", avatar: "" });
-  const [tab, setTab] = useState("rooms");
+  const [tab, setTab] = useState("rooms"); // 'rooms' | 'mypage' | 'settings'
   const [currentRoom, setCurrentRoom] = useState(null);
   const [currentTheme, setCurrentTheme] = useState("sky");
 
+  // 로그인 시 프로필 로드
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -842,6 +1026,7 @@ export default function App() {
     <div className="coc-root" style={themeVars(activeTheme)}>
       <style>{CSS}</style>
 
+      {/* 내비게이션 바 */}
       <div style={{ borderBottom: "1px solid var(--border-soft)", background: "var(--bg-card)", position: "sticky", top: 0, zIndex: 40 }}>
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div
@@ -894,6 +1079,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* 메인 콘텐츠 영역 */}
       <div style={{ padding: "16px", minHeight: "calc(100vh - 60px)" }}>
         {currentRoom ? (
           <RoomView room={currentRoom} userCode={user.code} profile={profile} onBack={() => setCurrentRoom(null)} />
