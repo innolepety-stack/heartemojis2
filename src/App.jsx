@@ -1,4 +1,4 @@
-[source: 1]import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle, Sun,
@@ -73,7 +73,7 @@ const THEMES = {
 
 // 기본 테마(sky) 기준 고정 CSS — 변수 값은 루트 div style로 주입
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Maru+Buri:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 * { box-sizing: border-box; }
 .coc-root {
   --bg: #ffffff;
@@ -84,19 +84,19 @@ const CSS = `
   --green: #3a9a6e;
   --purple-c: #7c5cbf;
   --orange: #d07030;
-  font-family: 'Maru Buri', serif;
+  font-family: 'Noto Sans KR', sans-serif;
   font-size: 13.5px;
   color: var(--text);
   min-height: 100vh; width: 100%;
 }
-.coc-display { font-family: 'Maru Buri', serif; letter-spacing: 0.01em; }
+.coc-display { font-family: 'Gowun Batang', serif; letter-spacing: 0.01em; }
 .coc-mono { font-family: 'JetBrains Mono', monospace; }
 .coc-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
 .coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .coc-scroll::-webkit-scrollbar-track { background: transparent; }
 
 .coc-btn {
-  font-family: 'Maru Buri', serif; font-weight: 600; font-size: 12px;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 12px;
   padding: 9px 16px; border-radius: 8px; border: 1px solid var(--accent);
   background: var(--accent); color: #fff; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
@@ -120,13 +120,13 @@ const CSS = `
 .coc-input, .coc-select, .coc-textarea {
   background: #fff; border: 1px solid var(--border); color: var(--text);
   border-radius: 7px; padding: 8px 10px;
-  font-family: 'Maru Buri', serif; font-size: 13px; outline: none; width: 100%;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 13px; outline: none; width: 100%;
 }
 .coc-input::placeholder, .coc-textarea::placeholder { color: var(--text-faint); }
 .coc-input:focus, .coc-select:focus, .coc-textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
 }
-.coc-textarea { resize: vertical; font-family: 'Maru Buri', serif; }
+.coc-textarea { resize: vertical; font-family: 'Noto Sans KR', sans-serif; }
 
 .coc-card {
   background: var(--bg-card); border: 1px solid var(--border-soft);
@@ -165,7 +165,7 @@ const CSS = `
 }
 .coc-tabbar { display: flex; gap: 2px; border-bottom: 1px solid var(--border-soft); }
 .coc-tab {
-  font-family: 'Maru Buri', serif; font-weight: 600; font-size: 12px;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 12px;
   padding: 10px 15px; color: var(--text-faint); cursor: pointer;
   border-bottom: 2px solid transparent;
 }
