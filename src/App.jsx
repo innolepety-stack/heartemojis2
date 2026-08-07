@@ -78,27 +78,7 @@ const THEMES = {
 
 // 기본 테마(sky) 기준 고정 CSS — 변수 값은 루트 div style로 주입
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
-@font-face {
-  font-family: 'MaruBuri';
-  src: url('https://hangeul.pstatic.net/hangeul_static/webfont/MaruBuri/MaruBuri-Light.woff2') format('woff2');
-  font-weight: 300; font-display: swap;
-}
-@font-face {
-  font-family: 'MaruBuri';
-  src: url('https://hangeul.pstatic.net/hangeul_static/webfont/MaruBuri/MaruBuri-Regular.woff2') format('woff2');
-  font-weight: 400; font-display: swap;
-}
-@font-face {
-  font-family: 'MaruBuri';
-  src: url('https://hangeul.pstatic.net/hangeul_static/webfont/MaruBuri/MaruBuri-SemiBold.woff2') format('woff2');
-  font-weight: 600; font-display: swap;
-}
-@font-face {
-  font-family: 'MaruBuri';
-  src: url('https://hangeul.pstatic.net/hangeul_static/webfont/MaruBuri/MaruBuri-Bold.woff2') format('woff2');
-  font-weight: 700; font-display: swap;
-}
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 * { box-sizing: border-box; }
 .coc-root {
   --bg: #ffffff;
@@ -109,19 +89,19 @@ const CSS = `
   --green: #3a9a6e;
   --purple-c: #7c5cbf;
   --orange: #d07030;
-  font-family: 'MaruBuri', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif;
   font-size: 13.5px;
   color: var(--text);
   min-height: 100vh; width: 100%;
 }
-.coc-display { font-family: 'MaruBuri', serif; letter-spacing: 0.01em; }
+.coc-display { font-family: 'Gowun Batang', serif; letter-spacing: 0.01em; }
 .coc-mono { font-family: 'JetBrains Mono', monospace; }
 .coc-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
 .coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .coc-scroll::-webkit-scrollbar-track { background: transparent; }
 
 .coc-btn {
-  font-family: 'MaruBuri', sans-serif; font-weight: 600; font-size: 12px;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 12px;
   padding: 9px 16px; border-radius: 8px; border: 1px solid var(--accent);
   background: var(--accent); color: #fff; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
@@ -145,13 +125,13 @@ const CSS = `
 .coc-input, .coc-select, .coc-textarea {
   background: #fff; border: 1px solid var(--border); color: var(--text);
   border-radius: 7px; padding: 8px 10px;
-  font-family: 'MaruBuri', sans-serif; font-size: 13px; outline: none; width: 100%;
+  font-family: 'Noto Sans KR', sans-serif; font-size: 13px; outline: none; width: 100%;
 }
 .coc-input::placeholder, .coc-textarea::placeholder { color: var(--text-faint); }
 .coc-input:focus, .coc-select:focus, .coc-textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
 }
-.coc-textarea { resize: vertical; font-family: 'MaruBuri', sans-serif; }
+.coc-textarea { resize: vertical; font-family: 'Noto Sans KR', sans-serif; }
 
 .coc-card {
   background: var(--bg-card); border: 1px solid var(--border-soft);
@@ -190,7 +170,7 @@ const CSS = `
 }
 .coc-tabbar { display: flex; gap: 2px; border-bottom: 1px solid var(--border-soft); }
 .coc-tab {
-  font-family: 'MaruBuri', sans-serif; font-weight: 600; font-size: 12px;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 12px;
   padding: 10px 15px; color: var(--text-faint); cursor: pointer;
   border-bottom: 2px solid transparent;
 }
@@ -232,6 +212,15 @@ function fmtDate(iso) {
     const d = new Date(iso);
     return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getDate()).padStart(2,"0")}`;
   } catch { return iso; }
+}
+// new Date().toISOString()은 UTC 기준이라 한국 시간 자정~오전 9시 사이에는
+// 하루 전 날짜로 계산되는 문제가 있어, 로컬(기기) 시간 기준으로 오늘 날짜를 구합니다.
+function todayLocalISO() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 function fmtTime(ts) {
   const d = new Date(ts);
@@ -648,7 +637,7 @@ function RoomsTab({userCode,onEnterRoom}){
 function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
   const isEdit=!!room;
   const [title,setTitle]=useState(room?.title||"");
-  const [date,setDate]=useState(room?.date||new Date().toISOString().slice(0,10));
+  const [date,setDate]=useState(room?.date||todayLocalISO());
   const [saving,setSaving]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
@@ -685,7 +674,7 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
           <div className="coc-label" style={{marginBottom:5}}>세션 제목</div>
-          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="시나리오 이름을 입력해 주세요" style={{marginBottom:14}} autoFocus/>
+          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="시나리오 제목을 입력해 주세요" style={{marginBottom:14}} autoFocus/>
           <div className="coc-label" style={{marginBottom:5}}>날짜</div>
           <input type="date" className="coc-input coc-mono" value={date} onChange={e=>setDate(e.target.value)} style={{marginBottom:18}}/>
           {error&&<div style={{color:"var(--accent)",fontSize:11.5,marginBottom:12,whiteSpace:"pre-wrap"}}>{error}</div>}
@@ -1151,8 +1140,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
     if(isGM&&speaker==="gm"){
       const name=gmTab==="npc"?(npcName.trim()||"NPC"):(profile.name||userCode);
       ok=await doSend(gmTab,t,name,profile.avatar);
-    }else if(speaker==="ooc"){ok=await doSend("ooc",t,profile.name||userCode,profile.avatar);}
-    else{ok=await doSend("ic",t,char.name,char.avatar);}
+    }else{ok=await doSend("ic",t,char.name,char.avatar);}
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
   };
 
@@ -1170,7 +1158,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
   const sendDice=r=>doSend("dice",r,char.name,char.avatar);
   const handleKeyDown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
   const placeholder=()=>{
-    if(speaker==="ooc")return"OOC 발언...";
     if(isGM&&speaker==="gm")return GM_TABS.find(x=>x.key===gmTab)?.placeholder||"";
     return`${char?.name||"캐릭터"}의 대사나 행동을 입력하세요...`;
   };
@@ -1321,7 +1308,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
       <div style={{marginTop:8}}>
         <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
           <button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="ic")} onClick={()=>setSpeaker("ic")}><Sparkles size={11}/> {char?.name||"캐릭터"}</button>
-          <button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="ooc")} onClick={()=>setSpeaker("ooc")}>💬 OOC</button>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
           <DicePanel char={char} onRollToChat={sendDice}/>
         </div>
