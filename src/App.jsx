@@ -1,3 +1,6 @@
+JavaScript
+import React from 'react';
+
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
