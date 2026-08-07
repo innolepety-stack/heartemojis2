@@ -4,6 +4,11 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle, Sun,
   Crown, Settings, Swords, UserRound, BookOpen, Trash2
 } from "lucide-react";
+import { db } from "./firebase";
+import {
+  doc, getDoc, setDoc, deleteDoc,
+  collection, query, orderBy, startAt, endAt, getDocs,
+} from "firebase/firestore";
 
 /* ============================== CONFIG ============================== */
 
@@ -218,34 +223,56 @@ function emptyDerived() { return {HP:10,maxHP:10,MP:10,maxMP:10,SAN:50,maxSAN:50
 function blankCharSheet(name="") { return {name,avatar:"",characteristics:emptyCharacteristics(),skills:emptySkills(),derived:emptyDerived(),notes:""}; }
 function blankProfile(name="") { return {name,avatar:""}; }
 
-/* ============================== STORAGE ============================== */
+/* ============================== STORAGE (Firebase Firestore) ============================== */
+// 기존에는 Claude 아티팩트 전용 API인 window.storage를 사용했으나,
+// Netlify 등 일반 환경에는 window.storage가 없어 "저장소 없음" 에러가 발생했습니다.
+// 아래는 동일한 함수 시그니처(storeGet/storeSet/storeDelete/storeListValues)를 유지한 채
+// Firestore의 "kv" 컬렉션에 key-value로 저장하도록 교체한 버전입니다.
+// shared 파라미터는 기존 호출부와의 호환을 위해 남겨두었을 뿐 실제로는 사용하지 않습니다
+// (원본 코드가 어차피 모든 곳에서 shared:true로만 호출했기 때문에 컬렉션을 하나로 통일했습니다).
 
-async function storeGet(key, shared) {
-  try { const r=await window.storage.get(key,shared); if(!r) return null; return JSON.parse(r.value); } catch { return null; }
-}
-async function storeSet(key, value, shared) {
-  let lastError="";
-  for(let i=0;i<3;i++){
-    try{
-      if(!window.storage) throw new Error("저장소 없음");
-      const r=await window.storage.set(key,JSON.stringify(value),shared);
-      if(!r) throw new Error("빈 응답");
-      return {ok:true};
-    } catch(err){ lastError=err?.message||String(err); if(i<2) await new Promise(r=>setTimeout(r,500)); }
-  }
-  return {ok:false,error:lastError};
-}
-async function storeDelete(key, shared) {
-  try { await window.storage.delete(key,shared); return true; } catch { return false; }
-}
-async function storeListValues(prefix, shared) {
+const KV_COLLECTION = "kv";
+
+async function storeGet(key, _shared) {
   try {
-    const r=await window.storage.list(prefix,shared);
-    if(!r||!r.keys) return [];
-    const out=[];
-    for(const k of r.keys){ const v=await storeGet(k,shared); if(v) out.push({key:k,value:v}); }
+    const snap = await getDoc(doc(db, KV_COLLECTION, key));
+    if (!snap.exists()) return null;
+    return snap.data().value;
+  } catch { return null; }
+}
+async function storeSet(key, value, _shared) {
+  let lastError = "";
+  for (let i = 0; i < 3; i++) {
+    try {
+      await setDoc(doc(db, KV_COLLECTION, key), { value, updatedAt: Date.now() });
+      return { ok: true };
+    } catch (err) {
+      lastError = err?.message || String(err);
+      if (i < 2) await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  return { ok: false, error: lastError };
+}
+async function storeDelete(key, _shared) {
+  try { await deleteDoc(doc(db, KV_COLLECTION, key)); return true; } catch { return false; }
+}
+async function storeListValues(prefix, _shared) {
+  try {
+    const col = collection(db, KV_COLLECTION);
+    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
+    const snap = await getDocs(q);
+    const out = [];
+    snap.forEach(d => out.push({ key: d.id, value: d.data().value }));
     return out;
   } catch { return []; }
+}
+async function storeListKeys(prefix, _shared) {
+  try {
+    const col = collection(db, KV_COLLECTION);
+    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
+    const snap = await getDocs(q);
+    return { keys: snap.docs.map(d => d.id) };
+  } catch { return { keys: [] }; }
 }
 async function fileToResizedDataURL(file, maxSize=220) {
   return new Promise((resolve,reject)=>{
@@ -621,8 +648,8 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
     if(!confirmDelete){setConfirmDelete(true);return;}
     setDeleting(true);
     await storeDelete(`room:${room.id}`,true);
-    const chatKeys=await window.storage.list(`chat:${room.id}:`,true).catch(()=>({keys:[]}));
-    const charKeys=await window.storage.list(`char:${room.id}:`,true).catch(()=>({keys:[]}));
+    const chatKeys=await storeListKeys(`chat:${room.id}:`,true).catch(()=>({keys:[]}));
+    const charKeys=await storeListKeys(`char:${room.id}:`,true).catch(()=>({keys:[]}));
     for(const k of(chatKeys.keys||[])) await storeDelete(k,true);
     for(const k of(charKeys.keys||[])) await storeDelete(k,true);
     setDeleting(false);
