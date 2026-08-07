@@ -13,8 +13,8 @@ import {
 /* ============================== CONFIG ============================== */
 
 const LOGIN_CODES = {
-  "0303": { code: "0303", name: "muchuu" },
-  "0217": { code: "0217", name: "haru" },
+  "0303": { code: "0303", name: "무츄" },
+  "0217": { code: "0217", name: "하루" },
 };
 
 const SKILL_LIST = [
@@ -674,7 +674,7 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
           <div className="coc-label" style={{marginBottom:5}}>세션 제목</div>
-          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="시나리오 제목을 입력해 주세요" style={{marginBottom:14}} autoFocus/>
+          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 인스머스의 그림자" style={{marginBottom:14}} autoFocus/>
           <div className="coc-label" style={{marginBottom:5}}>날짜</div>
           <input type="date" className="coc-input coc-mono" value={date} onChange={e=>setDate(e.target.value)} style={{marginBottom:18}}/>
           {error&&<div style={{color:"var(--accent)",fontSize:11.5,marginBottom:12,whiteSpace:"pre-wrap"}}>{error}</div>}
@@ -1044,6 +1044,13 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
   const [bgmUrl,setBgmUrl]=useState("");
   const [bgmInput,setBgmInput]=useState("");
   const [showBgm,setShowBgm]=useState(false);
+  // 볼륨은 방(Firestore)에 저장하지 않고 이 기기(브라우저)에만 개인적으로 저장합니다.
+  const [bgmVolume,setBgmVolume]=useState(()=>{
+    try{
+      const v=Number(localStorage.getItem("bgmVolume"));
+      return Number.isFinite(v)&&v>=0&&v<=100?v:70;
+    }catch{return 70;}
+  });
   const iframeRef=useRef(null);
   const bottomRef=useRef(null);
   const inputRef=useRef(null);
@@ -1058,7 +1065,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
       if(u.hostname.includes("youtu.be"))v=u.pathname.slice(1);
       else if(u.searchParams.get("v"))v=u.searchParams.get("v");
       if(!v)return null;
-      return`https://www.youtube.com/embed/${v}?autoplay=1&loop=1&playlist=${v}&controls=1&modestbranding=1`;
+      return`https://www.youtube.com/embed/${v}?autoplay=1&loop=1&playlist=${v}&controls=1&modestbranding=1&enablejsapi=1`;
     }catch{return null;}
   }
 
@@ -1103,6 +1110,22 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
 
   const handleSetBgm=async()=>{const url=bgmInput.trim();setBgmUrl(url);await storeSet(`bgm:${room.id}`,{url},true);setBgmInput("");};
   const handleStopBgm=async()=>{setBgmUrl("");await storeSet(`bgm:${room.id}`,{url:""},true);};
+
+  const sendPlayerCommand=(func,args=[])=>{
+    try{ iframeRef.current?.contentWindow?.postMessage(JSON.stringify({event:"command",func,args}),"*"); }catch{}
+  };
+
+  // 볼륨 변경 시 저장 + 현재 재생 중인 플레이어에 즉시 반영
+  useEffect(()=>{
+    try{ localStorage.setItem("bgmVolume",String(bgmVolume)); }catch{}
+    sendPlayerCommand("setVolume",[bgmVolume]);
+  },[bgmVolume]);
+
+  // BGM(영상)이 바뀌어 iframe이 새로 로드될 때도 저장된 볼륨을 재적용
+  const handleBgmIframeLoad=()=>{
+    setTimeout(()=>sendPlayerCommand("setVolume",[bgmVolume]),500);
+    setTimeout(()=>sendPlayerCommand("setVolume",[bgmVolume]),1500);
+  };
 
   const addTab=async()=>{
     const label=newTabName.trim();if(!label)return;
@@ -1201,7 +1224,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
 
   return(
     <div style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100vh - 140px)"}}>
-      {embedUrl&&<iframe ref={iframeRef} src={embedUrl} title="BGM" style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
+      {embedUrl&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
 
       {/* 헤더 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}}>
@@ -1239,6 +1262,13 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
           {bgmUrl&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <div style={{flex:1,fontSize:11.5,color:"var(--text-dim)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bgmUrl}</div>
             <button type="button" className="coc-btn ghost small" onClick={handleStopBgm}>정지</button>
+          </div>}
+          {bgmUrl&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <span style={{fontSize:11,color:"var(--text-dim)",flexShrink:0}}>내 볼륨</span>
+            <input type="range" min={0} max={100} value={bgmVolume}
+              onChange={e=>setBgmVolume(Number(e.target.value))}
+              style={{flex:1,accentColor:"var(--accent)"}}/>
+            <span className="coc-mono" style={{fontSize:10,color:"var(--text-faint)",width:26,textAlign:"right",flexShrink:0}}>{bgmVolume}</span>
           </div>}
           {isGM&&<div style={{display:"flex",gap:7}}>
             <input className="coc-input" value={bgmInput} onChange={e=>setBgmInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleSetBgm();}}} placeholder="YouTube 링크를 붙여넣으세요" style={{flex:1,fontSize:12}}/>
