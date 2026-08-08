@@ -302,6 +302,26 @@ async function fileToResizedDataURL(file, maxSize=220) {
     reader.onerror=reject; reader.readAsDataURL(file);
   });
 }
+// 채팅으로 보내는 이미지는 PNG로 저장해 투명 배경(알파 채널)을 유지합니다.
+async function fileToResizedPNG(file, maxSize=480) {
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        let {width,height}=img;
+        if(width>height&&width>maxSize){height=Math.round(height*maxSize/width);width=maxSize;}
+        else if(height>maxSize){width=Math.round(width*maxSize/height);height=maxSize;}
+        const canvas=document.createElement("canvas");
+        canvas.width=width;canvas.height=height;
+        canvas.getContext("2d").drawImage(img,0,0,width,height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror=reject; img.src=reader.result;
+    };
+    reader.onerror=reject; reader.readAsDataURL(file);
+  });
+}
 
 /* ============================== SUBCOMPONENTS ============================== */
 
@@ -748,20 +768,16 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved}){
 
 function CharacterSelectScreen({room,userCode,onSelect,onBack}){
   const [myChars,setMyChars]=useState([]);
-  const [allChars,setAllChars]=useState([]);
   const [loading,setLoading]=useState(true);
   const [editing,setEditing]=useState(null);
-  const [viewing,setViewing]=useState(null);
 
   const refresh=useCallback(async()=>{
     const list=await storeListValues(`char:${room.id}:`,true);
-    const chars=list.map(x=>x.value);
-    setAllChars(chars);setMyChars(chars.filter(c=>c.ownerCode===userCode));setLoading(false);
+    const chars=list.map(x=>x.value).filter(c=>c.ownerCode===userCode);
+    setMyChars(chars);setLoading(false);
   },[room.id,userCode]);
 
   useEffect(()=>{refresh();const t=setInterval(refresh,4000);return()=>clearInterval(t);},[refresh]);
-
-  const othersChars=allChars.filter(c=>c.ownerCode!==userCode);
 
   return(
     <div style={{maxWidth:680,margin:"0 auto"}}>
@@ -793,33 +809,7 @@ function CharacterSelectScreen({room,userCode,onSelect,onBack}){
           </button>
         </div>
       )}
-      {othersChars.length>0&&(
-        <>
-          <div className="coc-label" style={{marginBottom:9}}>다른 참가자의 탐사자</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:9}}>
-            {othersChars.map(c=>(
-              <div key={c.id} onClick={()=>setViewing(c)}
-                style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:20,padding:"5px 13px 5px 5px"}}>
-                <div style={{width:27,height:27,borderRadius:"50%",overflow:"hidden",background:"#fff"}}>
-                  {c.avatar?<img src={c.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={12} color="var(--accent-soft)" style={{margin:7}}/>}
-                </div>
-                <span style={{fontSize:12}}>{c.name}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
       {editing&&<CharacterEditModal initial={editing} roomId={room.id} userCode={userCode} onClose={()=>setEditing(null)} onSaved={()=>{setEditing(null);refresh();}}/>}
-      {viewing&&(
-        <div className="coc-modal-backdrop" onClick={()=>setViewing(null)}>
-          <div className="coc-modal" onClick={e=>e.stopPropagation()}>
-            <div style={{padding:20}}>
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}><button className="coc-btn ghost small" onClick={()=>setViewing(null)} style={{padding:6}}><X size={13}/></button></div>
-              <SheetEditor sheet={viewing} setSheet={()=>{}} readOnly/>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -849,16 +839,14 @@ function DiceCard({line}){
   try{data=JSON.parse(line);}catch{return <div style={{fontSize:12,color:"var(--text-dim)"}}>{line}</div>;}
   const{skillName,value,roll,label,color,bg}=data;
   return(
-    <div style={{display:"inline-flex",alignItems:"center",gap:10,border:"1.5px solid "+color,borderRadius:8,background:bg,padding:"7px 12px",marginTop:3}}>
-      <div style={{width:44,height:44,borderRadius:6,background:color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <span className="coc-mono" style={{fontSize:20,fontWeight:700,color:"#fff"}}>{roll}</span>
+    <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",gap:4,width:"fit-content",minWidth:76,border:"1.5px solid "+color,borderRadius:8,background:bg,padding:"9px 12px",marginTop:3}}>
+      <div style={{width:36,height:36,borderRadius:6,background:color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span className="coc-mono" style={{fontSize:16,fontWeight:700,color:"#fff"}}>{roll}</span>
       </div>
-      <div>
-        <div style={{fontSize:11.5,fontWeight:600,color:"var(--text-dim)",marginBottom:2}}>
-          {skillName} <span className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>/ {value}</span>
-        </div>
-        <div style={{fontSize:13,fontWeight:700,color:color}}>{label}</div>
+      <div style={{fontSize:10.5,fontWeight:600,color:"var(--text-dim)",textAlign:"center",whiteSpace:"nowrap"}}>
+        {skillName} <span className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>/{value}</span>
       </div>
+      <div style={{fontSize:12,fontWeight:700,color:color,textAlign:"center"}}>{label}</div>
     </div>
   );
 }
@@ -875,19 +863,34 @@ function groupMessages(msgs){
   return groups;
 }
 
-function msgTextColor(){ return "inherit"; }
-
-// 마크다운 서식 파서: **굵게** *기울기* ~~취소선~~ __밑줄__
+// 인라인 style 속성 중 허용된 것만 통과시켜 안전하게 렌더링
+const ALLOWED_STYLE_PROPS = { color:1, "background-color":1, "font-weight":1, "font-style":1, "text-decoration":1 };
+function parseInlineStyle(styleStr){
+  const out={};
+  (styleStr||"").split(";").forEach(pair=>{
+    const idx=pair.indexOf(":");
+    if(idx<0) return;
+    const k=pair.slice(0,idx).trim().toLowerCase();
+    const v=pair.slice(idx+1).trim();
+    if(ALLOWED_STYLE_PROPS[k]&&v&&!/[<>{}]/.test(v)){
+      const camel=k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
+      out[camel]=v;
+    }
+  });
+  return out;
+}
+// 마크다운 서식 파서: **굵게** *기울기* ~~취소선~~ __밑줄__ + <span style="..."> (롤20 스타일)
 function parseFormat(text){
   const parts=[];
-  const re=/\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|__(.+?)__/g;
+  const re=/<span style="([^"<>]*)">(.*?)<\/span>|\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|__(.+?)__/g;
   let last=0,m;
   while((m=re.exec(text))!==null){
     if(m.index>last) parts.push({t:"text",v:text.slice(last,m.index)});
-    if(m[1]!==undefined) parts.push({t:"bold",v:m[1]});
-    else if(m[2]!==undefined) parts.push({t:"italic",v:m[2]});
-    else if(m[3]!==undefined) parts.push({t:"strike",v:m[3]});
-    else if(m[4]!==undefined) parts.push({t:"under",v:m[4]});
+    if(m[1]!==undefined) parts.push({t:"span",style:m[1],v:m[2]});
+    else if(m[3]!==undefined) parts.push({t:"bold",v:m[3]});
+    else if(m[4]!==undefined) parts.push({t:"italic",v:m[4]});
+    else if(m[5]!==undefined) parts.push({t:"strike",v:m[5]});
+    else if(m[6]!==undefined) parts.push({t:"under",v:m[6]});
     last=m.index+m[0].length;
   }
   if(last<text.length) parts.push({t:"text",v:text.slice(last)});
@@ -902,6 +905,7 @@ function FormattedText({text,style={}}){
         if(p.t==="italic") return <em key={i}>{p.v}</em>;
         if(p.t==="strike") return <s key={i}>{p.v}</s>;
         if(p.t==="under") return <u key={i}>{p.v}</u>;
+        if(p.t==="span") return <span key={i} style={parseInlineStyle(p.style)}>{p.v}</span>;
         return <span key={i}>{p.v}</span>;
       })}
     </span>
@@ -941,14 +945,13 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete}){
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:3}}>
           {/* NPC도 일반 캐릭터와 동일하게 */}
-          {(speaker==="ic"||speaker==="npc")&&<span style={{color:"var(--accent-deep)",fontWeight:600,fontSize:11}}>{characterName}</span>}
-          {isDice&&<span style={{color:"var(--text-dim)",fontSize:11}}>{characterName}</span>}
+          {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:"var(--accent-deep)",fontWeight:600,fontSize:11}}>{characterName}</span>}
           {isImg&&<span style={{color:"var(--text-dim)",fontSize:11}}>{characterName}</span>}
           {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:11}}>{characterName} <span className="coc-mono" style={{fontSize:8}}>OOC</span></span>}
           <span className="coc-mono" style={{fontSize:8.5,color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
-          {isMine&&!isDice&&!isImg&&(
+          {isMine&&!isDice&&(
             <span className="msg-actions" style={{display:"flex",gap:2,marginLeft:1}}>
-              {items.length===1&&<button type="button" onClick={()=>onEdit(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",display:"flex"}} title="수정"><Pencil size={9}/></button>}
+              {items.length===1&&!isImg&&<button type="button" onClick={()=>onEdit(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",display:"flex"}} title="수정"><Pencil size={9}/></button>}
               <button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"#c05050",padding:"0 2px",display:"flex"}} title="삭제"><Trash2 size={9}/></button>
             </span>
           )}
@@ -956,7 +959,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete}){
         <div style={{display:"flex",flexDirection:"column",gap:3}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
-            if(isImg) return <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:260,maxHeight:200,borderRadius:8,border:"1px solid var(--border)",cursor:"pointer",objectFit:"contain"}} onClick={()=>window.open(line,"_blank")}/>;
+            if(isImg) return <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:260,maxHeight:200,borderRadius:8,border:"1px solid var(--border)",objectFit:"contain"}}/>;
             return <div key={i} style={{fontSize:13,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
           })}
         </div>
@@ -1168,7 +1171,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
   };
 
   const sendImage=async(file)=>{
-    const dataUrl=await fileToResizedDataURL(file,480);
+    const dataUrl=await fileToResizedPNG(file,480);
     const tid=activeTab;
     const msgId=newId();
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
@@ -1364,14 +1367,16 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onBack}){
               {f.label}
             </button>
           ))}
-          <div style={{width:1,height:16,background:"var(--border)",margin:"0 2px"}}/>
-          {/* 이미지 전송 */}
-          <button type="button" title="이미지 전송" onClick={()=>imgInputRef.current?.click()}
-            style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 8px",cursor:"pointer",color:"var(--text-dim)",fontSize:11}}>
-            🖼
-          </button>
-          <input ref={imgInputRef} type="file" accept="image/*" style={{display:"none"}}
-            onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";}}/>
+          {isGM&&(<>
+            <div style={{width:1,height:16,background:"var(--border)",margin:"0 2px"}}/>
+            {/* 이미지 전송 — 방장(GM)만 가능 */}
+            <button type="button" title="이미지 전송" onClick={()=>imgInputRef.current?.click()}
+              style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 8px",cursor:"pointer",color:"var(--text-dim)",fontSize:11}}>
+              🖼
+            </button>
+            <input ref={imgInputRef} type="file" accept="image/*" style={{display:"none"}}
+              onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";}}/>
+          </>)}
         </div>
         <div style={{display:"flex",gap:7}}>
           <textarea ref={inputRef} className="coc-input" rows={2} value={text}
