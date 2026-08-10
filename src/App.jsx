@@ -292,7 +292,7 @@ function fmtTime(ts) {
 function emptyCharacteristics() { const o={}; CHAR_KEYS.forEach(k=>o[k]=50); return o; }
 function emptySkills() { const o={}; SKILL_LIST.forEach(([n,b])=>o[n]=b); return o; }
 function emptyDerived() { return {HP:10,maxHP:10,MP:10,maxMP:10,SAN:50,maxSAN:50,Luck:50}; }
-function blankCharSheet(name="") { return {name,avatar:"",characteristics:emptyCharacteristics(),skills:emptySkills(),derived:emptyDerived(),notes:""}; }
+function blankCharSheet(name="") { return {name,avatar:"",characteristics:emptyCharacteristics(),skills:emptySkills(),customSkills:[],derived:emptyDerived(),notes:""}; }
 function blankProfile(name="") { return {name,avatar:""}; }
 
 /* ============================== STORAGE (Firebase Firestore) ============================== */
@@ -477,26 +477,71 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
   );
 }
 
-function SkillsGrid({skills,setSkills}){
+function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false}){
   const [open,setOpen]=useState(false);
+
+  const addCustom=()=>{
+    setCustomSkills([...customSkills,{id:newId(),name:"",value:0}]);
+  };
+  const updateCustom=(id,patch)=>{
+    setCustomSkills(customSkills.map(c=>c.id===id?{...c,...patch}:c));
+  };
+  const removeCustom=id=>{
+    setCustomSkills(customSkills.filter(c=>c.id!==id));
+  };
+
   return(
     <div>
       <button type="button" onClick={()=>setOpen(!open)}
         style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",fontSize:12,padding:0,fontWeight:600}}>
         {open?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
-        기능치 {open?"숨기기":`펼치기 (${SKILL_LIST.length})`}
+        기능치 {open?"숨기기":`펼치기 (${SKILL_LIST.length+customSkills.length})`}
       </button>
       {open&&(
-        <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,paddingRight:4}}>
-          {SKILL_LIST.map(([name])=>(
-            <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
-              <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
-              <input className="coc-mono" type="number" value={skills[name]??0}
-                onChange={e=>setSkills({...skills,[name]:parseInt(e.target.value)||0})}
-                style={{width:42,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
+        <>
+          <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,paddingRight:4}}>
+            {SKILL_LIST.map(([name])=>(
+              <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
+                <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
+                <input className="coc-mono" type="number" value={skills[name]??0} readOnly={readOnly}
+                  onChange={e=>setSkills({...skills,[name]:parseInt(e.target.value)||0})}
+                  style={{width:42,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
+              </div>
+            ))}
+          </div>
+
+          {/* 자유 기능치: 필수 목록에 없는 기능치를 플레이어가 마음대로 추가 */}
+          {(customSkills.length>0||!readOnly)&&(
+            <div style={{marginTop:12}}>
+              <div className="coc-label" style={{marginBottom:6}}>자유 기능치</div>
+              {customSkills.length===0&&readOnly&&<div style={{fontSize:12.5,color:"var(--text-faint)"}}>없음</div>}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5}}>
+                {customSkills.map(c=>(
+                  <div key={c.id} style={{display:"flex",alignItems:"center",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
+                    {readOnly?(
+                      <span style={{fontSize:13.5,color:"var(--text-dim)",flex:1}}>{c.name||"(이름 없음)"}</span>
+                    ):(
+                      <input value={c.name} onChange={e=>updateCustom(c.id,{name:e.target.value})}
+                        placeholder="기능치 이름" style={{flex:1,background:"transparent",border:"none",outline:"none",fontSize:13.5,color:"var(--text)",minWidth:0}}/>
+                    )}
+                    <input className="coc-mono" type="number" value={c.value??0} readOnly={readOnly}
+                      onChange={e=>updateCustom(c.id,{value:parseInt(e.target.value)||0})}
+                      style={{width:36,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
+                    {!readOnly&&(
+                      <button type="button" onClick={()=>removeCustom(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {!readOnly&&(
+                <button type="button" onClick={addCustom}
+                  style={{display:"flex",alignItems:"center",gap:4,marginTop:7,background:"none",border:"1px dashed var(--border)",borderRadius:6,padding:"5px 10px",cursor:"pointer",color:"var(--accent-deep)",fontSize:12.5}}>
+                  <Plus size={12}/> 기능치 추가
+                </button>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -515,7 +560,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
       <div className="coc-divider"/>
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={()=>{}} allowRoll={false}/>
       <div className="coc-divider"/>
-      <SkillsGrid skills={sheet.skills} setSkills={()=>{}}/>
+      <SkillsGrid skills={sheet.skills} setSkills={()=>{}} customSkills={sheet.customSkills||[]} setCustomSkills={()=>{}} readOnly/>
       {sheet.notes&&<><div className="coc-divider"/><div className="coc-label" style={{marginBottom:5}}>메모</div><div style={{fontSize:14,color:"var(--text-dim)",whiteSpace:"pre-wrap"}}>{sheet.notes}</div></>}
     </div>
   );
@@ -529,7 +574,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
       <div className="coc-divider"/>
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})} allowRoll={allowRoll}/>
       <div className="coc-divider"/>
-      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})}/>
+      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})}/>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:5}}>메모 / 배경</div>
       <textarea className="coc-textarea" rows={3} value={sheet.notes} onChange={e=>setSheet({...sheet,notes:e.target.value})} placeholder="직업, 배경, 소지품 등 자유롭게 기록하세요"/>
@@ -1306,7 +1351,16 @@ function groupMessages(msgs){
 }
 
 // 인라인 style 속성 중 허용된 것만 통과시켜 안전하게 렌더링
-const ALLOWED_STYLE_PROPS = { color:1, "background-color":1, "font-weight":1, "font-style":1, "text-decoration":1 };
+// - position/z-index/background-image/cursor/filter 등은 화면을 덮는 가짜 UI(피싱)나
+//   추적 픽셀에 악용될 수 있어 절대 허용하지 않습니다.
+// - 아래 속성들은 배너/타이틀 카드 같은 꾸미기 용도로 위험성이 없어 허용합니다.
+const ALLOWED_STYLE_PROPS = {
+  color:1, "background-color":1, "font-weight":1, "font-style":1, "text-decoration":1,
+  "text-align":1, display:1, padding:1, "box-shadow":1, "border-radius":1,
+  "line-height":1, "letter-spacing":1, border:1,
+};
+// url(...)/expression(...)/javascript: 등이 값에 섞여 있으면 통째로 무시합니다.
+const DANGEROUS_VALUE_PATTERN = /url\s*\(|expression\s*\(|javascript:|import|position\s*:/i;
 function parseInlineStyle(styleStr){
   const out={};
   (styleStr||"").split(";").forEach(pair=>{
@@ -1314,7 +1368,7 @@ function parseInlineStyle(styleStr){
     if(idx<0) return;
     const k=pair.slice(0,idx).trim().toLowerCase();
     const v=pair.slice(idx+1).trim();
-    if(ALLOWED_STYLE_PROPS[k]&&v&&!/[<>{}]/.test(v)){
+    if(ALLOWED_STYLE_PROPS[k]&&v&&!/[<>{}]/.test(v)&&!DANGEROUS_VALUE_PATTERN.test(v)){
       const camel=k.replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
       out[camel]=v;
     }
@@ -1696,6 +1750,148 @@ function HandoutViewerModal({handouts,onClose}){
   );
 }
 
+/* ============================== 배너 만들기 ============================== */
+// 롤20의 /desc 스타일 타이틀 카드를 직접 코드를 안 치고도 버튼으로 만들 수 있게 해줍니다.
+// "채팅에 삽입"을 누르면 완성된 <span style="..."> 조각이 채팅 입력창에 이어붙여져서,
+// 롤20처럼 여러 조각을 연달아 붙여 하나의 배너 메시지를 만들 수 있습니다.
+
+const BANNER_PRESETS = [
+  { label:"타이틀 바", bg:true, align:"center", block:true, padding:"6", shadow:true, bold:false },
+  { label:"본문", bg:false, align:"left", block:false, padding:"0", shadow:false, bold:false },
+];
+
+function BannerBuilderModal({onClose,onInsert,themeAccent}){
+  const [text,setText]=useState("");
+  const [color,setColor]=useState("#ffffff");
+  const [useBg,setUseBg]=useState(true);
+  const [bgColor,setBgColor]=useState(themeAccent||"#355C9F");
+  const [align,setAlign]=useState("center");
+  const [block,setBlock]=useState(true);
+  const [padding,setPadding]=useState(6);
+  const [radius,setRadius]=useState(0);
+  const [shadow,setShadow]=useState(false);
+  const [bold,setBold]=useState(false);
+  const [italic,setItalic]=useState(false);
+  const [underline,setUnderline]=useState(false);
+  const [fontSize,setFontSize]=useState(13);
+
+  const buildStyle=()=>{
+    const parts=[];
+    parts.push(`color:${color}`);
+    if(useBg) parts.push(`background-color:${bgColor}`);
+    parts.push(`text-align:${align}`);
+    if(block) parts.push(`display:block`);
+    parts.push(`padding:${padding}px`);
+    if(radius>0) parts.push(`border-radius:${radius}px`);
+    if(shadow) parts.push(`box-shadow:0px 4px 0px 0px rgba(0,0,0,0.15)`);
+    if(bold) parts.push(`font-weight:700`);
+    if(italic) parts.push(`font-style:italic`);
+    if(underline) parts.push(`text-decoration:underline`);
+    else parts.push(`text-decoration:none`);
+    parts.push(`font-size:${fontSize}px`);
+    return parts.join(";");
+  };
+
+  const previewStyle={
+    color, backgroundColor:useBg?bgColor:"transparent", textAlign:align,
+    display:block?"block":"inline-block", padding:padding+"px",
+    borderRadius:radius+"px", boxShadow:shadow?"0px 4px 0px 0px rgba(0,0,0,0.15)":"none",
+    fontWeight:bold?700:400, fontStyle:italic?"italic":"normal",
+    textDecoration:underline?"underline":"none", fontSize:fontSize+"px",
+  };
+
+  const insert=()=>{
+    const t=text.trim();if(!t)return;
+    const markup=`<span style="${buildStyle()}">${t}</span>`;
+    onInsert(markup);
+    setText("");
+  };
+
+  return(
+    <div className="coc-modal-backdrop" onClick={onClose}>
+      <div className="coc-modal" style={{maxWidth:440}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>배너 만들기</div>
+            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
+          </div>
+
+          {/* 미리보기 */}
+          <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:12,marginBottom:14}}>
+            <div className="coc-label" style={{marginBottom:6}}>미리보기</div>
+            <div style={previewStyle}>{text||"텍스트를 입력하세요"}</div>
+          </div>
+
+          <div className="coc-label" style={{marginBottom:5}}>내용</div>
+          <input className="coc-input" value={text} onChange={e=>setText(e.target.value)} placeholder="예: 시나리오 제목" style={{marginBottom:12}} autoFocus/>
+
+          {/* 색상 */}
+          <div style={{display:"flex",gap:14,marginBottom:12}}>
+            <div style={{flex:1}}>
+              <div className="coc-label" style={{marginBottom:5}}>글자색</div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:32,height:32,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+                <input className="coc-input coc-mono" value={color} onChange={e=>setColor(e.target.value)} style={{fontSize:12}}/>
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+                <input type="checkbox" checked={useBg} onChange={e=>setUseBg(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+                <span className="coc-label">배경색</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,opacity:useBg?1:0.4}}>
+                <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{width:32,height:32,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:useBg?"pointer":"default"}}/>
+                <input className="coc-input coc-mono" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{fontSize:12}}/>
+              </div>
+            </div>
+          </div>
+
+          {/* 정렬 */}
+          <div className="coc-label" style={{marginBottom:5}}>정렬</div>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {[["left","왼쪽"],["center","가운데"],["right","오른쪽"]].map(([v,l])=>(
+              <button key={v} type="button" className="coc-btn small" style={{flex:1,justifyContent:"center",background:align===v?"var(--accent)":"#fff",color:align===v?"#fff":"var(--text-dim)",border:"1px solid "+(align===v?"var(--accent)":"var(--border)")}} onClick={()=>setAlign(v)}>{l}</button>
+            ))}
+          </div>
+
+          {/* 서식 토글 */}
+          <div className="coc-label" style={{marginBottom:5}}>서식</div>
+          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+            <button type="button" className="coc-btn small" style={{background:block?"var(--accent)":"#fff",color:block?"#fff":"var(--text-dim)",border:"1px solid "+(block?"var(--accent)":"var(--border)")}} onClick={()=>setBlock(v=>!v)}>한 줄 꽉 채우기</button>
+            <button type="button" className="coc-btn small" style={{background:bold?"var(--accent)":"#fff",color:bold?"#fff":"var(--text-dim)",border:"1px solid "+(bold?"var(--accent)":"var(--border)"),fontWeight:700}} onClick={()=>setBold(v=>!v)}>B</button>
+            <button type="button" className="coc-btn small" style={{background:italic?"var(--accent)":"#fff",color:italic?"#fff":"var(--text-dim)",border:"1px solid "+(italic?"var(--accent)":"var(--border)"),fontStyle:"italic"}} onClick={()=>setItalic(v=>!v)}>I</button>
+            <button type="button" className="coc-btn small" style={{background:underline?"var(--accent)":"#fff",color:underline?"#fff":"var(--text-dim)",border:"1px solid "+(underline?"var(--accent)":"var(--border)"),textDecoration:"underline"}} onClick={()=>setUnderline(v=>!v)}>U</button>
+            <button type="button" className="coc-btn small" style={{background:shadow?"var(--accent)":"#fff",color:shadow?"#fff":"var(--text-dim)",border:"1px solid "+(shadow?"var(--accent)":"var(--border)")}} onClick={()=>setShadow(v=>!v)}>그림자</button>
+          </div>
+
+          {/* 여백/모서리/글자크기 */}
+          <div style={{display:"flex",gap:14,marginBottom:16}}>
+            <div style={{flex:1}}>
+              <div className="coc-label" style={{marginBottom:5}}>안쪽 여백 {padding}px</div>
+              <input type="range" min={0} max={20} value={padding} onChange={e=>setPadding(Number(e.target.value))} style={{width:"100%",accentColor:"var(--accent)"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <div className="coc-label" style={{marginBottom:5}}>모서리 둥글기 {radius}px</div>
+              <input type="range" min={0} max={20} value={radius} onChange={e=>setRadius(Number(e.target.value))} style={{width:"100%",accentColor:"var(--accent)"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <div className="coc-label" style={{marginBottom:5}}>글자 크기 {fontSize}px</div>
+              <input type="range" min={9} max={24} value={fontSize} onChange={e=>setFontSize(Number(e.target.value))} style={{width:"100%",accentColor:"var(--accent)"}}/>
+            </div>
+          </div>
+
+          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!text.trim()} onClick={insert}>
+            채팅 입력창에 삽입
+          </button>
+          <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
+            여러 조각을 이어붙이고 싶으면, 삽입 후 다시 내용을 바꿔서 계속 추가하세요.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DicePanel({char,onRollToChat}){
   const [open,setOpen]=useState(false);
   const panelRef=useRef(null);
@@ -1751,6 +1947,20 @@ function DicePanel({char,onRollToChat}){
               );
             })}
           </div>
+          {char?.customSkills?.length>0&&(
+            <>
+              <div className="coc-label" style={{margin:"10px 0 7px"}}>자유 기능치</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
+                {char.customSkills.filter(c=>c.name).map(c=>(
+                  <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
+                    style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                    <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{c.name}</span>
+                    <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1827,6 +2037,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
   const [showImgPopover,setShowImgPopover]=useState(false);
   const [imgUrlInput,setImgUrlInput]=useState("");
+  const [showBannerBuilder,setShowBannerBuilder]=useState(false);
   const imgPopoverRef=useRef(null);
   useEffect(()=>{
     if(!showImgPopover)return;
@@ -2026,7 +2237,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
     await storeSet(key,{...msg,text:JSON.stringify(updatedData)},true);
     const particle=pickEulReul(option);
-    await doSend("system",`${option}${particle} 확인한다`,"","",tid);
+    await doSend("system",`<span style="color:var(--accent-deep);font-weight:700">${option}</span>${particle} 확인한다`,"","",tid);
   };
   const handleCreateChoice=async(options)=>{
     const payload=JSON.stringify({options,picked:{}});
@@ -2216,6 +2427,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                 onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}/>
             </div>
           )}
+          {isGM&&<button type="button" className="coc-btn ghost small" onClick={()=>setShowBannerBuilder(true)}>배너 만들기</button>}
           <DicePanel char={char} onRollToChat={sendDice}/>
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
@@ -2264,6 +2476,12 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}/>}
+      {showBannerBuilder&&(
+        <BannerBuilderModal
+          onClose={()=>setShowBannerBuilder(false)}
+          onInsert={markup=>setText(prev=>prev?prev+"\n"+markup:markup)}
+        />
+      )}
     </div>
   );
 }
