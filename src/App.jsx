@@ -505,7 +505,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
                 <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
                 <input className="coc-mono" type="number" value={skills[name]??0} readOnly={readOnly}
                   onChange={e=>setSkills({...skills,[name]:parseInt(e.target.value)||0})}
-                  style={{width:42,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
+                  style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
               </div>
             ))}
           </div>
@@ -526,7 +526,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
                     )}
                     <input className="coc-mono" type="number" value={c.value??0} readOnly={readOnly}
                       onChange={e=>updateCustom(c.id,{value:parseInt(e.target.value)||0})}
-                      style={{width:36,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
+                      style={{width:44,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
                     {!readOnly&&(
                       <button type="button" onClick={()=>removeCustom(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
                     )}
@@ -1751,140 +1751,176 @@ function HandoutViewerModal({handouts,onClose}){
 }
 
 /* ============================== 배너 만들기 ============================== */
-// 롤20의 /desc 스타일 타이틀 카드를 직접 코드를 안 치고도 버튼으로 만들 수 있게 해줍니다.
-// "채팅에 삽입"을 누르면 완성된 <span style="..."> 조각이 채팅 입력창에 이어붙여져서,
-// 롤20처럼 여러 조각을 연달아 붙여 하나의 배너 메시지를 만들 수 있습니다.
+// 한 줄 안에 색이 다른 여러 단어를 섞고 싶을 수 있어서, "조각(세그먼트)"을 하나씩
+// 쌓아서 한 줄로 이어붙이는 방식으로 만들었습니다. 각 조각은 스타일 있는 단어이거나
+// 그냥 이어주는 일반 텍스트일 수 있습니다. 완성되면 그 한 줄 전체를 채팅 입력창에 넣습니다.
 
-const BANNER_PRESETS = [
-  { label:"타이틀 바", bg:true, align:"center", block:true, padding:"6", shadow:true, bold:false },
-  { label:"본문", bg:false, align:"left", block:false, padding:"0", shadow:false, bold:false },
-];
-
-function BannerBuilderModal({onClose,onInsert,themeAccent}){
-  const [text,setText]=useState("");
-  const [color,setColor]=useState("#ffffff");
-  const [useBg,setUseBg]=useState(true);
-  const [bgColor,setBgColor]=useState(themeAccent||"#355C9F");
-  const [align,setAlign]=useState("center");
-  const [block,setBlock]=useState(true);
-  const [padding,setPadding]=useState(6);
-  const [radius,setRadius]=useState(0);
-  const [shadow,setShadow]=useState(false);
+function BannerBuilderModal({onClose,onInsert}){
+  const [segments,setSegments]=useState([]); // [{id,text,styled,color,useBg,bgColor,bold,italic,underline}]
+  const [draftText,setDraftText]=useState("");
+  const [styled,setStyled]=useState(true);
+  const [color,setColor]=useState("#355C9F");
+  const [useBg,setUseBg]=useState(false);
+  const [bgColor,setBgColor]=useState("#355C9F");
   const [bold,setBold]=useState(false);
   const [italic,setItalic]=useState(false);
   const [underline,setUnderline]=useState(false);
-  const [fontSize,setFontSize]=useState(13);
+  // 전체 줄을 배너 블록(배경 있는 타이틀 바)으로 감쌀지 여부
+  const [wrapBlock,setWrapBlock]=useState(false);
+  const [blockBg,setBlockBg]=useState("#355C9F");
+  const [blockAlign,setBlockAlign]=useState("center");
+  const [blockPadding,setBlockPadding]=useState(6);
 
-  const buildStyle=()=>{
+  const segStyleStr=seg=>{
     const parts=[];
-    parts.push(`color:${color}`);
-    if(useBg) parts.push(`background-color:${bgColor}`);
-    parts.push(`text-align:${align}`);
-    if(block) parts.push(`display:block`);
-    parts.push(`padding:${padding}px`);
-    if(radius>0) parts.push(`border-radius:${radius}px`);
-    if(shadow) parts.push(`box-shadow:0px 4px 0px 0px rgba(0,0,0,0.15)`);
-    if(bold) parts.push(`font-weight:700`);
-    if(italic) parts.push(`font-style:italic`);
-    if(underline) parts.push(`text-decoration:underline`);
-    else parts.push(`text-decoration:none`);
-    parts.push(`font-size:${fontSize}px`);
+    if(seg.styled){
+      parts.push(`color:${seg.color}`);
+      if(seg.useBg) parts.push(`background-color:${seg.bgColor}`);
+      if(seg.bold) parts.push(`font-weight:700`);
+      if(seg.italic) parts.push(`font-style:italic`);
+      if(seg.underline) parts.push(`text-decoration:underline`);
+    }
     return parts.join(";");
   };
+  const segReactStyle=seg=>({
+    color:seg.styled?seg.color:undefined,
+    backgroundColor:seg.styled&&seg.useBg?seg.bgColor:undefined,
+    fontWeight:seg.styled&&seg.bold?700:undefined,
+    fontStyle:seg.styled&&seg.italic?"italic":undefined,
+    textDecoration:seg.styled&&seg.underline?"underline":undefined,
+  });
 
-  const previewStyle={
-    color, backgroundColor:useBg?bgColor:"transparent", textAlign:align,
-    display:block?"block":"inline-block", padding:padding+"px",
-    borderRadius:radius+"px", boxShadow:shadow?"0px 4px 0px 0px rgba(0,0,0,0.15)":"none",
-    fontWeight:bold?700:400, fontStyle:italic?"italic":"normal",
-    textDecoration:underline?"underline":"none", fontSize:fontSize+"px",
+  const addSegment=()=>{
+    const t=draftText;if(!t)return;
+    setSegments([...segments,{id:newId(),text:t,styled,color,useBg,bgColor,bold,italic,underline}]);
+    setDraftText("");
   };
+  const removeSegment=id=>setSegments(segments.filter(s=>s.id!==id));
+
+  const buildLine=()=>segments.map(s=>s.styled?`<span style="${segStyleStr(s)}">${s.text}</span>`:s.text).join("");
 
   const insert=()=>{
-    const t=text.trim();if(!t)return;
-    const markup=`<span style="${buildStyle()}">${t}</span>`;
-    onInsert(markup);
-    setText("");
+    if(segments.length===0)return;
+    let line=buildLine();
+    if(wrapBlock){
+      const blockStyle=`color:#fff;background-color:${blockBg};text-align:${blockAlign};display:block;padding:${blockPadding}px`;
+      line=`<span style="${blockStyle}">${line}</span>`;
+    }
+    onInsert(line);
+    setSegments([]);
   };
 
   return(
     <div className="coc-modal-backdrop" onClick={onClose}>
-      <div className="coc-modal" style={{maxWidth:440}} onClick={e=>e.stopPropagation()}>
+      <div className="coc-modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>배너 만들기</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
 
-          {/* 미리보기 */}
-          <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:12,marginBottom:14}}>
-            <div className="coc-label" style={{marginBottom:6}}>미리보기</div>
-            <div style={previewStyle}>{text||"텍스트를 입력하세요"}</div>
+          {/* 완성된 한 줄 미리보기 */}
+          <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:12,marginBottom:14,minHeight:20}}>
+            <div className="coc-label" style={{marginBottom:6}}>완성된 한 줄</div>
+            {segments.length===0?(
+              <div style={{fontSize:13,color:"var(--text-faint)"}}>조각을 추가해보세요</div>
+            ):(
+              <div style={wrapBlock?{color:"#fff",backgroundColor:blockBg,textAlign:blockAlign,display:"block",padding:blockPadding+"px",borderRadius:4}:{fontSize:14}}>
+                {segments.map(s=><span key={s.id} style={segReactStyle(s)}>{s.text}</span>)}
+              </div>
+            )}
           </div>
 
-          <div className="coc-label" style={{marginBottom:5}}>내용</div>
-          <input className="coc-input" value={text} onChange={e=>setText(e.target.value)} placeholder="예: 시나리오 제목" style={{marginBottom:12}} autoFocus/>
+          {/* 추가된 조각 목록 */}
+          {segments.length>0&&(
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {segments.map(s=>(
+                <div key={s.id} style={{display:"flex",alignItems:"center",gap:5,background:"#fff",border:"1px solid var(--border)",borderRadius:999,padding:"4px 5px 4px 10px",fontSize:12}}>
+                  <span style={segReactStyle(s)}>{s.text}</span>
+                  <button type="button" onClick={()=>removeSegment(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:13,lineHeight:1}}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
 
-          {/* 색상 */}
-          <div style={{display:"flex",gap:14,marginBottom:12}}>
-            <div style={{flex:1}}>
-              <div className="coc-label" style={{marginBottom:5}}>글자색</div>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:32,height:32,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
-                <input className="coc-input coc-mono" value={color} onChange={e=>setColor(e.target.value)} style={{fontSize:12}}/>
+          <div className="coc-divider"/>
+
+          {/* 조각 만들기 */}
+          <div className="coc-label" style={{marginBottom:6}}>조각 추가</div>
+          <input className="coc-input" value={draftText} onChange={e=>setDraftText(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSegment();}}}
+            placeholder="단어나 문구 입력 (띄어쓰기도 직접 포함해주세요)" style={{marginBottom:10}}/>
+
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+            <input type="checkbox" checked={styled} onChange={e=>setStyled(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+            <span className="coc-label">이 조각에 스타일 적용</span>
+          </div>
+
+          {styled&&(
+            <div style={{opacity:styled?1:0.4,marginBottom:10}}>
+              <div style={{display:"flex",gap:14,marginBottom:10}}>
+                <div style={{flex:1}}>
+                  <div className="coc-label" style={{marginBottom:5}}>글자색</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+                    <input className="coc-input coc-mono" value={color} onChange={e=>setColor(e.target.value)} style={{fontSize:12}}/>
+                  </div>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+                    <input type="checkbox" checked={useBg} onChange={e=>setUseBg(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+                    <span className="coc-label">배경색</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,opacity:useBg?1:0.4}}>
+                    <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:useBg?"pointer":"default"}}/>
+                    <input className="coc-input coc-mono" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{fontSize:12}}/>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" className="coc-btn small" style={{background:bold?"var(--accent)":"#fff",color:bold?"#fff":"var(--text-dim)",border:"1px solid "+(bold?"var(--accent)":"var(--border)"),fontWeight:700}} onClick={()=>setBold(v=>!v)}>B</button>
+                <button type="button" className="coc-btn small" style={{background:italic?"var(--accent)":"#fff",color:italic?"#fff":"var(--text-dim)",border:"1px solid "+(italic?"var(--accent)":"var(--border)"),fontStyle:"italic"}} onClick={()=>setItalic(v=>!v)}>I</button>
+                <button type="button" className="coc-btn small" style={{background:underline?"var(--accent)":"#fff",color:underline?"#fff":"var(--text-dim)",border:"1px solid "+(underline?"var(--accent)":"var(--border)"),textDecoration:"underline"}} onClick={()=>setUnderline(v=>!v)}>U</button>
               </div>
             </div>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
-                <input type="checkbox" checked={useBg} onChange={e=>setUseBg(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
-                <span className="coc-label">배경색</span>
+          )}
+
+          <button type="button" className="coc-btn ghost" style={{width:"100%",justifyContent:"center",padding:10,marginBottom:16,borderStyle:"dashed"}} disabled={!draftText} onClick={addSegment}>
+            <Plus size={13}/> 이 조각 추가하기
+          </button>
+
+          <div className="coc-divider"/>
+
+          {/* 전체 줄을 배너 블록으로 감싸기 (선택) */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+            <input type="checkbox" checked={wrapBlock} onChange={e=>setWrapBlock(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+            <span className="coc-label">완성된 줄 전체를 타이틀 바처럼 감싸기</span>
+          </div>
+          {wrapBlock&&(
+            <div style={{display:"flex",gap:14,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <div className="coc-label" style={{marginBottom:5}}>배경색</div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <input type="color" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+                  <input className="coc-input coc-mono" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{fontSize:12}}/>
+                </div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,opacity:useBg?1:0.4}}>
-                <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{width:32,height:32,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:useBg?"pointer":"default"}}/>
-                <input className="coc-input coc-mono" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{fontSize:12}}/>
+              <div style={{flex:1}}>
+                <div className="coc-label" style={{marginBottom:5}}>정렬</div>
+                <div style={{display:"flex",gap:4}}>
+                  {[["left","왼"],["center","중"],["right","오"]].map(([v,l])=>(
+                    <button key={v} type="button" className="coc-btn small" style={{flex:1,justifyContent:"center",background:blockAlign===v?"var(--accent)":"#fff",color:blockAlign===v?"#fff":"var(--text-dim)",border:"1px solid "+(blockAlign===v?"var(--accent)":"var(--border)")}} onClick={()=>setBlockAlign(v)}>{l}</button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* 정렬 */}
-          <div className="coc-label" style={{marginBottom:5}}>정렬</div>
-          <div style={{display:"flex",gap:6,marginBottom:12}}>
-            {[["left","왼쪽"],["center","가운데"],["right","오른쪽"]].map(([v,l])=>(
-              <button key={v} type="button" className="coc-btn small" style={{flex:1,justifyContent:"center",background:align===v?"var(--accent)":"#fff",color:align===v?"#fff":"var(--text-dim)",border:"1px solid "+(align===v?"var(--accent)":"var(--border)")}} onClick={()=>setAlign(v)}>{l}</button>
-            ))}
-          </div>
-
-          {/* 서식 토글 */}
-          <div className="coc-label" style={{marginBottom:5}}>서식</div>
-          <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-            <button type="button" className="coc-btn small" style={{background:block?"var(--accent)":"#fff",color:block?"#fff":"var(--text-dim)",border:"1px solid "+(block?"var(--accent)":"var(--border)")}} onClick={()=>setBlock(v=>!v)}>한 줄 꽉 채우기</button>
-            <button type="button" className="coc-btn small" style={{background:bold?"var(--accent)":"#fff",color:bold?"#fff":"var(--text-dim)",border:"1px solid "+(bold?"var(--accent)":"var(--border)"),fontWeight:700}} onClick={()=>setBold(v=>!v)}>B</button>
-            <button type="button" className="coc-btn small" style={{background:italic?"var(--accent)":"#fff",color:italic?"#fff":"var(--text-dim)",border:"1px solid "+(italic?"var(--accent)":"var(--border)"),fontStyle:"italic"}} onClick={()=>setItalic(v=>!v)}>I</button>
-            <button type="button" className="coc-btn small" style={{background:underline?"var(--accent)":"#fff",color:underline?"#fff":"var(--text-dim)",border:"1px solid "+(underline?"var(--accent)":"var(--border)"),textDecoration:"underline"}} onClick={()=>setUnderline(v=>!v)}>U</button>
-            <button type="button" className="coc-btn small" style={{background:shadow?"var(--accent)":"#fff",color:shadow?"#fff":"var(--text-dim)",border:"1px solid "+(shadow?"var(--accent)":"var(--border)")}} onClick={()=>setShadow(v=>!v)}>그림자</button>
-          </div>
-
-          {/* 여백/모서리/글자크기 */}
-          <div style={{display:"flex",gap:14,marginBottom:16}}>
-            <div style={{flex:1}}>
-              <div className="coc-label" style={{marginBottom:5}}>안쪽 여백 {padding}px</div>
-              <input type="range" min={0} max={20} value={padding} onChange={e=>setPadding(Number(e.target.value))} style={{width:"100%",accentColor:"var(--accent)"}}/>
-            </div>
-            <div style={{flex:1}}>
-              <div className="coc-label" style={{marginBottom:5}}>모서리 둥글기 {radius}px</div>
-              <input type="range" min={0} max={20} value={radius} onChange={e=>setRadius(Number(e.target.value))} style={{width:"100%",accentColor:"var(--accent)"}}/>
-            </div>
-            <div style={{flex:1}}>
-              <div className="coc-label" style={{marginBottom:5}}>글자 크기 {fontSize}px</div>
-              <input type="range" min={9} max={24} value={fontSize} onChange={e=>setFontSize(Number(e.target.value))} style={{width:"100%",accentColor:"var(--accent)"}}/>
-            </div>
-          </div>
-
-          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!text.trim()} onClick={insert}>
+          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={segments.length===0} onClick={insert}>
             채팅 입력창에 삽입
           </button>
           <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
-            여러 조각을 이어붙이고 싶으면, 삽입 후 다시 내용을 바꿔서 계속 추가하세요.
+            "조각 추가"로 색이 다른 여러 단어를 계속 쌓은 뒤, 한 번에 삽입하세요.
           </div>
         </div>
       </div>
