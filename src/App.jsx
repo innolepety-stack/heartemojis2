@@ -27,14 +27,15 @@ function isValidUsername(name) {
 }
 
 const SKILL_LIST = [
-  ["회계", 5], ["감정", 5], ["고고학", 1], ["예술/공예", 5], ["매혹", 15],
-  ["등반", 20], ["신용", 0], ["위장", 5], ["회피", 30], ["전기 수리", 10],
-  ["사격(권총)", 20], ["사격(소총/샷건)", 25], ["응급처치", 30], ["역사", 5],
-  ["협박", 15], ["도약", 20], ["모국어", 0], ["외국어", 1], ["법률", 5],
-  ["도서관 이용", 20], ["듣기", 20], ["기계 수리", 10], ["의학", 1],
-  ["자연", 10], ["항법", 10], ["오컬트", 5], ["심리학", 10], ["승마", 5],
-  ["과학", 1], ["은신", 20], ["수영", 20], ["던지기", 20], ["추적", 10],
-  ["운전(자동차)", 20], ["설득", 10],
+  ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
+  ["기계수리", 10], ["도약", 20], ["듣기", 20], ["말재주", 5], ["매혹", 15],
+  ["법률", 5], ["변장", 5], ["사격(권총)", 20], ["사격(라/샷)", 25], ["설득", 10],
+  ["손놀림", 10], ["수영", 20], ["승마", 5], ["심리학", 10], ["언어(모국어)", 0],
+  ["역사", 5], ["열쇠공", 1], ["오르기", 20], ["오컬트", 5], ["위협", 15],
+  ["은밀행동", 20], ["응급처치", 30], ["의료", 1], ["인류학", 1], ["자동차 운전", 20],
+  ["자료조사", 20], ["자연", 10], ["재력", 0], ["전기수리", 10], ["정신분석", 1],
+  ["중장비 조작", 1], ["추적", 10], ["크툴루 신화", 0], ["투척", 20], ["항법", 10],
+  ["회피", 0],
 ];
 
 const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
@@ -508,8 +509,8 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
             {SKILL_LIST.map(([name])=>(
               <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                 <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
-                <input className="coc-mono" type="number" value={skills[name]??0} readOnly={readOnly}
-                  onChange={e=>setSkills({...skills,[name]:parseInt(e.target.value)||0})}
+                <input className="coc-mono" type="number" step={5} min={0} max={99} value={skills[name]??0} readOnly={readOnly}
+                  onChange={e=>setSkills({...skills,[name]:Math.max(0,Math.min(99,parseInt(e.target.value)||0))})}
                   style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
               </div>
             ))}
@@ -529,8 +530,8 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
                       <input value={c.name} onChange={e=>updateCustom(c.id,{name:e.target.value})}
                         placeholder="기능치 이름" style={{flex:1,background:"transparent",border:"none",outline:"none",fontSize:13.5,color:"var(--text)",minWidth:0}}/>
                     )}
-                    <input className="coc-mono" type="number" value={c.value??0} readOnly={readOnly}
-                      onChange={e=>updateCustom(c.id,{value:parseInt(e.target.value)||0})}
+                    <input className="coc-mono" type="number" step={5} min={0} max={99} value={c.value??0} readOnly={readOnly}
+                      onChange={e=>updateCustom(c.id,{value:Math.max(0,Math.min(99,parseInt(e.target.value)||0))})}
                       style={{width:44,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
                     {!readOnly&&(
                       <button type="button" onClick={()=>removeCustom(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
@@ -1341,15 +1342,13 @@ function resolveInlineDice(text){
 }
 
 function calcDiceResult(roll,value){
-  const fumble=value>=50?roll>=96:roll===100;
-  const success=roll<=value;
-  const extreme=roll<=Math.floor(value/5);
-  const hard=roll<=Math.floor(value/2);
-  if(fumble)   return{label:"대실패",    color:"#b02020",bg:"#fff0f0"};
-  if(!success) return{label:"실패",      color:"#888",   bg:"#f6f6f6"};
-  if(extreme)  return{label:"극한 성공", color:"#1a7a3a",bg:"#edfaf3"};
-  if(hard)     return{label:"어려운 성공",color:"#1f6fa0",bg:"#eaf4ff"};
-  return        {label:"보통 성공",       color:"#4a7a1a",bg:"#f4faec"};
+  // 대실패: 무조건 100 / 대성공: 무조건 1 (기능치와 무관하게 항상 적용)
+  if(roll===100) return{label:"대실패",     color:"#b02020",bg:"#fff0f0"};
+  if(roll===1)   return{label:"대성공",     color:"#c9933a",bg:"#fff8ec"};
+  if(roll<=Math.floor(value/5)) return{label:"극단적 성공",color:"#1a7a3a",bg:"#edfaf3"};
+  if(roll<=Math.floor(value/2)) return{label:"어려운 성공",color:"#1f6fa0",bg:"#eaf4ff"};
+  if(roll<=value)                return{label:"보통 성공", color:"#4a7a1a",bg:"#f4faec"};
+  return                          {label:"실패",           color:"#888",   bg:"#f6f6f6"};
 }
 
 function DiceCard({line}){
@@ -2272,7 +2271,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const handleKeyDown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
   const placeholder=()=>{
     if(isGM&&speaker==="gm")return GM_TABS.find(x=>x.key===gmTab)?.placeholder||"";
-    return`${char?.name||"캐릭터"}의 대사나 행동을 입력하세요...`;
+    return` `;
   };
 
   const startEdit=msg=>{setEditingMsg(msg);setEditText(msg.text);};
