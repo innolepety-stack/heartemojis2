@@ -185,11 +185,16 @@ const CSS = `
   backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center;
   z-index: 50; padding: 16px;
+  /* 모바일에서 배경(모달 바깥) 부분을 드래그해도 뒤에 있는 화면이 같이 스크롤되지 않도록 */
+  touch-action: none; overscroll-behavior: contain;
 }
 .coc-modal {
   background: #fff; border: 1px solid var(--border); border-radius: 14px;
   max-width: 600px; width: 100%; max-height: 88vh; overflow-y: auto;
   box-shadow: 0 20px 60px rgba(46,90,120,0.2);
+  /* 모달 안에서는 세로 스크롤은 정상 허용하되, 끝까지 스크롤했을 때
+     그 뒤에 있는 페이지로 스크롤이 넘어가지(scroll chaining) 않도록 막습니다 */
+  touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
 }
 .coc-tabbar { display: flex; gap: 2px; border-bottom: 1px solid var(--border-soft); }
 .coc-tab {
@@ -974,46 +979,61 @@ async function fetchRoomTranscript(room){
 }
 
 function buildHtmlExport(room,transcript){
+  // 티스토리 등 블로그 에디터는 붙여넣을 때 <style> 태그를 걸러내는 경우가 많아서,
+  // class + 스타일시트 방식 대신 태그 하나하나에 style을 직접 박아넣는 방식으로
+  // 만들었습니다. 이렇게 하면 <style> 블록이 통째로 사라져도 디자인이 유지됩니다.
+  const S={
+    line:"padding:5px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;color:#223142;",
+    anon:"text-align:center;color:#223142;padding:10px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;",
+    time:"font-family:monospace;font-size:12.5px;color:#9db2c0;margin-right:6px;",
+    name:"color:#1f6fa0;font-weight:600;",
+    nameDim:"color:#647c8c;",
+    mono:"font-family:monospace;font-size:12.5px;color:#9db2c0;",
+    ooc:"border:1px solid #cfe8f7;border-radius:3px;padding:0 4px;font-family:monospace;font-size:12.5px;color:#9db2c0;",
+    img:"max-width:320px;border-radius:8px;border:1px solid #cfe8f7;margin-top:6px;display:block;",
+    empty:"color:#9db2c0;font-size:14.5px;padding:10px 0;font-family:'Noto Sans KR',sans-serif;",
+    choiceTitle:"font-size:11.5px;color:#1f6fa0;font-weight:700;margin-bottom:8px;font-family:'Noto Sans KR',sans-serif;",
+    choice:"display:inline-block;border:1.5px solid #2e9bdb;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;font-weight:600;color:#2e9bdb;font-family:'Noto Sans KR',sans-serif;",
+    choicePicked:"display:inline-block;border:1.5px solid #cfe8f7;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;color:#9db2c0;text-decoration:line-through;font-family:'Noto Sans KR',sans-serif;",
+    h2:"color:#1f6fa0;font-size:16px;border-bottom:1px solid #e2f2fb;padding-bottom:6px;margin-top:32px;font-family:'Noto Sans KR',sans-serif;",
+  };
   const tabsHtml=transcript.map(tab=>{
     const msgs=tab.messages.map(m=>{
       const time=fmtTime(m.timestamp);
-      if(m.speaker==="narrate"||m.speaker==="judge"){
-        return `<div class="x-line x-anon">${chatTextToHtml(m.text)}</div>`;
+      if(m.speaker==="narrate"||m.speaker==="judge"||m.speaker==="system"){
+        return `<div style="${S.anon}">${chatTextToHtml(m.text)}</div>`;
+      }
+      if(m.speaker==="choice"){
+        let d=null;try{d=JSON.parse(m.text);}catch{}
+        if(!d) return `<div style="${S.anon}">(선택지)</div>`;
+        const opts=d.options.map(opt=>{
+          const picked=d.picked?.[opt];
+          return picked
+            ? `<span style="${S.choicePicked}">${escapeHtmlExport(opt)} · ${escapeHtmlExport(picked.charName||"")}</span>`
+            : `<span style="${S.choice}">${escapeHtmlExport(opt)}</span>`;
+        }).join(" ");
+        return `<div style="${S.anon}"><div style="${S.choiceTitle}">조사할 곳을 선택하세요</div>${opts}</div>`;
       }
       if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
-        const body=d?`🎲 ${escapeHtmlExport(d.skillName)} <span class="x-mono">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span>`:escapeHtmlExport(m.text);
-        return `<div class="x-line"><span class="x-time">${time}</span> <span class="x-name x-name-dim">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div>`;
+        const body=d?`🎲 ${escapeHtmlExport(d.skillName)} <span style="${S.mono}">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span>`:escapeHtmlExport(m.text);
+        return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div>`;
       }
       if(m.speaker==="image"){
-        return `<div class="x-line"><span class="x-time">${time}</span> <span class="x-name">${escapeHtmlExport(m.characterName||"")}</span><br><img src="${m.text}" class="x-img"></div>`;
+        return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${S.name}">${escapeHtmlExport(m.characterName||"")}</span><br><img src="${m.text}" style="${S.img}"></div>`;
       }
-      const nameCls=m.speaker==="ooc"?"x-name-dim":"x-name";
-      const suffix=m.speaker==="ooc"?` <span class="x-mono x-ooc">OOC</span>`:"";
-      return `<div class="x-line"><span class="x-time">${time}</span> <span class="${nameCls}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div>`;
+      const nameStyle=m.speaker==="ooc"?S.nameDim:S.name;
+      const suffix=m.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
+      return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${nameStyle}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div>`;
     }).join("\n");
-    return `<section class="x-tab"><h2>${escapeHtmlExport(tab.label)}</h2>${msgs||'<div class="x-empty">기록 없음</div>'}</section>`;
+    return `<section><h2 style="${S.h2}">${escapeHtmlExport(tab.label)}</h2>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
   }).join("\n");
 
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtmlExport(room.title)} — 세션 기록</title>
-<style>
-body{font-family:'Noto Sans KR',sans-serif;background:#fff;color:#223142;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;}
-h1{color:#1f6fa0;font-size: 22.5px;margin-bottom:4px;}
-.x-date{color:#9db2c0;font-size: 14.5px;margin-bottom:28px;font-family:monospace;}
-h2{color:#1f6fa0;font-size: 16px;border-bottom:1px solid #e2f2fb;padding-bottom:6px;margin-top:32px;}
-.x-line{padding:5px 0;font-size: 15px;}
-.x-anon{text-align:center;color:#223142;padding:10px 0;}
-.x-time{font-family:monospace;font-size: 12.5px;color:#9db2c0;margin-right:6px;}
-.x-name{color:#1f6fa0;font-weight:600;}
-.x-name-dim{color:#647c8c;}
-.x-mono{font-family:monospace;font-size: 12.5px;color:#9db2c0;}
-.x-ooc{border:1px solid #cfe8f7;border-radius:3px;padding:0 4px;}
-.x-img{max-width:320px;border-radius:8px;border:1px solid #cfe8f7;margin-top:6px;display:block;}
-.x-empty{color:#9db2c0;font-size: 14.5px;padding:10px 0;}
-</style></head><body>
-<h1>${escapeHtmlExport(room.title)}</h1>
-<div class="x-date">${escapeHtmlExport(fmtDate(room.date))} · 내보낸 날짜 ${escapeHtmlExport(fmtDate(todayLocalISO()))}</div>
+</head><body style="font-family:'Noto Sans KR',sans-serif;background:#fff;color:#223142;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
+<h1 style="color:#1f6fa0;font-size:22.5px;margin-bottom:4px;">${escapeHtmlExport(room.title)}</h1>
+<div style="color:#9db2c0;font-size:14.5px;margin-bottom:28px;font-family:monospace;">${escapeHtmlExport(fmtDate(room.date))} · 내보낸 날짜 ${escapeHtmlExport(fmtDate(todayLocalISO()))}</div>
 ${tabsHtml}
 </body></html>`;
 }
@@ -1025,8 +1045,19 @@ function buildTextExport(room,transcript){
     if(tab.messages.length===0){out+="(기록 없음)\n";return;}
     tab.messages.forEach(m=>{
       const time=fmtTime(m.timestamp);
-      if(m.speaker==="narrate"||m.speaker==="judge"){
+      if(m.speaker==="narrate"||m.speaker==="judge"||m.speaker==="system"){
         out+=`[${time}] ${chatTextToPlain(m.text)}\n`;
+      }else if(m.speaker==="choice"){
+        let d=null;try{d=JSON.parse(m.text);}catch{}
+        if(d){
+          const opts=d.options.map(opt=>{
+            const picked=d.picked?.[opt];
+            return picked?`${opt}(선택됨: ${picked.charName||""})`:opt;
+          }).join(", ");
+          out+=`[${time}] (선택지) ${opts}\n`;
+        }else{
+          out+=`[${time}] (선택지)\n`;
+        }
       }else if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
         out+=d?`[${time}] 🎲 ${d.skillName}/${d.value} → ${d.roll} → ${d.label}\n`:`[${time}] (다이스)\n`;
