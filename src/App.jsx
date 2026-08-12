@@ -26,6 +26,19 @@ function isValidUsername(name) {
   return /^[a-zA-Z0-9가-힣_-]{2,20}$/.test(name);
 }
 
+// "로그인 상태 유지" — 이 기기(브라우저)에만 저장되는 자동 로그인 정보입니다.
+// 비밀번호 원문이 아니라 해시값만 저장합니다.
+const REMEMBER_KEY = "heartEmojiRememberMe";
+function saveRememberedAuth(username, passwordHash) {
+  try { localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username, passwordHash })); } catch {}
+}
+function loadRememberedAuth() {
+  try { const raw = localStorage.getItem(REMEMBER_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function clearRememberedAuth() {
+  try { localStorage.removeItem(REMEMBER_KEY); } catch {}
+}
+
 const SKILL_LIST = [
   ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
   ["기계수리", 10], ["도약", 20], ["듣기", 20], ["말재주", 5], ["매혹", 15],
@@ -594,6 +607,7 @@ function AuthScreen({onLogin}){
   const [mode,setMode]=useState("login"); // "login" | "signup"
   const [username,setUsername]=useState("");
   const [password,setPassword]=useState("");
+  const [remember,setRemember]=useState(true);
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
 
@@ -611,11 +625,13 @@ function AuthScreen({onLogin}){
         const hash=await hashPassword(p);
         const res=await storeSet(`user:${u}`,{username:u,passwordHash:hash,createdAt:Date.now()},true);
         if(!res.ok){ setError(`가입 실패: ${res.error}`); setLoading(false); return; }
+        if(remember) saveRememberedAuth(u,hash); else clearRememberedAuth();
         onLogin({code:u,name:u});
       }else{
         if(!existing){ setError("등록되지 않은 닉네임입니다. 회원가입을 먼저 진행해 주세요."); setLoading(false); return; }
         const hash=await hashPassword(p);
         if(hash!==existing.passwordHash){ setError("비밀번호가 일치하지 않습니다."); setLoading(false); return; }
+        if(remember) saveRememberedAuth(u,hash); else clearRememberedAuth();
         onLogin({code:u,name:u});
       }
     }catch(err){
@@ -644,6 +660,11 @@ function AuthScreen({onLogin}){
         <input type="password" className="coc-input" value={password} onChange={e=>{setPassword(e.target.value);setError("");}}
           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submit();}}}
           placeholder={mode==="signup"?"비밀번호 (4자 이상)":"비밀번호"} style={{marginBottom:12}}/>
+
+        <label style={{display:"flex",alignItems:"center",gap:7,marginBottom:14,cursor:"pointer",justifyContent:"flex-start"}}>
+          <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{width:14,height:14,cursor:"pointer"}}/>
+          <span style={{fontSize:12.5,color:"var(--text-dim)"}}>이 기기에서 로그인 상태 유지</span>
+        </label>
 
         {error&&<div style={{color:"var(--accent)",fontSize:13,marginBottom:10,textAlign:"left"}}>{error}</div>}
         <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:"11px"}} onClick={submit} disabled={loading}>
@@ -2271,7 +2292,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const handleKeyDown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
   const placeholder=()=>{
     if(isGM&&speaker==="gm")return GM_TABS.find(x=>x.key===gmTab)?.placeholder||"";
-    return` `;
+    return`S2`;
   };
 
   const startEdit=msg=>{setEditingMsg(msg);setEditText(msg.text);};
@@ -2593,6 +2614,7 @@ class ErrorBoundary extends React.Component {
 
 function AppInner(){
   const [user,setUser]=useState(null);
+  const [authChecked,setAuthChecked]=useState(false);
   const [tab,setTab]=useState("rooms");
   const [profile,setProfile]=useState(blankProfile());
   const [profileLoaded,setProfileLoaded]=useState(false);
@@ -2600,6 +2622,21 @@ function AppInner(){
   const [activeChar,setActiveChar]=useState(null);
   const [themeKey,setThemeKey]=useState("sky");
   const [customColor,setCustomColor]=useState("#2e9bdb");
+
+  // 앱을 처음 열었을 때, 이 기기에 저장된 로그인 정보가 있으면 자동으로 다시 로그인합니다.
+  useEffect(()=>{
+    (async()=>{
+      const saved=loadRememberedAuth();
+      if(!saved){ setAuthChecked(true); return; }
+      const existing=await storeGet(`user:${saved.username}`,true);
+      if(existing&&existing.passwordHash===saved.passwordHash){
+        setUser({code:saved.username,name:saved.username});
+      }else{
+        clearRememberedAuth();
+      }
+      setAuthChecked(true);
+    })();
+  },[]);
 
   useEffect(()=>{
     if(!user)return;
@@ -2635,6 +2672,12 @@ function AppInner(){
 
   const theme=themeKey==="custom"?deriveThemeFromColor(customColor):(THEMES[themeKey]||THEMES.sky);
 
+  if(!authChecked) return(
+    <div className="coc-root" style={themeVars(theme)}>
+      <style>{CSS}</style>
+    </div>
+  );
+
   if(!user) return(
     <div className="coc-root" style={themeVars(theme)}>
       <style>{CSS}</style>
@@ -2642,7 +2685,7 @@ function AppInner(){
     </div>
   );
 
-  const logout=()=>{setUser(null);setActiveRoom(null);setActiveChar(null);setTab("rooms");};
+  const logout=()=>{clearRememberedAuth();setUser(null);setActiveRoom(null);setActiveChar(null);setTab("rooms");};
 
   let body;
   if(activeRoom&&!activeChar){
