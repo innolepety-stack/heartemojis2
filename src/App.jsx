@@ -518,7 +518,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
       </button>
       {open&&(
         <>
-          <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,paddingRight:4}}>
+          <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,paddingRight:4,paddingBottom:8}}>
             {SKILL_LIST.map(([name])=>(
               <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                 <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
@@ -661,8 +661,23 @@ function AuthScreen({onLogin}){
           onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submit();}}}
           placeholder={mode==="signup"?"비밀번호 (4자 이상)":"비밀번호"} style={{marginBottom:12}}/>
 
-        <label style={{display:"flex",alignItems:"center",gap:7,marginBottom:14,cursor:"pointer",justifyContent:"flex-start"}}>
-          <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{width:14,height:14,cursor:"pointer"}}/>
+        <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,cursor:"pointer",justifyContent:"flex-start"}}>
+          <span style={{position:"relative",display:"inline-flex",width:20,height:20,flexShrink:0}}>
+            <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}
+              style={{position:"absolute",inset:0,opacity:0,margin:0,cursor:"pointer"}}/>
+            <span style={{
+              width:20,height:20,borderRadius:7,
+              border:"2px solid "+(remember?"var(--accent)":"var(--border)"),
+              background:remember?"var(--accent)":"#fff",
+              display:"flex",alignItems:"center",justifyContent:"center",
+              transition:"all 0.15s ease",fontSize:12,lineHeight:1,color:"#fff",
+              transform:remember?"scale(1)":"scale(0.94)",
+              boxShadow:remember?"0 2px 6px rgba(0,0,0,0.15)":"none",
+              pointerEvents:"none",
+            }}>
+              {remember&&"♥"}
+            </span>
+          </span>
           <span style={{fontSize:12.5,color:"var(--text-dim)"}}>이 기기에서 로그인 상태 유지</span>
         </label>
 
@@ -2118,6 +2133,51 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     });
     return()=>unsub();
   },[room.id]);
+
+  // 접속 상태(온라인 여부): 이 화면을 실제로 보고 있을 때만 주기적으로 "나 여기 있음" 신호를 남기고,
+  // 다른 사람의 신호가 최근 것이면(기본 20초 이내) 온라인으로 판단합니다.
+  // 모바일에서 앱을 백그라운드로 보내면(화면을 안 보고 있으면) 신호를 안 보내서 자연히 오프라인으로 표시됩니다.
+  const ONLINE_THRESHOLD_MS=20000;
+  useEffect(()=>{
+    const key=`presence:${room.id}:${userCode}`;
+    let intervalId=null;
+    const beat=()=>{ if(document.visibilityState==="visible") storeSet(key,{userCode,lastSeen:Date.now()},true); };
+    const start=()=>{ beat(); if(!intervalId) intervalId=setInterval(beat,10000); };
+    const stop=()=>{ if(intervalId){clearInterval(intervalId);intervalId=null;} };
+    const onVisibility=()=>{ if(document.visibilityState==="visible") start(); else stop(); };
+    start();
+    document.addEventListener("visibilitychange",onVisibility);
+    return()=>{ stop(); document.removeEventListener("visibilitychange",onVisibility); };
+  },[room.id,userCode]);
+
+  const [presenceMap,setPresenceMap]=useState({}); // {userCode: lastSeen}
+  useEffect(()=>{
+    const unsub=storeListenPrefix(`presence:${room.id}:`,list=>{
+      const map={};
+      list.forEach(x=>{ map[x.value.userCode]=x.value.lastSeen; });
+      setPresenceMap(map);
+    });
+    return()=>unsub();
+  },[room.id]);
+  const isOnline=code=>{
+    const last=presenceMap[code];
+    return !!last&&(Date.now()-last<ONLINE_THRESHOLD_MS);
+  };
+  // 참가자 목록: 나 + GM + 캐릭터를 만든 다른 사람들 (중복 없이)
+  const [showParticipants,setShowParticipants]=useState(false);
+  const participantsRef=useRef(null);
+  useEffect(()=>{
+    if(!showParticipants)return;
+    const h=e=>{ if(participantsRef.current&&!participantsRef.current.contains(e.target)) setShowParticipants(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[showParticipants]);
+  const participantsList=(()=>{
+    const set=new Set([userCode]);
+    if(room.creatorCode) set.add(room.creatorCode);
+    roomParticipants.forEach(c=>set.add(c));
+    return Array.from(set).sort((a,b)=>(a===room.creatorCode?-1:b===room.creatorCode?1:0));
+  })();
   const myHandouts=handouts.filter(h=>(h.visibleTo||[]).includes(userCode));
   const [showHandoutManager,setShowHandoutManager]=useState(false);
   const [showHandoutViewer,setShowHandoutViewer]=useState(false);
@@ -2292,7 +2352,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const handleKeyDown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
   const placeholder=()=>{
     if(isGM&&speaker==="gm")return GM_TABS.find(x=>x.key===gmTab)?.placeholder||"";
-    return`S2`;
+    return`${char?.name||"캐릭터"}의 대사나 행동을 입력하세요...`;
   };
 
   const startEdit=msg=>{setEditingMsg(msg);setEditText(msg.text);};
@@ -2363,6 +2423,29 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           <button type="button" className="coc-btn ghost small" onClick={()=>setShowHandoutViewer(true)} style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)"}}>
             핸드아웃{myHandouts.length>0?` (${myHandouts.length})`:""}
           </button>
+          <div style={{position:"relative"}} ref={participantsRef}>
+            <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)"}}>
+              <span style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:participantsList.some(c=>c!==userCode&&isOnline(c))?"#3a9a6e":"var(--border)",marginRight:5}}/>
+              참가자 ({participantsList.length})
+            </button>
+            {showParticipants&&(
+              <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:20,minWidth:180,background:"#fff",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
+                <div className="coc-label" style={{marginBottom:8}}>참가자</div>
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {participantsList.map(code=>{
+                    const online=code===userCode?true:isOnline(code);
+                    return(
+                      <div key={code} style={{display:"flex",alignItems:"center",gap:7}}>
+                        <span style={{width:8,height:8,borderRadius:"50%",background:online?"#3a9a6e":"var(--border)",flexShrink:0}}/>
+                        <span style={{fontSize:13,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{code}{code===userCode?" (나)":""}</span>
+                        {code===room.creatorCode&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
           <div style={{width:32,height:32,borderRadius:"50%",overflow:"hidden",border:"1px solid var(--accent-soft)",background:"var(--bg-panel)"}}>
             {char?.avatar?<img src={char.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={13} color="var(--accent-soft)" style={{margin:9}}/>}
           </div>
