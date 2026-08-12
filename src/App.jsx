@@ -59,6 +59,8 @@ const SKILL_LIST = [
   ["중장비 조작", 1], ["추적", 10], ["크툴루 신화", 0], ["투척", 20], ["항법", 10],
   ["회피", 0],
 ];
+// 화면에 보여줄 때는 가나다순으로 정렬해서 찾기 편하게 합니다. (기준값 등 계산 로직은 SKILL_LIST를 그대로 씁니다)
+const SKILL_LIST_SORTED = [...SKILL_LIST].sort((a,b)=>a[0].localeCompare(b[0],"ko"));
 
 const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
 const CHAR_LABEL = {
@@ -71,35 +73,30 @@ const CHAR_LABEL = {
 const THEMES = {
   sky: {
     label: "하늘",
-    emoji: "🩵",
     accent: "#2e9bdb", accentSoft: "#6dbdea", accentDeep: "#1f6fa0",
     bgPanel: "#f3faff", bgGrad1: "#e4f4fd", bgGrad2: "#eef8ff",
     border: "#cfe8f7", borderSoft: "#e2f2fb",
   },
   pink: {
     label: "분홍",
-    emoji: "🩷",
     accent: "#d96fa0", accentSoft: "#e89fbf", accentDeep: "#a04878",
     bgPanel: "#fff3f8", bgGrad1: "#fde4ef", bgGrad2: "#fff0f5",
     border: "#f0c8dd", borderSoft: "#f8dcea",
   },
   yellow: {
     label: "노랑",
-    emoji: "💛",
     accent: "#c9a020", accentSoft: "#dbb840", accentDeep: "#8a6a10",
     bgPanel: "#fffdf0", bgGrad1: "#fdf5d0", bgGrad2: "#fffae8",
     border: "#e8d890", borderSoft: "#f2ebbb",
   },
   lime: {
     label: "연두",
-    emoji: "💚",
     accent: "#6aaa30", accentSoft: "#8abe56", accentDeep: "#3a7a18",
     bgPanel: "#f4fbf0", bgGrad1: "#e0f4d0", bgGrad2: "#edfae5",
     border: "#c0e0a0", borderSoft: "#d8edcc",
   },
   purple: {
     label: "보라",
-    emoji: "💜",
     accent: "#8060c0", accentSoft: "#a080d8", accentDeep: "#5040a0",
     bgPanel: "#f6f3ff", bgGrad1: "#eae0fd", bgGrad2: "#f2ecff",
     border: "#ccc0e8", borderSoft: "#ddd6f2",
@@ -319,7 +316,7 @@ function fmtTime(ts) {
 }
 function emptyCharacteristics() { const o={}; CHAR_KEYS.forEach(k=>o[k]=50); return o; }
 function emptySkills() { const o={}; SKILL_LIST.forEach(([n,b])=>o[n]=b); return o; }
-function emptyDerived() { return {HP:10,maxHP:10,MP:10,maxMP:10,SAN:50,maxSAN:50,Luck:50}; }
+function emptyDerived() { return {HP:10,maxHP:10,MP:10,maxMP:10,SAN:50,maxSAN:50,Luck:0}; }
 function blankCharSheet(name="") { return {name,avatar:"",characteristics:emptyCharacteristics(),skills:emptySkills(),customSkills:[],derived:emptyDerived(),notes:""}; }
 function blankProfile(name="") { return {name,avatar:""}; }
 
@@ -481,9 +478,18 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
     const Luck=rollN(3)*5;
     setDerived({HP:maxHP,maxHP,MP:maxMP,maxMP,SAN:maxSAN,maxSAN,Luck});
   };
+  const rollLuck=()=>setDerived({...derived,Luck:rollN(3)*5});
   const field=(key,maxKey,label)=>(
     <div className="coc-stat-box">
-      <div className="coc-label" style={{marginBottom:3}}>{label}</div>
+      <div className="coc-label" style={{marginBottom:3,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+        {label}
+        {key==="Luck"&&allowRoll&&(
+          <button type="button" onClick={rollLuck} title="(3d6)×5 굴리기"
+            style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",padding:0,display:"flex"}}>
+            <Dice5 size={11}/>
+          </button>
+        )}
+      </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
         <input className="coc-mono" type="number" value={derived[key]}
           onChange={e=>setDerived({...derived,[key]:parseInt(e.target.value)||0})}
@@ -528,7 +534,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
       {open&&(
         <>
           <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,paddingRight:4,paddingBottom:8}}>
-            {SKILL_LIST.map(([name])=>(
+            {SKILL_LIST_SORTED.map(([name])=>(
               <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                 <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
                 <input className="coc-mono" type="number" step={5} min={0} max={99} value={skills[name]??0} readOnly={readOnly}
@@ -575,6 +581,19 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
   );
 }
 
+// 교육(EDU)×4 만큼의 "기능 점수"를 배분한다고 가정하고, 기준값보다 올린 만큼을 사용량으로 계산합니다.
+// (자유 기능치는 기준값이 없으므로 값 전체를 사용량으로 셉니다.)
+function calcSkillPoints(sheet){
+  const total=(sheet.characteristics?.EDU||0)*4;
+  let spent=0;
+  SKILL_LIST.forEach(([name,base])=>{
+    const cur=sheet.skills?.[name]??base;
+    if(cur>base) spent+=(cur-base);
+  });
+  (sheet.customSkills||[]).forEach(c=>{ if(c.value>0) spent+=c.value; });
+  return {total,spent,remaining:total-spent};
+}
+
 function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
   if(readOnly) return(
     <div>
@@ -602,6 +621,17 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
       <div className="coc-divider"/>
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})} allowRoll={allowRoll}/>
       <div className="coc-divider"/>
+      {(()=>{
+        const {total,spent,remaining}=calcSkillPoints(sheet);
+        return(
+          <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:"9px 12px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span className="coc-label">기능 점수 (교육×4)</span>
+            <span className="coc-mono" style={{fontSize:13,fontWeight:700,color:remaining<0?"#c05050":"var(--accent-deep)"}}>
+              {spent} / {total} 사용 · 남음 {remaining}
+            </span>
+          </div>
+        );
+      })()}
       <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})}/>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:5}}>메모 / 배경</div>
@@ -1371,6 +1401,14 @@ function pickEulReul(word){
   const hasBatchim=(code-0xAC00)%28!==0;
   return hasBatchim?"을":"를";
 }
+function pickIGa(word){
+  if(!word) return "가";
+  const last=word[word.length-1];
+  const code=last.charCodeAt(0);
+  if(code<0xAC00||code>0xD7A3) return "가";
+  const hasBatchim=(code-0xAC00)%28!==0;
+  return hasBatchim?"이":"가";
+}
 
 // 채팅에 [[1d10]], [[2d6+3]] 같은 표기를 적으면 전송 시점에 실제로 주사위를 굴려서
 // 그 결과값으로 바꿔치기합니다. (한 번 굴리고 나면 값이 고정되어 저장되므로,
@@ -1895,7 +1933,7 @@ function BannerBuilderModal({onClose,onInsert}){
       <div className="coc-modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>채팅 꾸미기</div>
+            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>배너 만들기</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
 
@@ -2050,7 +2088,7 @@ function DicePanel({char,onRollToChat}){
           </div>
           <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-            {SKILL_LIST.map(([name])=>{
+            {SKILL_LIST_SORTED.map(([name])=>{
               const val=char?.skills?.[name]??0;
               return(
                 <button key={name} type="button" onClick={()=>roll(name,val)}
@@ -2244,6 +2282,11 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     if(activeTab!=="main"&&!visibleTabs.some(t=>t.id===activeTab)) setActiveTab("main");
   },[activeTab,visibleTabs]);
 
+  // 다른 탭을 봤다가 이 탭으로 돌아왔을 때도 항상 맨 아래(최신 메시지)로 스크롤합니다.
+  useEffect(()=>{
+    setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end"}),50);
+  },[activeTab]);
+
   useEffect(()=>{
     const prefix=activeTab==="main"?`chat:${room.id}:`:`chat:${room.id}:${activeTab}:`;
     const unsub=storeListenPrefix(prefix,list=>{
@@ -2398,8 +2441,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const tid=msg.tabId||"main";
     const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
     await storeSet(key,{...msg,text:JSON.stringify(updatedData)},true);
-    const particle=pickEulReul(option);
-    await doSend("system",`<span style="color:var(--accent-deep);font-weight:700">${option}</span>${particle} 확인한다`,"","",tid);
+    const charName=char?.name||profile.name||userCode;
+    const nameStyled=`<span style="color:var(--accent-deep);font-weight:700">${charName}</span>`;
+    const optionStyled=`<span style="color:var(--accent-deep);font-weight:700">${option}</span>`;
+    await doSend("system",`${nameStyled}${pickIGa(charName)} ${optionStyled}${pickEulReul(option)} 선택했다`,"","",tid);
   };
   const handleCreateChoice=async(options)=>{
     const payload=JSON.stringify({options,picked:{}});
