@@ -39,6 +39,15 @@ function clearRememberedAuth() {
   try { localStorage.removeItem(REMEMBER_KEY); } catch {}
 }
 
+// 배너 만들기에서 마지막으로 썼던 색상·서식을 이 기기(브라우저)에 기억해둡니다.
+const BANNER_PREFS_KEY = "heartEmojiBannerPrefs";
+function loadBannerPrefs() {
+  try { const raw = localStorage.getItem(BANNER_PREFS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function saveBannerPrefs(prefs) {
+  try { localStorage.setItem(BANNER_PREFS_KEY, JSON.stringify(prefs)); } catch {}
+}
+
 const SKILL_LIST = [
   ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
   ["기계수리", 10], ["도약", 20], ["듣기", 20], ["말재주", 5], ["매혹", 15],
@@ -1276,7 +1285,7 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved}){
     else setError(`저장에 실패했습니다.\n오류: ${res.error}`);
   };
   return(
-    <div className="coc-modal-backdrop" onClick={onClose}>
+    <div className="coc-modal-backdrop">
       <div className="coc-modal" onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -1562,12 +1571,11 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       );
     }
     return(
-      <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"8px 4px"}}>
-        <div style={{position:"relative",display:"inline-block",textAlign:"center"}}>
+      <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"10px 4px"}}>
+        <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
           {lines.map((line,i)=>(
-            <div key={i} style={{fontSize:14.5,color:"var(--text)",display:"inline"}}>
+            <div key={i} style={{fontSize:14.5,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?12:0}}>
               <FormattedText text={line}/>
-              {i<lines.length-1&&<br/>}
             </div>
           ))}
           {editButtons}
@@ -1822,20 +1830,26 @@ function HandoutViewerModal({handouts,onClose}){
 // 그냥 이어주는 일반 텍스트일 수 있습니다. 완성되면 그 한 줄 전체를 채팅 입력창에 넣습니다.
 
 function BannerBuilderModal({onClose,onInsert}){
+  const savedPrefs=loadBannerPrefs();
   const [segments,setSegments]=useState([]); // [{id,text,styled,color,useBg,bgColor,bold,italic,underline}]
   const [draftText,setDraftText]=useState("");
-  const [styled,setStyled]=useState(true);
-  const [color,setColor]=useState("#355C9F");
-  const [useBg,setUseBg]=useState(false);
-  const [bgColor,setBgColor]=useState("#355C9F");
-  const [bold,setBold]=useState(false);
-  const [italic,setItalic]=useState(false);
-  const [underline,setUnderline]=useState(false);
+  const [styled,setStyled]=useState(savedPrefs?.styled??true);
+  const [color,setColor]=useState(savedPrefs?.color??"#355C9F");
+  const [useBg,setUseBg]=useState(savedPrefs?.useBg??false);
+  const [bgColor,setBgColor]=useState(savedPrefs?.bgColor??"#355C9F");
+  const [bold,setBold]=useState(savedPrefs?.bold??false);
+  const [italic,setItalic]=useState(savedPrefs?.italic??false);
+  const [underline,setUnderline]=useState(savedPrefs?.underline??false);
   // 전체 줄을 배너 블록(배경 있는 타이틀 바)으로 감쌀지 여부
-  const [wrapBlock,setWrapBlock]=useState(false);
-  const [blockBg,setBlockBg]=useState("#355C9F");
-  const [blockAlign,setBlockAlign]=useState("center");
-  const [blockPadding,setBlockPadding]=useState(6);
+  const [wrapBlock,setWrapBlock]=useState(savedPrefs?.wrapBlock??false);
+  const [blockBg,setBlockBg]=useState(savedPrefs?.blockBg??"#355C9F");
+  const [blockAlign,setBlockAlign]=useState(savedPrefs?.blockAlign??"center");
+  const [blockPadding,setBlockPadding]=useState(savedPrefs?.blockPadding??6);
+
+  // 색상·서식을 바꿀 때마다 이 기기에 자동으로 기억해둡니다. (텍스트 내용은 저장 대상 아님)
+  useEffect(()=>{
+    saveBannerPrefs({styled,color,useBg,bgColor,bold,italic,underline,wrapBlock,blockBg,blockAlign,blockPadding});
+  },[styled,color,useBg,bgColor,bold,italic,underline,wrapBlock,blockBg,blockAlign,blockPadding]);
 
   const segStyleStr=seg=>{
     const parts=[];
@@ -1881,7 +1895,7 @@ function BannerBuilderModal({onClose,onInsert}){
       <div className="coc-modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>배너 만들기</div>
+            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>채팅 꾸미기</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
 
@@ -2137,30 +2151,31 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   // 접속 상태(온라인 여부): 이 화면을 실제로 보고 있을 때만 주기적으로 "나 여기 있음" 신호를 남기고,
   // 다른 사람의 신호가 최근 것이면(기본 20초 이내) 온라인으로 판단합니다.
   // 모바일에서 앱을 백그라운드로 보내면(화면을 안 보고 있으면) 신호를 안 보내서 자연히 오프라인으로 표시됩니다.
+  // 닉네임이 아니라 지금 플레이 중인 캐릭터 이름/사진을 같이 실어보내서 참가자 목록에 표시합니다.
   const ONLINE_THRESHOLD_MS=20000;
   useEffect(()=>{
     const key=`presence:${room.id}:${userCode}`;
     let intervalId=null;
-    const beat=()=>{ if(document.visibilityState==="visible") storeSet(key,{userCode,lastSeen:Date.now()},true); };
+    const beat=()=>{ if(document.visibilityState==="visible") storeSet(key,{userCode,charName:char?.name||userCode,lastSeen:Date.now()},true); };
     const start=()=>{ beat(); if(!intervalId) intervalId=setInterval(beat,10000); };
     const stop=()=>{ if(intervalId){clearInterval(intervalId);intervalId=null;} };
     const onVisibility=()=>{ if(document.visibilityState==="visible") start(); else stop(); };
     start();
     document.addEventListener("visibilitychange",onVisibility);
     return()=>{ stop(); document.removeEventListener("visibilitychange",onVisibility); };
-  },[room.id,userCode]);
+  },[room.id,userCode,char?.name]);
 
-  const [presenceMap,setPresenceMap]=useState({}); // {userCode: lastSeen}
+  const [presenceMap,setPresenceMap]=useState({}); // {userCode: {charName,charAvatar,lastSeen}}
   useEffect(()=>{
     const unsub=storeListenPrefix(`presence:${room.id}:`,list=>{
       const map={};
-      list.forEach(x=>{ map[x.value.userCode]=x.value.lastSeen; });
+      list.forEach(x=>{ map[x.value.userCode]=x.value; });
       setPresenceMap(map);
     });
     return()=>unsub();
   },[room.id]);
   const isOnline=code=>{
-    const last=presenceMap[code];
+    const last=presenceMap[code]?.lastSeen;
     return !!last&&(Date.now()-last<ONLINE_THRESHOLD_MS);
   };
   // 참가자 목록: 나 + GM + 캐릭터를 만든 다른 사람들 (중복 없이)
@@ -2425,19 +2440,20 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           </button>
           <div style={{position:"relative"}} ref={participantsRef}>
             <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)"}}>
-              <span style={{display:"inline-block",width:7,height:7,borderRadius:"50%",background:participantsList.some(c=>c!==userCode&&isOnline(c))?"#3a9a6e":"var(--border)",marginRight:5}}/>
+              <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:11}}>♥</span>
               참가자 ({participantsList.length})
             </button>
             {showParticipants&&(
               <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:20,minWidth:180,background:"#fff",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
                 <div className="coc-label" style={{marginBottom:8}}>참가자</div>
-                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {participantsList.map(code=>{
                     const online=code===userCode?true:isOnline(code);
+                    const displayName=code===userCode?(char?.name||userCode):(presenceMap[code]?.charName||code);
                     return(
                       <div key={code} style={{display:"flex",alignItems:"center",gap:7}}>
-                        <span style={{width:8,height:8,borderRadius:"50%",background:online?"#3a9a6e":"var(--border)",flexShrink:0}}/>
-                        <span style={{fontSize:13,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{code}{code===userCode?" (나)":""}</span>
+                        <span style={{color:online?"#e0507a":"var(--border)",fontSize:13,lineHeight:1,flexShrink:0}}>♥</span>
+                        <span style={{fontSize:13,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
                         {code===room.creatorCode&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
                       </div>
                     );
