@@ -148,6 +148,12 @@ const CSS = `
 .coc-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
 .coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .coc-scroll::-webkit-scrollbar-track { background: transparent; }
+/* 모바일에서 세로 스크롤 중 화면이 좌우로 같이 흔들리는 현상 방지 */
+.msg-list-area { overflow-x: hidden; touch-action: pan-y; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+/* 데스크톱(넓은 화면)에서는 모니터 해상도에 맞춰 채팅창을 더 넉넉하게 씁니다 */
+@media (min-width: 860px) {
+  .msg-list-area { height: calc(100vh - 300px) !important; max-height: 900px !important; }
+}
 
 .coc-btn {
   font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 13.5px;
@@ -223,10 +229,7 @@ const CSS = `
   border-bottom: 2px solid transparent;
 }
 .coc-tab.active { color: var(--accent-deep); border-bottom-color: var(--accent); }
-.msg-actions { opacity: 0; transition: opacity 0.15s; }
-.msg-actions:hover { opacity: 1; }
-div:hover > div > .msg-actions { opacity: 1; }
-.anon-msg:hover .msg-actions { opacity: 1; }
+.msg-actions { opacity: 1; }
 .chat-tab-bar { display:flex; gap:2px; overflow-x:auto; border-bottom:1px solid var(--border-soft); margin-bottom:8px; }
 .chat-tab { font-size: 13px; font-weight:600; padding:7px 13px; cursor:pointer; color:var(--text-faint); border-bottom:2px solid transparent; white-space:nowrap; }
 .chat-tab.active { color:var(--accent-deep); border-bottom-color:var(--accent); }
@@ -317,7 +320,7 @@ function fmtTime(ts) {
 function emptyCharacteristics() { const o={}; CHAR_KEYS.forEach(k=>o[k]=50); return o; }
 function emptySkills() { const o={}; SKILL_LIST.forEach(([n,b])=>o[n]=b); return o; }
 function emptyDerived() { return {HP:10,maxHP:10,MP:10,maxMP:10,SAN:50,maxSAN:50,Luck:0}; }
-function blankCharSheet(name="") { return {name,avatar:"",characteristics:emptyCharacteristics(),skills:emptySkills(),customSkills:[],derived:emptyDerived(),notes:""}; }
+function blankCharSheet(name="") { return {name,avatar:"",characteristics:emptyCharacteristics(),skills:emptySkills(),customSkills:[],derived:emptyDerived(),notes:"",madness:{type:"",note:""}}; }
 function blankProfile(name="") { return {name,avatar:""}; }
 
 /* ============================== STORAGE (Firebase Firestore) ============================== */
@@ -1822,7 +1825,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
   );
 }
 
-function HandoutViewerModal({handouts,onClose}){
+function HandoutViewerModal({handouts,madness,onClose}){
   const [viewing,setViewing]=useState(null);
   return(
     <div className="coc-modal-backdrop" onClick={onClose}>
@@ -1840,6 +1843,17 @@ function HandoutViewerModal({handouts,onClose}){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>핸드아웃</div>
                 <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
+              </div>
+              <div style={{border:"1px solid "+(madness?.type?"#c05050":"var(--border-soft)"),background:madness?.type?"#fff5f5":"var(--bg-panel)",borderRadius:8,padding:"9px 12px",marginBottom:14}}>
+                <div className="coc-label" style={{marginBottom:madness?.type?4:0,color:madness?.type?"#c05050":undefined}}>광기</div>
+                {madness?.type?(
+                  <div style={{fontSize:13}}>
+                    <span style={{fontWeight:700,color:"#c05050"}}>{madness.type} 광기</span>
+                    {madness.note&&<div style={{fontSize:12.5,color:"var(--text-dim)",marginTop:2}}>{madness.note}</div>}
+                  </div>
+                ):(
+                  <div style={{fontSize:12.5,color:"var(--text-faint)"}}>없음</div>
+                )}
               </div>
               {handouts.length===0?(
                 <div style={{color:"var(--text-faint)",fontSize:13,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
@@ -2046,13 +2060,18 @@ function BannerBuilderModal({onClose,onInsert}){
   );
 }
 
-function DicePanel({char,onRollToChat}){
+function DicePanel({char,onRollToChat,roomId}){
   const [open,setOpen]=useState(false);
+  const [tab,setTab]=useState("roll");
+  const [sheetDraft,setSheetDraft]=useState(char);
+  const [saving,setSaving]=useState(false);
   const panelRef=useRef(null);
+
+  useEffect(()=>{ setSheetDraft(char); },[char]);
 
   useEffect(()=>{
     if(!open)return;
-    const handler=e=>{if(panelRef.current&&!panelRef.current.contains(e.target))setOpen(false);};
+    const handler=e=>{if(panelRef.current&&!panelRef.current.contains(e.target)){setOpen(false);setTab("roll");}};
     document.addEventListener("mousedown",handler);
     return()=>document.removeEventListener("mousedown",handler);
   },[open]);
@@ -2064,60 +2083,104 @@ function DicePanel({char,onRollToChat}){
     setOpen(false);
   };
 
+  const saveSheet=async()=>{
+    if(!char?.id)return;
+    setSaving(true);
+    await storeSet(`char:${roomId}:${char.id}`,sheetDraft,true);
+    setSaving(false);
+  };
+
   return(
-    <div ref={panelRef} style={{position:"relative",marginLeft:"auto"}}>
-      <button type="button" className="coc-btn ghost small" onClick={()=>setOpen(v=>!v)} style={{gap:5,whiteSpace:"nowrap"}}>
-        <Dice5 size={12}/> 다이스
+    <>
+      <button type="button" onClick={()=>setOpen(v=>!v)}
+        style={{position:"fixed",bottom:90,right:18,width:52,height:52,borderRadius:"50%",background:"var(--accent)",color:"#fff",
+          border:"none",boxShadow:"0 4px 16px rgba(0,0,0,0.25)",cursor:"pointer",zIndex:30,fontSize:23,lineHeight:1,
+          display:"flex",alignItems:"center",justifyContent:"center"}}>
+        ♥
       </button>
       {open&&(
-        <div className="coc-scroll" style={{position:"absolute",bottom:"calc(100% + 8px)",right:0,width:300,maxHeight:380,overflowY:"auto",background:"#fff",border:"1px solid var(--border)",borderRadius:12,boxShadow:"0 8px 32px rgba(0,0,0,0.14)",padding:"14px 14px 12px",zIndex:20}}>
-          <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-            {CHAR_KEYS.map(k=>{
-              const val=char?.characteristics?.[k]||0;
-              return(
-                <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
-                  style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"}
-                  onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border-soft)"}>
-                  <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
-                  <div className="coc-mono" style={{fontSize:14.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-                </button>
-              );
-            })}
+        <div ref={panelRef} className="coc-scroll" style={{position:"fixed",bottom:150,right:18,width:"min(92vw, 320px)",maxHeight:"70vh",overflowY:"auto",background:"#fff",border:"1px solid var(--border)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",padding:"14px 14px 12px",zIndex:31}}>
+          {char?.madness?.type&&(
+            <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
+              <span style={{fontSize:12,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
+              {char.madness.note&&<div style={{fontSize:11.5,color:"var(--text-dim)",marginTop:2}}>{char.madness.note}</div>}
+            </div>
+          )}
+          <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
+            {[["roll","판정"],["sheet","시트 수정"]].map(([v,l])=>(
+              <button key={v} type="button" onClick={()=>setTab(v)}
+                style={{flex:1,padding:"7px 0",border:"none",background:tab===v?"var(--accent)":"#fff",color:tab===v?"#fff":"var(--text-dim)",fontSize:12.5,fontWeight:tab===v?700:500,cursor:"pointer"}}>
+                {l}
+              </button>
+            ))}
           </div>
-          <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-            {SKILL_LIST_SORTED.map(([name])=>{
-              const val=char?.skills?.[name]??0;
-              return(
-                <button key={name} type="button" onClick={()=>roll(name,val)}
-                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="var(--bg-panel)"}
-                  onMouseLeave={e=>e.currentTarget.style.background="var(--bg-panel)"}>
-                  <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{name}</span>
-                  <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
-                </button>
-              );
-            })}
-          </div>
-          {char?.customSkills?.length>0&&(
+          {tab==="roll"?(
             <>
-              <div className="coc-label" style={{margin:"10px 0 7px"}}>자유 기능치</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-                {char.customSkills.filter(c=>c.name).map(c=>(
-                  <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
-                    style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                    <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{c.name}</span>
-                    <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
-                  </button>
-                ))}
+              <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
+                {CHAR_KEYS.map(k=>{
+                  const val=char?.characteristics?.[k]||0;
+                  return(
+                    <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
+                      style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
+                      <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
+                      <div className="coc-mono" style={{fontSize:14.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+                    </button>
+                  );
+                })}
               </div>
+              <div className="coc-label" style={{marginBottom:7}}>파생 능력치 판정</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
+                {[["체력","HP"],["마력","MP"],["이성","SAN"],["행운","Luck"]].map(([label,key])=>{
+                  const val=char?.derived?.[key]||0;
+                  return(
+                    <button key={key} type="button" onClick={()=>roll(label,val)}
+                      style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
+                      <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{label}</div>
+                      <div className="coc-mono" style={{fontSize:14.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
+                {SKILL_LIST_SORTED.map(([name])=>{
+                  const val=char?.skills?.[name]??0;
+                  return(
+                    <button key={name} type="button" onClick={()=>roll(name,val)}
+                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                      <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{name}</span>
+                      <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {char?.customSkills?.length>0&&(
+                <>
+                  <div className="coc-label" style={{margin:"10px 0 7px"}}>자유 기능치</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
+                    {char.customSkills.filter(c=>c.name).map(c=>(
+                      <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
+                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                        <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{c.name}</span>
+                        <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          ):(
+            <>
+              <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true}/>
+              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
+                {saving?"저장 중...":"시트 저장"}
+              </button>
             </>
           )}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -2194,14 +2257,14 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   useEffect(()=>{
     const key=`presence:${room.id}:${userCode}`;
     let intervalId=null;
-    const beat=()=>{ if(document.visibilityState==="visible") storeSet(key,{userCode,charName:char?.name||userCode,lastSeen:Date.now()},true); };
+    const beat=()=>{ if(document.visibilityState==="visible") storeSet(key,{userCode,charId:char?.id||"",charName:char?.name||userCode,lastSeen:Date.now()},true); };
     const start=()=>{ beat(); if(!intervalId) intervalId=setInterval(beat,10000); };
     const stop=()=>{ if(intervalId){clearInterval(intervalId);intervalId=null;} };
     const onVisibility=()=>{ if(document.visibilityState==="visible") start(); else stop(); };
     start();
     document.addEventListener("visibilitychange",onVisibility);
     return()=>{ stop(); document.removeEventListener("visibilitychange",onVisibility); };
-  },[room.id,userCode,char?.name]);
+  },[room.id,userCode,char?.name,char?.id]);
 
   const [presenceMap,setPresenceMap]=useState({}); // {userCode: {charName,charAvatar,lastSeen}}
   useEffect(()=>{
@@ -2232,6 +2295,29 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     return Array.from(set).sort((a,b)=>(a===room.creatorCode?-1:b===room.creatorCode?1:0));
   })();
   const myHandouts=handouts.filter(h=>(h.visibleTo||[]).includes(userCode));
+
+  // 브라우저 알림: 탭이 백그라운드일 때 새 메시지가 오면 알려줍니다.
+  // (iOS Safari는 일반 브라우저 탭에서는 이 기능을 지원하지 않아요 — 홈 화면에 추가한
+  // 앱(PWA) 형태로 열었을 때만 iOS에서도 동작합니다. 안드로이드/PC는 바로 됩니다.)
+  const [notifPermission,setNotifPermission]=useState(("Notification" in window)?Notification.permission:"unsupported");
+  const requestNotif=async()=>{
+    if(!("Notification" in window)){ alert("이 브라우저에서는 알림 기능을 지원하지 않아요."); return; }
+    const perm=await Notification.requestPermission();
+    setNotifPermission(perm);
+  };
+
+  // GM이 참가자에게 광기(장기적/단기적)를 부여하는 기능
+  const [madnessTarget,setMadnessTarget]=useState(null);
+  const [madnessType,setMadnessType]=useState("");
+  const [madnessNote,setMadnessNote]=useState("");
+  const saveMadness=async(code)=>{
+    const p=presenceMap[code];
+    if(!p?.charId){ setMadnessTarget(null); return; }
+    const key=`char:${room.id}:${p.charId}`;
+    const charDoc=await storeGet(key,true);
+    if(charDoc) await storeSet(key,{...charDoc,madness:{type:madnessType,note:madnessNote}},true);
+    setMadnessTarget(null);
+  };
   const [showHandoutManager,setShowHandoutManager]=useState(false);
   const [showHandoutViewer,setShowHandoutViewer]=useState(false);
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
@@ -2296,11 +2382,26 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       setTabMsgMaps(prev=>{
         const incoming=new Map();
         for(const{value:m}of filtered)incoming.set(m.id,m);
+        const prevMap=prev[activeTab]||new Map();
+        // 브라우저 알림: 처음 이 탭을 여는 순간(전체 과거 기록 불러오기)은 제외하고,
+        // 새로 도착한 메시지 중 내가 보낸 게 아니고, 탭이 백그라운드일 때만 알립니다.
+        if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"){
+          incoming.forEach((m,id)=>{
+            if(!prevMap.has(id)&&m.userCode!==userCode){
+              try{
+                const body=m.speaker==="image"?"이미지를 보냈어요"
+                  :m.speaker==="dice"?"주사위를 굴렸어요"
+                  :m.speaker==="choice"?"선택지를 만들었어요"
+                  :(m.text||"").replace(/<[^>]+>/g,"").slice(0,80);
+                new Notification(`${m.characterName||"메시지"} · ${room.title}`,{body});
+              }catch{}
+            }
+          });
+        }
         // 방금 보낸 메시지가 서버에 아직 반영되기 전에 목록을 다시 읽어오면
         // 순간적으로 화면에서 사라졌다 나타나는 깜빡임이 생길 수 있어서,
         // 8초 이내에 보낸 메시지는 서버 목록에 없어도 잠시 그대로 유지합니다.
         const merged=new Map(incoming);
-        const prevMap=prev[activeTab]||new Map();
         const now=Date.now();
         prevMap.forEach((m,id)=>{
           if(!merged.has(id)&&now-m.timestamp<8000) merged.set(id,m);
@@ -2313,7 +2414,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       }
     });
     return()=>unsub();
-  },[room.id,activeTab]);
+  },[room.id,activeTab,userCode]);
 
   useEffect(()=>{
     const unsub=storeListenDoc(`bgm:${room.id}`,d=>{ if(d) setBgmUrl(d.url||""); });
@@ -2321,6 +2422,16 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   },[room.id]);
 
   useEffect(()=>{setChar(character);},[character]);
+
+  // 내 캐릭터 문서를 실시간으로 구독합니다. GM이 광기를 부여하는 등 외부에서
+  // 캐릭터 정보가 바뀌면, 방을 나갔다 들어올 필요 없이 바로 반영됩니다.
+  useEffect(()=>{
+    if(!character?.id)return;
+    const unsub=storeListenDoc(`char:${room.id}:${character.id}`,updated=>{
+      if(updated) setChar(updated);
+    });
+    return()=>unsub();
+  },[room.id,character?.id]);
 
   const handleSetBgm=async()=>{const url=bgmInput.trim();setBgmUrl(url);await storeSet(`bgm:${room.id}`,{url},true);setBgmInput("");};
   const handleStopBgm=async()=>{setBgmUrl("");await storeSet(`bgm:${room.id}`,{url:""},true);};
@@ -2483,6 +2594,12 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           <button type="button" className="coc-btn ghost small" onClick={()=>setShowHandoutViewer(true)} style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)"}}>
             핸드아웃{myHandouts.length>0?` (${myHandouts.length})`:""}
           </button>
+          {notifPermission!=="unsupported"&&(
+            <button type="button" className="coc-btn ghost small" onClick={requestNotif} disabled={notifPermission==="granted"}
+              style={{color:notifPermission==="granted"?"var(--accent-deep)":"var(--text-faint)"}}>
+              {notifPermission==="granted"?"알림 켜짐":notifPermission==="denied"?"알림 차단됨":"알림 켜기"}
+            </button>
+          )}
           <div style={{position:"relative"}} ref={participantsRef}>
             <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)"}}>
               <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:11}}>♥</span>
@@ -2496,10 +2613,39 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                     const online=code===userCode?true:isOnline(code);
                     const displayName=code===userCode?(char?.name||userCode):(presenceMap[code]?.charName||code);
                     return(
-                      <div key={code} style={{display:"flex",alignItems:"center",gap:7}}>
-                        <span style={{color:online?"#e0507a":"var(--border)",fontSize:13,lineHeight:1,flexShrink:0}}>♥</span>
-                        <span style={{fontSize:13,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
-                        {code===room.creatorCode&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
+                      <div key={code}>
+                        <div style={{display:"flex",alignItems:"center",gap:7}}>
+                          <span style={{color:online?"#e0507a":"var(--border)",fontSize:13,lineHeight:1,flexShrink:0}}>♥</span>
+                          <span style={{fontSize:13,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
+                          {code===room.creatorCode&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
+                          {isGM&&code!==userCode&&(
+                            <button type="button" onClick={()=>{setMadnessTarget(madnessTarget===code?null:code);setMadnessType("");setMadnessNote("");}}
+                              style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10.5,cursor:"pointer",color:"var(--text-dim)"}}>
+                              광기
+                            </button>
+                          )}
+                        </div>
+                        {madnessTarget===code&&(
+                          <div style={{marginTop:6,marginLeft:15,padding:8,background:"var(--bg-panel)",borderRadius:8}}>
+                            <div style={{display:"flex",gap:4,marginBottom:6}}>
+                              {["없음","단기적","장기적"].map(t=>(
+                                <button key={t} type="button" onClick={()=>setMadnessType(t==="없음"?"":t)}
+                                  style={{flex:1,fontSize:11,padding:"4px 0",borderRadius:5,cursor:"pointer",
+                                    background:(t==="없음"?madnessType==="":madnessType===t)?"var(--accent)":"#fff",
+                                    color:(t==="없음"?madnessType==="":madnessType===t)?"#fff":"var(--text-dim)",
+                                    border:"1px solid "+((t==="없음"?madnessType==="":madnessType===t)?"var(--accent)":"var(--border)")}}>
+                                  {t}
+                                </button>
+                              ))}
+                            </div>
+                            <input className="coc-input" value={madnessNote} onChange={e=>setMadnessNote(e.target.value)}
+                              placeholder="광기 내용 (선택)" style={{fontSize:12,padding:"5px 8px",marginBottom:6}}/>
+                            <div style={{display:"flex",gap:5}}>
+                              <button type="button" className="coc-btn small" style={{flex:1,justifyContent:"center"}} onClick={()=>saveMadness(code)}>저장</button>
+                              <button type="button" className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>setMadnessTarget(null)}>취소</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2601,7 +2747,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 메시지 목록 — GM 서브탭/NPC 이름 입력창 등이 아래에 추가로 나타나도
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
-      <div className="coc-card coc-scroll" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:1}}>
+      <div className="coc-card coc-scroll msg-list-area" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:1}}>
         {groups.length===0&&(
           <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13.5,textAlign:"center"}}>
             <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
@@ -2659,7 +2805,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
             </div>
           )}
           {isGM&&<button type="button" className="coc-btn ghost small" onClick={()=>setShowBannerBuilder(true)}>배너 만들기</button>}
-          <DicePanel char={char} onRollToChat={sendDice}/>
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -2706,13 +2851,14 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {editingChar&&<CharacterEditModal initial={{id:char.id,sheet:char,createdAt:char.createdAt}} roomId={room.id} userCode={userCode} onClose={()=>setEditingChar(false)} onSaved={c=>{setChar(c);setEditingChar(false);}}/>}
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
-      {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}/>}
+      {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
       {showBannerBuilder&&(
         <BannerBuilderModal
           onClose={()=>setShowBannerBuilder(false)}
           onInsert={markup=>setText(prev=>prev?prev+"\n"+markup:markup)}
         />
       )}
+      <DicePanel char={char} onRollToChat={sendDice} roomId={room.id}/>
     </div>
   );
 }
