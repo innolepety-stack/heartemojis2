@@ -48,6 +48,15 @@ function saveBannerPrefs(prefs) {
   try { localStorage.setItem(BANNER_PREFS_KEY, JSON.stringify(prefs)); } catch {}
 }
 
+// 하트(다이스/시트) 버튼 위치를 이 기기(브라우저)에 기억해둡니다. 사용자가 드래그로 옮길 수 있습니다.
+const HEART_POS_KEY = "heartEmojiHeartButtonPos";
+function loadHeartPos() {
+  try { const raw = localStorage.getItem(HEART_POS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function saveHeartPos(pos) {
+  try { localStorage.setItem(HEART_POS_KEY, JSON.stringify(pos)); } catch {}
+}
+
 const SKILL_LIST = [
   ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
   ["기계수리", 10], ["도약", 20], ["듣기", 20], ["말재주", 5], ["매혹", 15],
@@ -145,6 +154,10 @@ const CSS = `
 }
 .coc-display { font-family: 'Gowun Batang', serif; letter-spacing: 0.01em; }
 .coc-mono { font-family: 'JetBrains Mono', monospace; }
+/* 모든 숫자 입력칸에서 스크롤/스핀 버튼으로 값이 바뀌는 걸 막고, 직접 타이핑만 가능하게 합니다 */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; }
 .coc-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
 .coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .coc-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -455,15 +468,16 @@ function AvatarUpload({value,onChange,size=58}){
   );
 }
 
-function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll}){
+function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,compact=false}){
   return(
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>
+    <div style={{display:"grid",gridTemplateColumns:compact?"repeat(2,1fr)":"repeat(4,1fr)",gap:7}}>
       {CHAR_KEYS.map(k=>(
         <div key={k} className="coc-stat-box">
           <div className="coc-label" style={{marginBottom:3}}>{CHAR_LABEL[k]} ({k})</div>
           <div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"center"}}>
             <input className="coc-input coc-mono" type="number" value={characteristics[k]}
               onChange={e=>setCharacteristics({...characteristics,[k]:parseInt(e.target.value)||0})}
+              onWheel={e=>e.currentTarget.blur()}
               style={{textAlign:"center",padding:"5px 3px",fontSize:15,color:"var(--accent-deep)"}}/>
             {allowRoll&&<button type="button" className="coc-btn ghost small" style={{padding:5}} onClick={()=>setCharacteristics({...characteristics,[k]:rollChar(k)})}><Dice5 size={11}/></button>}
           </div>
@@ -496,6 +510,7 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
         <input className="coc-mono" type="number" value={derived[key]}
           onChange={e=>setDerived({...derived,[key]:parseInt(e.target.value)||0})}
+          onWheel={e=>e.currentTarget.blur()}
           style={{width:40,background:"transparent",border:"none",color:"var(--accent-deep)",fontSize:16,textAlign:"right",outline:"none"}}/>
         {maxKey&&<><span style={{color:"var(--text-faint)"}}>/</span><span className="coc-mono" style={{fontSize:12.5,color:"var(--text-dim)"}}>{derived[maxKey]}</span></>}
       </div>
@@ -514,7 +529,7 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
   );
 }
 
-function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false}){
+function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false}){
   const [open,setOpen]=useState(false);
 
   const addCustom=()=>{
@@ -536,12 +551,13 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
       </button>
       {open&&(
         <>
-          <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5,paddingRight:4,paddingBottom:8}}>
+          <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,1fr)",gap:5,paddingRight:4,paddingBottom:8}}>
             {SKILL_LIST_SORTED.map(([name])=>(
               <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                 <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
                 <input className="coc-mono" type="number" step={5} min={0} max={99} value={skills[name]??0} readOnly={readOnly}
                   onChange={e=>setSkills({...skills,[name]:Math.max(0,Math.min(99,parseInt(e.target.value)||0))})}
+                  onWheel={e=>e.currentTarget.blur()}
                   style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
               </div>
             ))}
@@ -552,7 +568,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
             <div style={{marginTop:12}}>
               <div className="coc-label" style={{marginBottom:6}}>자유 기능치</div>
               {customSkills.length===0&&readOnly&&<div style={{fontSize:12.5,color:"var(--text-faint)"}}>없음</div>}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:5}}>
+              <div style={{display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,1fr)",gap:5}}>
                 {customSkills.map(c=>(
                   <div key={c.id} style={{display:"flex",alignItems:"center",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                     {readOnly?(
@@ -563,6 +579,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
                     )}
                     <input className="coc-mono" type="number" step={5} min={0} max={99} value={c.value??0} readOnly={readOnly}
                       onChange={e=>updateCustom(c.id,{value:Math.max(0,Math.min(99,parseInt(e.target.value)||0))})}
+                      onWheel={e=>e.currentTarget.blur()}
                       style={{width:44,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
                     {!readOnly&&(
                       <button type="button" onClick={()=>removeCustom(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
@@ -597,7 +614,7 @@ function calcSkillPoints(sheet){
   return {total,spent,remaining:total-spent};
 }
 
-function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
+function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false}){
   if(readOnly) return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
@@ -606,11 +623,11 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
         </div>
         <div className="coc-display" style={{fontSize:18,color:"var(--accent-deep)"}}>{sheet.name||"이름 없음"}</div>
       </div>
-      <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={()=>{}} allowRoll={false}/>
+      <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={()=>{}} allowRoll={false} compact={compact}/>
       <div className="coc-divider"/>
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={()=>{}} allowRoll={false}/>
       <div className="coc-divider"/>
-      <SkillsGrid skills={sheet.skills} setSkills={()=>{}} customSkills={sheet.customSkills||[]} setCustomSkills={()=>{}} readOnly/>
+      <SkillsGrid skills={sheet.skills} setSkills={()=>{}} customSkills={sheet.customSkills||[]} setCustomSkills={()=>{}} readOnly compact={compact}/>
       {sheet.notes&&<><div className="coc-divider"/><div className="coc-label" style={{marginBottom:5}}>메모</div><div style={{fontSize:14,color:"var(--text-dim)",whiteSpace:"pre-wrap"}}>{sheet.notes}</div></>}
     </div>
   );
@@ -620,7 +637,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
       <div style={{marginBottom:16}}><div className="coc-label" style={{marginBottom:5}}>사진</div><AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})}/></div>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:7}}>능력치</div>
-      <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})} allowRoll={allowRoll}/>
+      <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})} allowRoll={allowRoll} compact={compact}/>
       <div className="coc-divider"/>
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})} allowRoll={allowRoll}/>
       <div className="coc-divider"/>
@@ -635,7 +652,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false}){
           </div>
         );
       })()}
-      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})}/>
+      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})} compact={compact}/>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:5}}>메모 / 배경</div>
       <textarea className="coc-textarea" rows={3} value={sheet.notes} onChange={e=>setSheet({...sheet,notes:e.target.value})} placeholder="직업, 배경, 소지품 등 자유롭게 기록하세요"/>
@@ -2067,6 +2084,35 @@ function DicePanel({char,onRollToChat,roomId}){
   const [saving,setSaving]=useState(false);
   const panelRef=useRef(null);
 
+  // 하트 버튼을 드래그로 원하는 위치에 옮길 수 있습니다. (이 기기에 위치가 기억돼요)
+  const [pos,setPos]=useState(()=>loadHeartPos());
+  const dragInfo=useRef({dragging:false,moved:false,startX:0,startY:0,startPosX:0,startPosY:0});
+  const btnSize=52;
+
+  const onPointerDown=e=>{
+    const rect=e.currentTarget.getBoundingClientRect();
+    dragInfo.current={dragging:true,moved:false,startX:e.clientX,startY:e.clientY,startPosX:rect.left,startPosY:rect.top};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove=e=>{
+    const d=dragInfo.current;
+    if(!d.dragging)return;
+    const dx=e.clientX-d.startX, dy=e.clientY-d.startY;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true;
+    if(!d.moved)return;
+    let nx=d.startPosX+dx, ny=d.startPosY+dy;
+    nx=Math.max(4,Math.min(window.innerWidth-btnSize-4,nx));
+    ny=Math.max(4,Math.min(window.innerHeight-btnSize-4,ny));
+    setPos({x:nx,y:ny});
+  };
+  const onPointerUp=()=>{
+    const d=dragInfo.current;
+    if(d.dragging&&d.moved) setPos(p=>{ if(p) saveHeartPos(p); return p; });
+    const wasMoved=d.moved;
+    dragInfo.current.dragging=false;
+    if(!wasMoved) setOpen(v=>!v); // 움직이지 않았으면(=드래그가 아니라 그냥 탭) 패널을 엽니다
+  };
+
   useEffect(()=>{ setSheetDraft(char); },[char]);
 
   useEffect(()=>{
@@ -2090,16 +2136,26 @@ function DicePanel({char,onRollToChat,roomId}){
     setSaving(false);
   };
 
+  const buttonStyle=pos
+    ? {position:"fixed",left:pos.x,top:pos.y,touchAction:"none"}
+    : {position:"fixed",bottom:90,right:18,touchAction:"none"};
+  const panelStyle=pos
+    ? (pos.y>window.innerHeight/2
+        ? {position:"fixed",left:Math.max(4,Math.min(pos.x,window.innerWidth-364)),bottom:window.innerHeight-pos.y+10}
+        : {position:"fixed",left:Math.max(4,Math.min(pos.x,window.innerWidth-364)),top:pos.y+btnSize+10})
+    : {position:"fixed",bottom:150,right:18};
+
   return(
     <>
-      <button type="button" onClick={()=>setOpen(v=>!v)}
-        style={{position:"fixed",bottom:90,right:18,width:52,height:52,borderRadius:"50%",background:"var(--accent)",color:"#fff",
-          border:"none",boxShadow:"0 4px 16px rgba(0,0,0,0.25)",cursor:"pointer",zIndex:30,fontSize:23,lineHeight:1,
+      <button type="button"
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        style={{...buttonStyle,width:52,height:52,borderRadius:"50%",background:"var(--accent)",color:"#fff",
+          border:"none",boxShadow:"0 4px 16px rgba(0,0,0,0.25)",cursor:"grab",zIndex:30,fontSize:23,lineHeight:1,
           display:"flex",alignItems:"center",justifyContent:"center"}}>
         ♥
       </button>
       {open&&(
-        <div ref={panelRef} className="coc-scroll" style={{position:"fixed",bottom:150,right:18,width:"min(92vw, 320px)",maxHeight:"70vh",overflowY:"auto",background:"#fff",border:"1px solid var(--border)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",padding:"14px 14px 12px",zIndex:31}}>
+        <div ref={panelRef} className="coc-scroll" style={{...panelStyle,width:"min(92vw, 360px)",maxHeight:"70vh",overflowY:"auto",background:"#fff",border:"1px solid var(--border)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",padding:"14px 14px 12px",zIndex:31}}>
           {char?.madness?.type&&(
             <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
               <span style={{fontSize:12,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
@@ -2172,7 +2228,7 @@ function DicePanel({char,onRollToChat,roomId}){
             </>
           ):(
             <>
-              <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true}/>
+              <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true} compact/>
               <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
                 {saving?"저장 중...":"시트 저장"}
               </button>
