@@ -1102,19 +1102,24 @@ function buildHtmlExport(room,transcript,theme){
   // 만들었습니다. 이렇게 하면 <style> 블록이 통째로 사라져도 디자인이 유지됩니다.
   const t=theme||THEMES.sky;
   const S={
-    line:"padding:5px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;color:#223142;",
+    line:"display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;color:#223142;",
     anon:"text-align:center;color:#223142;padding:10px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;",
     name:`color:${t.accentDeep};font-weight:600;`,
     nameDim:"color:#647c8c;",
     mono:"font-family:monospace;font-size:12.5px;color:#9db2c0;",
     ooc:"border:1px solid #cfe8f7;border-radius:3px;padding:0 4px;font-family:monospace;font-size:12.5px;color:#9db2c0;",
     img:"max-width:320px;border-radius:8px;margin:0 auto;display:block;",
+    avatarImg:"width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;margin-top:2px;",
+    avatarPlaceholder:"width:26px;height:26px;border-radius:50%;background:#eef2f5;flex-shrink:0;margin-top:2px;",
     empty:"color:#9db2c0;font-size:14.5px;padding:10px 0;font-family:'Noto Sans KR',sans-serif;",
     choiceTitle:`font-size:11.5px;color:${t.accentDeep};font-weight:700;margin-bottom:8px;font-family:'Noto Sans KR',sans-serif;`,
     choice:`display:inline-block;border:1.5px solid ${t.accent};border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;font-weight:600;color:${t.accent};font-family:'Noto Sans KR',sans-serif;`,
     choicePicked:`display:inline-block;border:1.5px solid ${t.border};border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;color:#9db2c0;text-decoration:line-through;font-family:'Noto Sans KR',sans-serif;`,
     h2:`color:${t.accentDeep};font-size:16px;border-bottom:1px solid #e2f2fb;padding-bottom:6px;margin-top:32px;font-family:'Noto Sans KR',sans-serif;`,
   };
+  const avatarHtml=m=>m.avatar
+    ? `<img src="${m.avatar}" style="${S.avatarImg}">`
+    : `<div style="${S.avatarPlaceholder}"></div>`;
   const tabsHtml=transcript.map(tab=>{
     const msgs=tab.messages.map(m=>{
       if(m.speaker==="narrate"||m.speaker==="judge"||m.speaker==="system"){
@@ -1134,7 +1139,7 @@ function buildHtmlExport(room,transcript,theme){
       if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
         const body=d?`🎲 ${escapeHtmlExport(d.skillName)} <span style="${S.mono}">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span>`:escapeHtmlExport(m.text);
-        return `<div style="${S.line}"><span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div>`;
+        return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div></div>`;
       }
       if(m.speaker==="image"){
         // 서술처럼 이름·시간 없이 가운데 정렬로 표시
@@ -1142,7 +1147,7 @@ function buildHtmlExport(room,transcript,theme){
       }
       const nameStyle=m.speaker==="ooc"?S.nameDim:S.name;
       const suffix=m.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
-      return `<div style="${S.line}"><span style="${nameStyle}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div>`;
+      return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${nameStyle}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div></div>`;
     }).join("\n");
     return `<section><h2 style="${S.h2}">${escapeHtmlExport(tab.label)}</h2>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
   }).join("\n");
@@ -2892,7 +2897,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       </div>
       {typingNames.length>0&&(
         <div style={{fontSize:11.5,color:"var(--text-faint)",padding:"4px 4px 0",flexShrink:0}}>
-          {typingNames.length===1?`${typingNames[0]} typing...`:`${typingNames.join(", ")} typing...`}
+          {typingNames.length===1?`${typingNames[0]}님이 입력 중...`:`${typingNames.join(", ")}님이 입력 중...`}
         </div>
       )}
 
@@ -3144,7 +3149,7 @@ function AppInner(){
           <div style={{maxWidth:680,margin:"0 auto 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <span className="coc-display heart-font" style={{fontSize:22,color:"var(--accent-deep)"}}>Heart Emoji</span>
-              <span style={{fontSize:12.5,color:"var(--text-faint)",marginLeft:6}}>· {profile.name||user.name}</span>
+              <span style={{fontSize:12.5,color:"var(--text-faint)",marginLeft:6}}>· {profile.name||user.name}님</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
               <div className="coc-tabbar">
