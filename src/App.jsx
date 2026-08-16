@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
-  Crown, Settings, Trash2, Highlighter
+  Crown, Settings, Trash2
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -37,6 +37,15 @@ function loadRememberedAuth() {
 }
 function clearRememberedAuth() {
   try { localStorage.removeItem(REMEMBER_KEY); } catch {}
+}
+
+// 배너 만들기에서 마지막으로 썼던 색상·서식을 이 기기(브라우저)에 기억해둡니다.
+const BANNER_PREFS_KEY = "heartEmojiBannerPrefs";
+function loadBannerPrefs() {
+  try { const raw = localStorage.getItem(BANNER_PREFS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function saveBannerPrefs(prefs) {
+  try { localStorage.setItem(BANNER_PREFS_KEY, JSON.stringify(prefs)); } catch {}
 }
 
 // 하트(다이스/시트) 버튼 위치를 이 기기(브라우저)에 기억해둡니다. 사용자가 드래그로 옮길 수 있습니다.
@@ -1054,31 +1063,35 @@ function escapeHtmlExport(s){
 function styleObjToCss(obj){
   return Object.entries(obj).map(([k,v])=>k.replace(/[A-Z]/g,c=>"-"+c.toLowerCase())+":"+v).join(";");
 }
-// 채팅 본문의 **굵게** *기울임* __밑줄__ ~~취소선~~ / <span style="..."> 서식을 실제 HTML 태그로 변환
-// forceBlack=true: 일반 텍스트는 검은색으로 강제하고, 강조하기(<span style="color:...">)로
-//   표시된 부분만 색을 지정하지 않고 비워둬서 티스토리 등 블로그의 기본 글자색을 따라가게 합니다.
-// forceBlack=false: 아무 것도 강제하지 않고, 전부 블로그 기본 글자색을 따라가게 합니다. (판정 등)
-function chatTextToHtml(text,forceBlack=true){
+// 채팅 본문의 **굵게** *기울임* __밑줄__ ~~취소선~~ / <span style="..."> 서식을 실제 HTML 태그로 변환.
+// theme을 넘기면, 메시지 안에 박혀있는 var(--accent-deep)/var(--accent)(=지금 보는 사람의 테마색을
+// 그대로 따라가는 값)을 그 사람의 실제 색상값으로 바꿔서 내보냅니다. 이 값들은 앱 안에서만
+// 뜻이 통하는 값이라, 내보낸 파일 단독으로는 해석이 안 되기 때문입니다.
+// 강조 색상이었던 부분은 data-role="accent"로 표시해서, 나중에 색상 커스터마이즈 도구가
+// 정확히 찾아서 바꿔줄 수 있게 해둡니다.
+function chatTextToHtml(text,theme){
   const re=/<span style="([^"<>]*)">(.*?)<\/span>|\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|__(.+?)__/g;
-  const wrap=forceBlack?(s=>`<span style="color:#000">${s}</span>`):(s=>s);
   let out="",last=0,m;
   while((m=re.exec(text))!==null){
-    if(m.index>last) out+=wrap(escapeHtmlExport(text.slice(last,m.index)));
+    if(m.index>last) out+=escapeHtmlExport(text.slice(last,m.index));
     if(m[1]!==undefined){
-      // 강조하기로 지정된 색은 내보내기에서 그대로 쓰지 않고, 블로그 기본색을 따르도록
-      // color 속성만 제거합니다. (배경색 등 나머지 서식은 그대로 유지)
-      const styleObj=parseInlineStyle(m[1]);
-      delete styleObj.color;
-      const css=styleObjToCss(styleObj);
-      out+=css?`<span style="${css}">${escapeHtmlExport(m[2])}</span>`:escapeHtmlExport(m[2]);
+      let styleStr=m[1];
+      const isAccent=/var\(\s*--accent(-deep)?\s*\)/.test(styleStr);
+      if(theme&&isAccent){
+        styleStr=styleStr
+          .replace(/var\(\s*--accent-deep\s*\)/g,theme.accentDeep)
+          .replace(/var\(\s*--accent\s*\)/g,theme.accent);
+      }
+      const roleAttr=isAccent?' data-role="accent"':"";
+      out+=`<span style="${styleObjToCss(parseInlineStyle(styleStr))}"${roleAttr}>${escapeHtmlExport(m[2])}</span>`;
     }
-    else if(m[3]!==undefined) out+=wrap(`<strong>${escapeHtmlExport(m[3])}</strong>`);
-    else if(m[4]!==undefined) out+=wrap(`<em>${escapeHtmlExport(m[4])}</em>`);
-    else if(m[5]!==undefined) out+=wrap(`<s>${escapeHtmlExport(m[5])}</s>`);
-    else if(m[6]!==undefined) out+=wrap(`<u>${escapeHtmlExport(m[6])}</u>`);
+    else if(m[3]!==undefined) out+=`<strong>${escapeHtmlExport(m[3])}</strong>`;
+    else if(m[4]!==undefined) out+=`<em>${escapeHtmlExport(m[4])}</em>`;
+    else if(m[5]!==undefined) out+=`<s>${escapeHtmlExport(m[5])}</s>`;
+    else if(m[6]!==undefined) out+=`<u>${escapeHtmlExport(m[6])}</u>`;
     last=m.index+m[0].length;
   }
-  if(last<text.length) out+=wrap(escapeHtmlExport(text.slice(last)));
+  if(last<text.length) out+=escapeHtmlExport(text.slice(last));
   return out.replace(/\n/g,"<br>");
 }
 async function fetchRoomTranscript(room){
@@ -1102,13 +1115,10 @@ function buildHtmlExport(room,transcript,theme){
   // 티스토리 등 블로그 에디터는 붙여넣을 때 <style> 태그를 걸러내는 경우가 많아서,
   // class + 스타일시트 방식 대신 태그 하나하나에 style을 직접 박아넣는 방식으로
   // 만들었습니다. 이렇게 하면 <style> 블록이 통째로 사라져도 디자인이 유지됩니다.
-  // 이름·선택지·판정·강조하기 한 부분은 색을 지정하지 않고 비워둬서 티스토리 등 블로그
-  // 스킨의 기본 글자색을 그대로 따라가게 하고, 그 외 일반 텍스트는 검은색으로 고정합니다.
-  // (일반 텍스트에 강제로 검은색을 넣는 건 chatTextToHtml 쪽에서 처리합니다 — 한 줄 안에
-  //  강조된 부분과 일반 부분이 섞여 있을 수 있어서, 줄 전체가 아니라 구간별로 처리해야 합니다.)
+  // 이름·선택지도 테마색 대신 블로그 스킨의 기본 글자색(inherit)을 그대로 따라갑니다.
   const S={
-    line:"display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:inherit;font-family:'Noto Sans KR',sans-serif;",
-    anon:"text-align:center;padding:10px 0;font-size:inherit;font-family:'Noto Sans KR',sans-serif;",
+    line:"display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:inherit;font-family:'Noto Sans KR',sans-serif;color:inherit;",
+    anon:"text-align:center;color:inherit;padding:10px 0;font-size:inherit;font-family:'Noto Sans KR',sans-serif;",
     name:"color:inherit;font-weight:600;",
     nameDim:"color:inherit;opacity:0.65;",
     mono:"font-family:monospace;font-size:0.83em;color:inherit;opacity:0.55;",
@@ -1126,12 +1136,10 @@ function buildHtmlExport(room,transcript,theme){
   const tabsHtml=transcript.map(tab=>{
     const msgs=tab.messages.map(m=>{
       if(m.speaker==="narrate"||m.speaker==="system"){
-        // 서술은 일반 텍스트이므로 검은색으로 (안에 강조하기 한 부분이 있으면 그 부분만 블로그 기본색)
-        return `<div style="${S.anon}">${chatTextToHtml(m.text,true)}</div>`;
+        return `<div style="${S.anon}" data-role="narrate">${chatTextToHtml(m.text,theme)}</div>`;
       }
       if(m.speaker==="judge"){
-        // 판정 요청은 닉네임·선택지처럼 색이 들어간 요소라, 블로그 기본색을 그대로 따라갑니다.
-        return `<div style="${S.anon}">${chatTextToHtml(m.text,false)}</div>`;
+        return `<div style="${S.anon}" data-role="judge">${chatTextToHtml(m.text,theme)}</div>`;
       }
       if(m.speaker==="choice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
@@ -1139,15 +1147,15 @@ function buildHtmlExport(room,transcript,theme){
         const opts=d.options.map(opt=>{
           const picked=d.picked?.[opt];
           return picked
-            ? `<span style="${S.choicePicked}">${escapeHtmlExport(opt)}</span>`
-            : `<span style="${S.choice}">${escapeHtmlExport(opt)}</span>`;
+            ? `<span style="${S.choicePicked}" data-role="choice-picked">${escapeHtmlExport(opt)}</span>`
+            : `<span style="${S.choice}" data-role="choice">${escapeHtmlExport(opt)}</span>`;
         }).join(" ");
         return `<div style="${S.anon}">${opts}</div>`;
       }
       if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
         const body=d?`🎲 ${escapeHtmlExport(d.skillName)} <span style="${S.mono}">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span>`:escapeHtmlExport(m.text);
-        return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div></div>`;
+        return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${S.name}${S.nameDim}" data-role="char-name">${escapeHtmlExport(m.characterName||"")}</span> <span data-role="dialogue">${body}</span></div></div>`;
       }
       if(m.speaker==="image"){
         // 서술처럼 이름·시간 없이 가운데 정렬로 표시
@@ -1155,7 +1163,7 @@ function buildHtmlExport(room,transcript,theme){
       }
       const nameStyle=m.speaker==="ooc"?S.nameDim:S.name;
       const suffix=m.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
-      return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${nameStyle}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div></div>`;
+      return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${nameStyle}" data-role="char-name">${escapeHtmlExport(m.characterName||"")}</span>${suffix} <span data-role="dialogue">${chatTextToHtml(m.text,theme)}</span></div></div>`;
     }).join("\n");
     return `<section>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
   }).join("\n");
@@ -1163,7 +1171,7 @@ function buildHtmlExport(room,transcript,theme){
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtmlExport(room.title)} — 세션 기록</title>
 </head><body>
-<div style="font-family:'Noto Sans KR',sans-serif;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
+<div data-role="session-root" style="font-family:'Noto Sans KR',sans-serif;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
 ${tabsHtml}
 </div>
 </body></html>`;
@@ -1913,6 +1921,190 @@ function HandoutViewerModal({handouts,madness,onClose}){
   );
 }
 
+/* ============================== 배너 만들기 ============================== */
+// 한 줄 안에 색이 다른 여러 단어를 섞고 싶을 수 있어서, "조각(세그먼트)"을 하나씩
+// 쌓아서 한 줄로 이어붙이는 방식으로 만들었습니다. 각 조각은 스타일 있는 단어이거나
+// 그냥 이어주는 일반 텍스트일 수 있습니다. 완성되면 그 한 줄 전체를 채팅 입력창에 넣습니다.
+
+function BannerBuilderModal({onClose,onInsert}){
+  const savedPrefs=loadBannerPrefs();
+  const [segments,setSegments]=useState([]); // [{id,text,styled,color,useBg,bgColor,bold,italic,underline}]
+  const [draftText,setDraftText]=useState("");
+  const [styled,setStyled]=useState(savedPrefs?.styled??true);
+  const [color,setColor]=useState(savedPrefs?.color??"#355C9F");
+  const [useBg,setUseBg]=useState(savedPrefs?.useBg??false);
+  const [bgColor,setBgColor]=useState(savedPrefs?.bgColor??"#355C9F");
+  const [bold,setBold]=useState(savedPrefs?.bold??false);
+  const [italic,setItalic]=useState(savedPrefs?.italic??false);
+  const [underline,setUnderline]=useState(savedPrefs?.underline??false);
+  // 전체 줄을 배너 블록(배경 있는 타이틀 바)으로 감쌀지 여부
+  const [wrapBlock,setWrapBlock]=useState(savedPrefs?.wrapBlock??false);
+  const [blockBg,setBlockBg]=useState(savedPrefs?.blockBg??"#355C9F");
+  const [blockAlign,setBlockAlign]=useState(savedPrefs?.blockAlign??"center");
+  const [blockPadding,setBlockPadding]=useState(savedPrefs?.blockPadding??6);
+
+  // 색상·서식을 바꿀 때마다 이 기기에 자동으로 기억해둡니다. (텍스트 내용은 저장 대상 아님)
+  useEffect(()=>{
+    saveBannerPrefs({styled,color,useBg,bgColor,bold,italic,underline,wrapBlock,blockBg,blockAlign,blockPadding});
+  },[styled,color,useBg,bgColor,bold,italic,underline,wrapBlock,blockBg,blockAlign,blockPadding]);
+
+  const segStyleStr=seg=>{
+    const parts=[];
+    if(seg.styled){
+      parts.push(`color:${seg.color}`);
+      if(seg.useBg) parts.push(`background-color:${seg.bgColor}`);
+      if(seg.bold) parts.push(`font-weight:700`);
+      if(seg.italic) parts.push(`font-style:italic`);
+      if(seg.underline) parts.push(`text-decoration:underline`);
+    }
+    return parts.join(";");
+  };
+  const segReactStyle=seg=>({
+    color:seg.styled?seg.color:undefined,
+    backgroundColor:seg.styled&&seg.useBg?seg.bgColor:undefined,
+    fontWeight:seg.styled&&seg.bold?700:undefined,
+    fontStyle:seg.styled&&seg.italic?"italic":undefined,
+    textDecoration:seg.styled&&seg.underline?"underline":undefined,
+  });
+
+  const addSegment=()=>{
+    const t=draftText;if(!t)return;
+    setSegments([...segments,{id:newId(),text:t,styled,color,useBg,bgColor,bold,italic,underline}]);
+    setDraftText("");
+  };
+  const removeSegment=id=>setSegments(segments.filter(s=>s.id!==id));
+
+  const buildLine=()=>segments.map(s=>s.styled?`<span style="${segStyleStr(s)}">${s.text}</span>`:s.text).join("");
+
+  const insert=()=>{
+    if(segments.length===0)return;
+    let line=buildLine();
+    if(wrapBlock){
+      const blockStyle=`color:#fff;background-color:${blockBg};text-align:${blockAlign};display:block;padding:${blockPadding}px`;
+      line=`<span style="${blockStyle}">${line}</span>`;
+    }
+    onInsert(line);
+    setSegments([]);
+  };
+
+  return(
+    <div className="coc-modal-backdrop" onClick={onClose}>
+      <div className="coc-modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>배너 만들기</div>
+            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
+          </div>
+
+          {/* 완성된 한 줄 미리보기 */}
+          <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:12,marginBottom:14,minHeight:20}}>
+            <div className="coc-label" style={{marginBottom:6}}>완성된 한 줄</div>
+            {segments.length===0?(
+              <div style={{fontSize:12.5,color:"var(--text-faint)"}}>조각을 추가해보세요</div>
+            ):(
+              <div style={wrapBlock?{color:"#fff",backgroundColor:blockBg,textAlign:blockAlign,display:"block",padding:blockPadding+"px",borderRadius:4}:{fontSize:13.5}}>
+                {segments.map(s=><span key={s.id} style={segReactStyle(s)}>{s.text}</span>)}
+              </div>
+            )}
+          </div>
+
+          {/* 추가된 조각 목록 */}
+          {segments.length>0&&(
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {segments.map(s=>(
+                <div key={s.id} style={{display:"flex",alignItems:"center",gap:5,background:"#fff",border:"1px solid var(--border)",borderRadius:999,padding:"4px 5px 4px 10px",fontSize:11.5}}>
+                  <span style={segReactStyle(s)}>{s.text}</span>
+                  <button type="button" onClick={()=>removeSegment(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:12.5,lineHeight:1}}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="coc-divider"/>
+
+          {/* 조각 만들기 */}
+          <div className="coc-label" style={{marginBottom:6}}>조각 추가</div>
+          <input className="coc-input" value={draftText} onChange={e=>setDraftText(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSegment();}}}
+            placeholder="단어나 문구 입력 (띄어쓰기도 직접 포함해주세요)" style={{marginBottom:10}}/>
+
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+            <input type="checkbox" checked={styled} onChange={e=>setStyled(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+            <span className="coc-label">이 조각에 스타일 적용</span>
+          </div>
+
+          {styled&&(
+            <div style={{opacity:styled?1:0.4,marginBottom:10}}>
+              <div style={{display:"flex",gap:14,marginBottom:10}}>
+                <div style={{flex:1}}>
+                  <div className="coc-label" style={{marginBottom:5}}>글자색</div>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+                    <input className="coc-input coc-mono" value={color} onChange={e=>setColor(e.target.value)} style={{fontSize:11.5}}/>
+                  </div>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+                    <input type="checkbox" checked={useBg} onChange={e=>setUseBg(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+                    <span className="coc-label">배경색</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,opacity:useBg?1:0.4}}>
+                    <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:useBg?"pointer":"default"}}/>
+                    <input className="coc-input coc-mono" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{fontSize:11.5}}/>
+                  </div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" className="coc-btn small" style={{background:bold?"var(--accent)":"#fff",color:bold?"#fff":"var(--text-dim)",border:"1px solid "+(bold?"var(--accent)":"var(--border)"),fontWeight:700}} onClick={()=>setBold(v=>!v)}>B</button>
+                <button type="button" className="coc-btn small" style={{background:italic?"var(--accent)":"#fff",color:italic?"#fff":"var(--text-dim)",border:"1px solid "+(italic?"var(--accent)":"var(--border)"),fontStyle:"italic"}} onClick={()=>setItalic(v=>!v)}>I</button>
+                <button type="button" className="coc-btn small" style={{background:underline?"var(--accent)":"#fff",color:underline?"#fff":"var(--text-dim)",border:"1px solid "+(underline?"var(--accent)":"var(--border)"),textDecoration:"underline"}} onClick={()=>setUnderline(v=>!v)}>U</button>
+              </div>
+            </div>
+          )}
+
+          <button type="button" className="coc-btn ghost" style={{width:"100%",justifyContent:"center",padding:10,marginBottom:16,borderStyle:"dashed"}} disabled={!draftText} onClick={addSegment}>
+            <Plus size={13}/> 이 조각 추가하기
+          </button>
+
+          <div className="coc-divider"/>
+
+          {/* 전체 줄을 배너 블록으로 감싸기 (선택) */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+            <input type="checkbox" checked={wrapBlock} onChange={e=>setWrapBlock(e.target.checked)} style={{width:13,height:13,cursor:"pointer"}}/>
+            <span className="coc-label">완성된 줄 전체를 타이틀 바처럼 감싸기</span>
+          </div>
+          {wrapBlock&&(
+            <div style={{display:"flex",gap:14,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <div className="coc-label" style={{marginBottom:5}}>배경색</div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <input type="color" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+                  <input className="coc-input coc-mono" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{fontSize:11.5}}/>
+                </div>
+              </div>
+              <div style={{flex:1}}>
+                <div className="coc-label" style={{marginBottom:5}}>정렬</div>
+                <div style={{display:"flex",gap:4}}>
+                  {[["left","왼"],["center","중"],["right","오"]].map(([v,l])=>(
+                    <button key={v} type="button" className="coc-btn small" style={{flex:1,justifyContent:"center",background:blockAlign===v?"var(--accent)":"#fff",color:blockAlign===v?"#fff":"var(--text-dim)",border:"1px solid "+(blockAlign===v?"var(--accent)":"var(--border)")}} onClick={()=>setBlockAlign(v)}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={segments.length===0} onClick={insert}>
+            채팅 입력창에 삽입
+          </button>
+          <div style={{fontSize:11,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
+            "조각 추가"로 색이 다른 여러 단어를 계속 쌓은 뒤, 한 번에 삽입하세요.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DicePanel({char,onRollToChat,roomId}){
   const [open,setOpen]=useState(false);
   const [tab,setTab]=useState("roll");
@@ -2077,7 +2269,7 @@ function DicePanel({char,onRollToChat,roomId}){
 }
 
 
-function ChatScreen({room,userCode,profile,character,theme,onChangeCharacter,onSwitchCharacter,onBack}){
+function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchCharacter,onBack}){
   const [tabs,setTabs]=useState([{id:"main",label:"메인"}]);
   const [activeTab,setActiveTab]=useState("main");
   const [newTabName,setNewTabName]=useState("");
@@ -2256,26 +2448,8 @@ function ChatScreen({room,userCode,profile,character,theme,onChangeCharacter,onS
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
   const [showImgPopover,setShowImgPopover]=useState(false);
   const [imgUrlInput,setImgUrlInput]=useState("");
+  const [showBannerBuilder,setShowBannerBuilder]=useState(false);
   const imgPopoverRef=useRef(null);
-  // 강조하기: 채팅 입력창에서 드래그로 선택한 부분을, 지금 로그인한 사람이 설정해 둔
-  // 테마색(accentDeep)으로 감싸줍니다. 텍스트 자체에 색이 그대로 저장되기 때문에
-  // 나중에 다른 사람이 봐도(그 사람 테마와 상관없이) 같은 색으로 보입니다.
-  const highlightColor=theme?.accentDeep||theme?.accent||"#355C9F";
-  const applyHighlight=()=>{
-    const ta=inputRef.current;
-    if(!ta)return;
-    const start=ta.selectionStart, end=ta.selectionEnd;
-    if(start==null||end==null||start===end)return; // 선택된 부분이 없으면 아무 것도 하지 않음
-    const selected=text.slice(start,end);
-    const wrapped=`<span style="color:${highlightColor}">${selected}</span>`;
-    const nextText=text.slice(0,start)+wrapped+text.slice(end);
-    setText(nextText);
-    requestAnimationFrame(()=>{
-      ta.focus();
-      const pos=start+wrapped.length;
-      ta.setSelectionRange(pos,pos);
-    });
-  };
   useEffect(()=>{
     if(!showImgPopover)return;
     const h=e=>{ if(imgPopoverRef.current&&!imgPopoverRef.current.contains(e.target)) setShowImgPopover(false); };
@@ -2471,6 +2645,21 @@ function ChatScreen({room,userCode,profile,character,theme,onChangeCharacter,onS
       ok=await doSend(gmTab,t,name,profile.avatar);
     }else{ok=await doSend("ic",t,char.name,char.avatar);}
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
+  };
+
+  // 입력창에서 드래그로 선택한 부분을 테마색으로 감쌉니다. var(--accent-deep)를 쓰기 때문에
+  // 채팅에 뜰 때 보는 사람마다 "자기 자신의" 테마색으로 보여요 (선택지 강조 표시와 같은 원리).
+  const emphasizeSelection=()=>{
+    const el=inputRef.current;
+    if(!el)return;
+    const start=el.selectionStart,end=el.selectionEnd;
+    if(start===end)return; // 선택된 부분이 없으면 아무것도 안 함
+    const selected=text.slice(start,end);
+    const wrapped=`<span style="color:var(--accent-deep);font-weight:700">${selected}</span>`;
+    const next=text.slice(0,start)+wrapped+text.slice(end);
+    setText(next);
+    const newPos=start+wrapped.length;
+    setTimeout(()=>{ el.focus(); el.setSelectionRange(newPos,newPos); },10);
   };
 
   // 이미지 메시지 전송 공통 로직 (파일 업로드든 외부 링크든 동일하게 처리)
@@ -2797,9 +2986,7 @@ function ChatScreen({room,userCode,profile,character,theme,onChangeCharacter,onS
                 onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}/>
             </div>
           )}
-          <button type="button" className="coc-btn ghost small" title="입력창에서 강조하고 싶은 부분을 드래그로 선택한 뒤 눌러주세요" onClick={applyHighlight}>
-            <Highlighter size={12}/> 강조하기
-          </button>
+          {isGM&&<button type="button" className="coc-btn ghost small" onClick={()=>setShowBannerBuilder(true)}>배너 만들기</button>}
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -2832,6 +3019,11 @@ function ChatScreen({room,userCode,profile,character,theme,onChangeCharacter,onS
           </div>
         ):(
           <>
+            <div style={{display:"flex",gap:7,marginBottom:6}}>
+              <button type="button" className="coc-btn ghost small" onClick={emphasizeSelection} title="입력창에서 텍스트를 드래그해 선택한 뒤 눌러주세요">
+                <span style={{color:"var(--accent-deep)",fontWeight:700}}>강조</span>하기
+              </button>
+            </div>
             <div style={{display:"flex",gap:7}}>
               <textarea ref={inputRef} className="coc-input" rows={2} value={text}
                 onChange={e=>setText(e.target.value)} onKeyDown={handleKeyDown}
@@ -2847,6 +3039,12 @@ function ChatScreen({room,userCode,profile,character,theme,onChangeCharacter,onS
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
+      {showBannerBuilder&&(
+        <BannerBuilderModal
+          onClose={()=>setShowBannerBuilder(false)}
+          onInsert={markup=>setText(prev=>prev?prev+"\n"+markup:markup)}
+        />
+      )}
       <DicePanel char={char} onRollToChat={sendDice} roomId={room.id}/>
     </div>
   );
@@ -2970,7 +3168,7 @@ function AppInner(){
   if(activeRoom&&!activeChar){
     body=<CharacterSelectScreen room={activeRoom} userCode={user.code} onSelect={c=>setActiveChar(c)} onBack={()=>setActiveRoom(null)}/>;
   }else if(activeRoom&&activeChar){
-    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} character={activeChar} theme={theme} onChangeCharacter={()=>setActiveChar(null)} onSwitchCharacter={c=>setActiveChar(c)} onBack={()=>{setActiveRoom(null);setActiveChar(null);}}/>;
+    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} character={activeChar} onChangeCharacter={()=>setActiveChar(null)} onSwitchCharacter={c=>setActiveChar(c)} onBack={()=>{setActiveRoom(null);setActiveChar(null);}}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectPreset={handleThemePreset} onSelectCustom={handleThemeCustom}/>;
   }else if(tab==="profile"){
