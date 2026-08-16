@@ -138,6 +138,9 @@ const CSS = `
 .chat-font, .chat-font * { font-family: 'RIDIBatang', 'Noto Sans KR', sans-serif !important; }
 .chat-font .coc-mono { font-family: 'JetBrains Mono', monospace !important; }
 * { box-sizing: border-box; }
+/* 브라우저가 기본으로 주는 body 여백(보통 8px) 때문에 화면 딱 맞춤 레이아웃에서도
+   아주 살짝 스크롤이 생기는 경우가 있어서, 여백을 0으로 리셋합니다. */
+html, body { margin: 0; padding: 0; }
 .coc-root {
   --bg: #ffffff;
   --bg-card: #ffffff;
@@ -253,7 +256,7 @@ function themeVars(t) {
     "--bg-panel": t.bgPanel,
     "--border": t.border,
     "--border-soft": t.borderSoft,
-    background: `radial-gradient(ellipse 700px 380px at 15% -8%, ${t.bgGrad1} 0%, transparent 60%), radial-gradient(ellipse 700px 380px at 105% 0%, ${t.bgGrad2} 0%, transparent 55%), #fff`,
+    background: "#fff",
   };
 }
 
@@ -474,6 +477,7 @@ function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,compa
             <input className="coc-input coc-mono" type="number" value={characteristics[k]}
               onChange={e=>setCharacteristics({...characteristics,[k]:parseInt(e.target.value)||0})}
               onWheel={e=>e.currentTarget.blur()}
+              onFocus={e=>e.target.select()}
               style={{textAlign:"center",padding:"5px 3px",fontSize:15,color:"var(--accent-deep)"}}/>
             {allowRoll&&<button type="button" className="coc-btn ghost small" style={{padding:5}} onClick={()=>setCharacteristics({...characteristics,[k]:rollChar(k)})}><Dice5 size={11}/></button>}
           </div>
@@ -507,6 +511,7 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
         <input className="coc-mono" type="number" value={derived[key]}
           onChange={e=>setDerived({...derived,[key]:parseInt(e.target.value)||0})}
           onWheel={e=>e.currentTarget.blur()}
+          onFocus={e=>e.target.select()}
           style={{width:40,background:"transparent",border:"none",color:"var(--accent-deep)",fontSize:16,textAlign:"right",outline:"none"}}/>
         {maxKey&&<><span style={{color:"var(--text-faint)"}}>/</span><span className="coc-mono" style={{fontSize:12.5,color:"var(--text-dim)"}}>{derived[maxKey]}</span></>}
       </div>
@@ -554,6 +559,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
                 <input className="coc-mono" type="number" step={5} min={0} max={99} value={skills[name]??0} readOnly={readOnly}
                   onChange={e=>setSkills({...skills,[name]:Math.max(0,Math.min(99,parseInt(e.target.value)||0))})}
                   onWheel={e=>e.currentTarget.blur()}
+                  onFocus={e=>e.target.select()}
                   style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
               </div>
             ))}
@@ -576,6 +582,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
                     <input className="coc-mono" type="number" step={5} min={0} max={99} value={c.value??0} readOnly={readOnly}
                       onChange={e=>updateCustom(c.id,{value:Math.max(0,Math.min(99,parseInt(e.target.value)||0))})}
                       onWheel={e=>e.currentTarget.blur()}
+                      onFocus={e=>e.target.select()}
                       style={{width:44,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
                     {!readOnly&&(
                       <button type="button" onClick={()=>removeCustom(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
@@ -1536,11 +1543,21 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   const isChoice=speaker==="choice";
   const isMine=group.userCode===myUserCode;
 
+  // 모바일에서는 onDoubleClick(더블클릭) 이벤트가 브라우저의 "더블탭 확대" 제스처에
+  // 가로막혀서 잘 안 먹히는 경우가 많아요. onClick + 시간차 비교로 직접 더블클릭/더블탭을
+  // 감지하면 데스크톱·모바일 어디서나 확실하게 동작합니다.
+  const lastTapRef=useRef(0);
+  const withDoubleTap=action=>()=>{
+    const now=Date.now();
+    if(now-lastTapRef.current<350){ lastTapRef.current=0; action(); }
+    else lastTapRef.current=now;
+  };
+
   // GM이 보낸 이미지: 서술처럼 아바타·이름 없이 가운데 정렬로 표시
   if(isImg){
     return(
       <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5,cursor:isMine?"pointer":"default"}}
-        onDoubleClick={()=>isMine&&onEdit(items[0])}>
+        onClick={withDoubleTap(()=>isMine&&onEdit(items[0]))}>
         {lines.map((line,i)=>(
           <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:280,maxHeight:220,borderRadius:8,objectFit:"contain"}}/>
         ))}
@@ -1597,7 +1614,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       return(
         <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
           <div style={{position:"relative",display:"inline-flex",alignItems:"center",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:999,background:"var(--bg-panel)",padding:"8px 18px",textAlign:"center",cursor:canEdit?"pointer":"default"}}
-            onDoubleClick={()=>canEdit&&items.length===1&&onEdit(items[0])}>
+            onClick={withDoubleTap(()=>canEdit&&items.length===1&&onEdit(items[0]))}>
             <span style={{fontSize:14,color:"var(--accent-deep)",fontWeight:600}}>
               {lines.map((line,i)=>(
                 <span key={i}>
@@ -1613,7 +1630,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
     return(
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
         <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8,cursor:canEdit?"pointer":"default"}}
-          onDoubleClick={()=>canEdit&&items.length===1&&onEdit(items[0])}>
+          onClick={withDoubleTap(()=>canEdit&&items.length===1&&onEdit(items[0]))}>
           {lines.map((line,i)=>(
             <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
               <FormattedText text={line}/>
@@ -1626,7 +1643,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 
   return(
     <div style={{display:"flex",gap:9,padding:"6px 0",cursor:isMine&&!isDice?"pointer":"default"}}
-      onDoubleClick={()=>isMine&&!isDice&&items.length===1&&onEdit(items[0])}>
+      onClick={withDoubleTap(()=>isMine&&!isDice&&items.length===1&&onEdit(items[0]))}>
       <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:1}}>
         {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={11} color="var(--accent-soft)" style={{margin:8}}/>}
       </div>
