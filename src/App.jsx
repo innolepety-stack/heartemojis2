@@ -1108,7 +1108,7 @@ function buildHtmlExport(room,transcript){
             ? `<span style="${S.choicePicked}">${escapeHtmlExport(opt)} · ${escapeHtmlExport(picked.charName||"")}</span>`
             : `<span style="${S.choice}">${escapeHtmlExport(opt)}</span>`;
         }).join(" ");
-        return `<div style="${S.anon}"><div style="${S.choiceTitle}">조사할 곳을 선택하세요</div>${opts}</div>`;
+        return `<div style="${S.anon}"><div style="${S.choiceTitle}">당신은 무엇이든 선택할 수 있다.</div>${opts}</div>`;
       }
       if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
