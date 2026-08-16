@@ -57,6 +57,32 @@ function saveHeartPos(pos) {
   try { localStorage.setItem(HEART_POS_KEY, JSON.stringify(pos)); } catch {}
 }
 
+// 새 메시지 알림음 — 음원 파일 없이 Web Audio API로 짧은 "딩" 소리를 직접 만들어 재생합니다.
+function playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1180, ctx.currentTime + 0.09);
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+    setTimeout(()=>ctx.close(), 500);
+  } catch {}
+}
+// 알림음 켜짐/꺼짐은 이 기기(브라우저)에 기억해둡니다.
+const SOUND_PREF_KEY = "heartEmojiSoundEnabled";
+function loadSoundPref() {
+  try { const raw = localStorage.getItem(SOUND_PREF_KEY); return raw===null ? true : raw==="1"; } catch { return true; }
+}
+function saveSoundPref(v) {
+  try { localStorage.setItem(SOUND_PREF_KEY, v ? "1" : "0"); } catch {}
+}
+
 const SKILL_LIST = [
   ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
   ["기계수리", 10], ["도약", 20], ["듣기", 20], ["말재주", 5], ["매혹", 15],
@@ -952,7 +978,7 @@ function JoinRoomModal({onClose,onJoined,userCode}){
   );
 }
 
-function RoomsTab({userCode,onEnterRoom}){
+function RoomsTab({userCode,onEnterRoom,theme}){
   const [allRooms,setAllRooms]=useState([]);
   const [loading,setLoading]=useState(true);
   const [showCreate,setShowCreate]=useState(false);
@@ -1016,7 +1042,7 @@ function RoomsTab({userCode,onEnterRoom}){
       {editing&&<RoomModal room={editing} onClose={()=>setEditing(null)}
         onSaved={()=>setEditing(null)}
         onDeleted={()=>setEditing(null)}
-        userCode={userCode}/>}
+        userCode={userCode} theme={theme}/>}
     </div>
   );
 }
@@ -1075,24 +1101,25 @@ async function fetchRoomTranscript(room){
   return ids.map(id=>({id,label:labelOf[id]||id,messages:(byTab[id]||[]).sort((a,b)=>a.timestamp-b.timestamp)}));
 }
 
-function buildHtmlExport(room,transcript){
+function buildHtmlExport(room,transcript,theme){
   // 티스토리 등 블로그 에디터는 붙여넣을 때 <style> 태그를 걸러내는 경우가 많아서,
   // class + 스타일시트 방식 대신 태그 하나하나에 style을 직접 박아넣는 방식으로
   // 만들었습니다. 이렇게 하면 <style> 블록이 통째로 사라져도 디자인이 유지됩니다.
+  const t=theme||THEMES.sky;
   const S={
     line:"padding:5px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;color:#223142;",
     anon:"text-align:center;color:#223142;padding:10px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;",
     time:"font-family:monospace;font-size:12.5px;color:#9db2c0;margin-right:6px;",
-    name:"color:#1f6fa0;font-weight:600;",
+    name:`color:${t.accentDeep};font-weight:600;`,
     nameDim:"color:#647c8c;",
     mono:"font-family:monospace;font-size:12.5px;color:#9db2c0;",
     ooc:"border:1px solid #cfe8f7;border-radius:3px;padding:0 4px;font-family:monospace;font-size:12.5px;color:#9db2c0;",
-    img:"max-width:320px;border-radius:8px;border:1px solid #cfe8f7;margin-top:6px;display:block;",
+    img:"max-width:320px;border-radius:8px;border:1px solid #cfe8f7;margin:0 auto;display:block;",
     empty:"color:#9db2c0;font-size:14.5px;padding:10px 0;font-family:'Noto Sans KR',sans-serif;",
-    choiceTitle:"font-size:11.5px;color:#1f6fa0;font-weight:700;margin-bottom:8px;font-family:'Noto Sans KR',sans-serif;",
-    choice:"display:inline-block;border:1.5px solid #2e9bdb;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;font-weight:600;color:#2e9bdb;font-family:'Noto Sans KR',sans-serif;",
+    choiceTitle:`font-size:11.5px;color:${t.accentDeep};font-weight:700;margin-bottom:8px;font-family:'Noto Sans KR',sans-serif;`,
+    choice:`display:inline-block;border:1.5px solid ${t.accent};border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;font-weight:600;color:${t.accent};font-family:'Noto Sans KR',sans-serif;`,
     choicePicked:"display:inline-block;border:1.5px solid #cfe8f7;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;color:#9db2c0;text-decoration:line-through;font-family:'Noto Sans KR',sans-serif;",
-    h2:"color:#1f6fa0;font-size:16px;border-bottom:1px solid #e2f2fb;padding-bottom:6px;margin-top:32px;font-family:'Noto Sans KR',sans-serif;",
+    h2:`color:${t.accentDeep};font-size:16px;border-bottom:1px solid #e2f2fb;padding-bottom:6px;margin-top:32px;font-family:'Noto Sans KR',sans-serif;`,
   };
   const tabsHtml=transcript.map(tab=>{
     const msgs=tab.messages.map(m=>{
@@ -1117,7 +1144,8 @@ function buildHtmlExport(room,transcript){
         return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div>`;
       }
       if(m.speaker==="image"){
-        return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${S.name}">${escapeHtmlExport(m.characterName||"")}</span><br><img src="${m.text}" style="${S.img}"></div>`;
+        // 서술처럼 이름·시간 없이 가운데 정렬로 표시
+        return `<div style="${S.anon}"><img src="${m.text}" style="${S.img}"></div>`;
       }
       const nameStyle=m.speaker==="ooc"?S.nameDim:S.name;
       const suffix=m.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
@@ -1129,8 +1157,6 @@ function buildHtmlExport(room,transcript){
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtmlExport(room.title)} — 세션 기록</title>
 </head><body style="font-family:'Noto Sans KR',sans-serif;background:#fff;color:#223142;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
-<h1 style="color:#1f6fa0;font-size:22.5px;margin-bottom:4px;">${escapeHtmlExport(room.title)}</h1>
-<div style="color:#9db2c0;font-size:14.5px;margin-bottom:28px;font-family:monospace;">${escapeHtmlExport(fmtDate(room.date))} · 내보낸 날짜 ${escapeHtmlExport(fmtDate(todayLocalISO()))}</div>
 ${tabsHtml}
 </body></html>`;
 }
@@ -1178,7 +1204,7 @@ function downloadFile(filename,content,mime){
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 
-function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
+function RoomModal({room,onClose,onSaved,onDeleted,userCode,theme}){
   const isEdit=!!room;
   const [title,setTitle]=useState(room?.title||"");
   const [date,setDate]=useState(room?.date||todayLocalISO());
@@ -1195,7 +1221,7 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
     try{
       const transcript=await fetchRoomTranscript(room);
       const base=safeFileName(room.title)+"_"+(room.date||"session");
-      if(format==="html") downloadFile(base+".html", buildHtmlExport(room,transcript), "text/html;charset=utf-8");
+      if(format==="html") downloadFile(base+".html", buildHtmlExport(room,transcript,theme), "text/html;charset=utf-8");
       else downloadFile(base+".txt", buildTextExport(room,transcript), "text/plain;charset=utf-8");
     }catch(err){
       alert("내보내기에 실패했습니다: "+(err?.message||String(err)));
@@ -2284,6 +2310,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   // 이후로는(같은 화면에 머무는 동안) URL이 바뀌어도 다시 탭할 필요 없이 이어집니다.
   const [bgmStarted,setBgmStarted]=useState(false);
   const bottomRef=useRef(null);
+  const msgListRef=useRef(null);
   const inputRef=useRef(null);
   const imgInputRef=useRef(null);
   const firstLoad=useRef({});
@@ -2347,6 +2374,40 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const last=presenceMap[code]?.lastSeen;
     return !!last&&(Date.now()-last<ONLINE_THRESHOLD_MS);
   };
+
+  // "입력 중..." 표시: 텍스트를 칠 때마다 매번 저장하면 낭비가 심해서, 최소 2.5초 간격으로만
+  // 신호를 보내고, 메시지를 보내거나 입력창을 비우면 즉시 지웁니다. 다른 사람 화면에서는
+  // 그 신호가 최근 것(4초 이내)일 때만 "입력 중" 으로 표시합니다.
+  const TYPING_THRESHOLD_MS=4000;
+  const lastTypingBeatRef=useRef(0);
+  useEffect(()=>{
+    const key=`typing:${room.id}:${activeTab}:${userCode}`;
+    if(text.trim().length>0){
+      const now=Date.now();
+      if(now-lastTypingBeatRef.current>2500){
+        lastTypingBeatRef.current=now;
+        storeSet(key,{userCode,charName:char?.name||profile.name||userCode,lastSeen:now},true);
+      }
+    }else{
+      lastTypingBeatRef.current=0;
+      storeDelete(key,true);
+    }
+  },[text,room.id,activeTab,userCode,char?.name,profile.name]);
+  useEffect(()=>()=>{ storeDelete(`typing:${room.id}:${activeTab}:${userCode}`,true); },[room.id,activeTab,userCode]);
+
+  const [typingMap,setTypingMap]=useState({});
+  useEffect(()=>{
+    const unsub=storeListenPrefix(`typing:${room.id}:${activeTab}:`,list=>{
+      const map={};
+      list.forEach(x=>{ map[x.value.userCode]=x.value; });
+      setTypingMap(map);
+    });
+    return()=>unsub();
+  },[room.id,activeTab]);
+  const typingNames=Object.entries(typingMap)
+    .filter(([code,v])=>code!==userCode&&Date.now()-v.lastSeen<TYPING_THRESHOLD_MS)
+    .map(([,v])=>v.charName);
+
   // 참가자 목록: 나 + GM + 캐릭터를 만든 다른 사람들 (중복 없이)
   const [showParticipants,setShowParticipants]=useState(false);
   const participantsRef=useRef(null);
@@ -2372,6 +2433,12 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     if(!("Notification" in window)){ alert("이 브라우저에서는 알림 기능을 지원하지 않아요."); return; }
     const perm=await Notification.requestPermission();
     setNotifPermission(perm);
+  };
+
+  // 새 메시지 알림음 켜기/끄기 (이 기기에 기억됨)
+  const [soundEnabled,setSoundEnabled]=useState(loadSoundPref);
+  const toggleSound=()=>{
+    setSoundEnabled(v=>{ saveSoundPref(!v); return !v; });
   };
 
   // GM이 참가자에게 광기(장기적/단기적)를 부여하는 기능
@@ -2447,10 +2514,23 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       const filtered=activeTab==="main"
         ?list.filter(x=>!x.value.tabId||x.value.tabId==="main")
         :list;
+      let hasNewMsg=false;
+      let hasNewFromOthers=false;
+      let wasNearBottom=false;
+      if(msgListRef.current){
+        const el=msgListRef.current;
+        wasNearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<120;
+      }
       setTabMsgMaps(prev=>{
         const incoming=new Map();
         for(const{value:m}of filtered)incoming.set(m.id,m);
         const prevMap=prev[activeTab]||new Map();
+        incoming.forEach((m,id)=>{
+          if(!prevMap.has(id)){
+            hasNewMsg=true;
+            if(m.userCode!==userCode) hasNewFromOthers=true;
+          }
+        });
         // 브라우저 알림: 처음 이 탭을 여는 순간(전체 과거 기록 불러오기)은 제외하고,
         // 새로 도착한 메시지 중 내가 보낸 게 아니고, 탭이 백그라운드일 때만 알립니다.
         if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"){
@@ -2476,9 +2556,19 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
         });
         return{...prev,[activeTab]:merged};
       });
-      if(!firstLoad.current[activeTab]){
+      const wasFirstLoad=!firstLoad.current[activeTab];
+      if(wasFirstLoad){
         firstLoad.current[activeTab]=true;
         setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end"}),50);
+      }else if(hasNewMsg&&wasNearBottom){
+        // 이미 채팅 맨 아래 근처를 보고 있었다면, 새 메시지가 오면 자동으로 따라 내려갑니다.
+        // (예전 메시지를 읽으려고 위로 스크롤해둔 상태라면 방해하지 않고 그대로 둡니다.)
+        setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"smooth"}),50);
+      }
+      // 방에 처음 들어가서 기존 채팅 전체를 불러오는 순간에는 소리가 안 나야 하므로,
+      // 처음 로드가 아닐 때만(=진짜 새로 도착한 메시지일 때만) 재생합니다.
+      if(!wasFirstLoad&&hasNewFromOthers&&soundEnabled){
+        playNotifSound();
       }
     });
     return()=>unsub();
@@ -2541,7 +2631,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   };
 
   const doSend=useCallback(async(sp,msgText,charName,av,tabId)=>{
-    const t=msgText.trim();if(!t)return false;
+    // 공백(스페이스, 　 같은 전각 공백 포함)만 있는 메시지도 여백용으로 보낼 수 있게,
+    // trim해서 비었는지 검사하지 않고 원문 길이만 확인합니다. (내용은 trim하지 않고 그대로 저장)
+    if(!msgText||msgText.length===0)return false;
+    const t=msgText;
     const tid=tabId||activeTab;
     const msgId=newId();
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
@@ -2553,7 +2646,8 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   },[room.id,userCode,activeTab]);
 
   const send=async()=>{
-    const raw=text.trim();if(!raw)return;
+    const raw=text;
+    if(!raw||raw.length===0)return;
     const t=resolveInlineDice(raw);
     let ok=false;
     if(isGM&&speaker==="gm"){
@@ -2667,6 +2761,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
               {notifPermission==="granted"?"알림 켜짐":notifPermission==="denied"?"알림 차단됨":"알림 켜기"}
             </button>
           )}
+          <button type="button" className="coc-btn ghost small" onClick={toggleSound}
+            style={{color:soundEnabled?"var(--accent-deep)":"var(--text-faint)"}}>
+            {soundEnabled?"소리 켜짐":"소리 꺼짐"}
+          </button>
           <div style={{position:"relative"}} ref={participantsRef}>
             <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)"}}>
               <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:10.5}}>♥</span>
@@ -2814,7 +2912,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 메시지 목록 — GM 서브탭/NPC 이름 입력창 등이 아래에 추가로 나타나도
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
-      <div className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",minHeight:150,overflowY:"auto",padding:"10px",display:"flex",flexDirection:"column",gap:5}}>
+      <div ref={msgListRef} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",minHeight:150,overflowY:"auto",padding:"10px",display:"flex",flexDirection:"column",gap:5}}>
         {groups.length===0&&(
           <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
             <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
@@ -2823,6 +2921,11 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
         {groups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice}/>)}
         <div ref={bottomRef}/>
       </div>
+      {typingNames.length>0&&(
+        <div style={{fontSize:11.5,color:"var(--text-faint)",padding:"4px 4px 0",flexShrink:0}}>
+          {typingNames.length===1?`${typingNames[0]}님이 입력 중...`:`${typingNames.join(", ")}님이 입력 중...`}
+        </div>
+      )}
 
       {/* 메시지 수정 모달 */}
       {editingMsg&&(
@@ -3061,7 +3164,7 @@ function AppInner(){
   }else if(tab==="profile"){
     body=profileLoaded&&<MyPage userCode={user.code} profile={profile} setProfile={setProfile}/>;
   }else{
-    body=<RoomsTab userCode={user.code} onEnterRoom={r=>setActiveRoom(r)}/>;
+    body=<RoomsTab userCode={user.code} onEnterRoom={r=>setActiveRoom(r)} theme={theme}/>;
   }
 
   return(
