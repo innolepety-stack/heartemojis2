@@ -984,6 +984,7 @@ function RoomsTab({userCode,onEnterRoom,theme}){
   const [showCreate,setShowCreate]=useState(false);
   const [showJoin,setShowJoin]=useState(false);
   const [editing,setEditing]=useState(null);
+  const [exportingRoom,setExportingRoom]=useState(null);
 
   useEffect(()=>{
     const unsub=storeListenPrefix("room:",list=>{
@@ -1027,6 +1028,7 @@ function RoomsTab({userCode,onEnterRoom,theme}){
                   </div>
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <button className="coc-btn ghost small" onClick={e=>{e.stopPropagation();setExportingRoom(r);}}>내보내기</button>
                   {isMyRoom&&(
                     <button className="coc-btn ghost small" onClick={e=>{e.stopPropagation();setEditing(r);}}><Settings size={11}/></button>
                   )}
@@ -1043,6 +1045,7 @@ function RoomsTab({userCode,onEnterRoom,theme}){
         onSaved={()=>setEditing(null)}
         onDeleted={()=>setEditing(null)}
         userCode={userCode} theme={theme}/>}
+      {exportingRoom&&<ExportModal room={exportingRoom} theme={theme} onClose={()=>setExportingRoom(null)}/>}
     </div>
   );
 }
@@ -1076,14 +1079,6 @@ function chatTextToHtml(text){
   if(last<text.length) out+=escapeHtmlExport(text.slice(last));
   return out.replace(/\n/g,"<br>");
 }
-// 서식 기호만 벗겨낸 순수 텍스트 (txt 내보내기용)
-function chatTextToPlain(text){
-  return text
-    .replace(/<span style="[^"<>]*">(.*?)<\/span>/g,"$1")
-    .replace(/\*\*(.+?)\*\*/g,"$1").replace(/\*(.+?)\*/g,"$1")
-    .replace(/~~(.+?)~~/g,"$1").replace(/__(.+?)__/g,"$1");
-}
-
 async function fetchRoomTranscript(room){
   const [msgEntries,tabsData]=await Promise.all([
     storeListValues(`chat:${room.id}:`,true),
@@ -1109,21 +1104,19 @@ function buildHtmlExport(room,transcript,theme){
   const S={
     line:"padding:5px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;color:#223142;",
     anon:"text-align:center;color:#223142;padding:10px 0;font-size:15px;font-family:'Noto Sans KR',sans-serif;",
-    time:"font-family:monospace;font-size:12.5px;color:#9db2c0;margin-right:6px;",
     name:`color:${t.accentDeep};font-weight:600;`,
     nameDim:"color:#647c8c;",
     mono:"font-family:monospace;font-size:12.5px;color:#9db2c0;",
     ooc:"border:1px solid #cfe8f7;border-radius:3px;padding:0 4px;font-family:monospace;font-size:12.5px;color:#9db2c0;",
-    img:"max-width:320px;border-radius:8px;border:1px solid #cfe8f7;margin:0 auto;display:block;",
+    img:"max-width:320px;border-radius:8px;margin:0 auto;display:block;",
     empty:"color:#9db2c0;font-size:14.5px;padding:10px 0;font-family:'Noto Sans KR',sans-serif;",
     choiceTitle:`font-size:11.5px;color:${t.accentDeep};font-weight:700;margin-bottom:8px;font-family:'Noto Sans KR',sans-serif;`,
     choice:`display:inline-block;border:1.5px solid ${t.accent};border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;font-weight:600;color:${t.accent};font-family:'Noto Sans KR',sans-serif;`,
-    choicePicked:"display:inline-block;border:1.5px solid #cfe8f7;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;color:#9db2c0;text-decoration:line-through;font-family:'Noto Sans KR',sans-serif;",
+    choicePicked:`display:inline-block;border:1.5px solid ${t.border};border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:13px;color:#9db2c0;text-decoration:line-through;font-family:'Noto Sans KR',sans-serif;`,
     h2:`color:${t.accentDeep};font-size:16px;border-bottom:1px solid #e2f2fb;padding-bottom:6px;margin-top:32px;font-family:'Noto Sans KR',sans-serif;`,
   };
   const tabsHtml=transcript.map(tab=>{
     const msgs=tab.messages.map(m=>{
-      const time=fmtTime(m.timestamp);
       if(m.speaker==="narrate"||m.speaker==="judge"||m.speaker==="system"){
         return `<div style="${S.anon}">${chatTextToHtml(m.text)}</div>`;
       }
@@ -1133,7 +1126,7 @@ function buildHtmlExport(room,transcript,theme){
         const opts=d.options.map(opt=>{
           const picked=d.picked?.[opt];
           return picked
-            ? `<span style="${S.choicePicked}">${escapeHtmlExport(opt)} · ${escapeHtmlExport(picked.charName||"")}</span>`
+            ? `<span style="${S.choicePicked}">${escapeHtmlExport(opt)}</span>`
             : `<span style="${S.choice}">${escapeHtmlExport(opt)}</span>`;
         }).join(" ");
         return `<div style="${S.anon}">${opts}</div>`;
@@ -1141,7 +1134,7 @@ function buildHtmlExport(room,transcript,theme){
       if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
         const body=d?`🎲 ${escapeHtmlExport(d.skillName)} <span style="${S.mono}">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span>`:escapeHtmlExport(m.text);
-        return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div>`;
+        return `<div style="${S.line}"><span style="${S.name}${S.nameDim}">${escapeHtmlExport(m.characterName||"")}</span> ${body}</div>`;
       }
       if(m.speaker==="image"){
         // 서술처럼 이름·시간 없이 가운데 정렬로 표시
@@ -1149,7 +1142,7 @@ function buildHtmlExport(room,transcript,theme){
       }
       const nameStyle=m.speaker==="ooc"?S.nameDim:S.name;
       const suffix=m.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
-      return `<div style="${S.line}"><span style="${S.time}">${time}</span> <span style="${nameStyle}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div>`;
+      return `<div style="${S.line}"><span style="${nameStyle}">${escapeHtmlExport(m.characterName||"")}</span>${suffix} ${chatTextToHtml(m.text)}</div>`;
     }).join("\n");
     return `<section><h2 style="${S.h2}">${escapeHtmlExport(tab.label)}</h2>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
   }).join("\n");
@@ -1161,40 +1154,6 @@ ${tabsHtml}
 </body></html>`;
 }
 
-function buildTextExport(room,transcript){
-  let out=`=== ${room.title} (${fmtDate(room.date)}) ===\n내보낸 날짜: ${fmtDate(todayLocalISO())}\n`;
-  transcript.forEach(tab=>{
-    out+=`\n\n[탭: ${tab.label}]\n`;
-    if(tab.messages.length===0){out+="(기록 없음)\n";return;}
-    tab.messages.forEach(m=>{
-      const time=fmtTime(m.timestamp);
-      if(m.speaker==="narrate"||m.speaker==="judge"||m.speaker==="system"){
-        out+=`[${time}] ${chatTextToPlain(m.text)}\n`;
-      }else if(m.speaker==="choice"){
-        let d=null;try{d=JSON.parse(m.text);}catch{}
-        if(d){
-          const opts=d.options.map(opt=>{
-            const picked=d.picked?.[opt];
-            return picked?`${opt}(선택됨: ${picked.charName||""})`:opt;
-          }).join(", ");
-          out+=`[${time}] (선택지) ${opts}\n`;
-        }else{
-          out+=`[${time}] (선택지)\n`;
-        }
-      }else if(m.speaker==="dice"){
-        let d=null;try{d=JSON.parse(m.text);}catch{}
-        out+=d?`[${time}] 🎲 ${d.skillName}/${d.value} → ${d.roll} → ${d.label}\n`:`[${time}] (다이스)\n`;
-      }else if(m.speaker==="image"){
-        out+=`[${time}] ${m.characterName}: (이미지 첨부됨)\n`;
-      }else{
-        const suffix=m.speaker==="ooc"?" (OOC)":"";
-        out+=`[${time}] ${m.characterName}${suffix}: ${chatTextToPlain(m.text)}\n`;
-      }
-    });
-  });
-  return out;
-}
-
 function downloadFile(filename,content,mime){
   const blob=new Blob([content],{type:mime});
   const url=URL.createObjectURL(blob);
@@ -1202,6 +1161,38 @@ function downloadFile(filename,content,mime){
   a.href=url;a.download=filename;
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+
+// GM뿐 아니라 참가자 누구나 자기 방 채팅 기록을 HTML로 내보낼 수 있는 간단한 모달
+function ExportModal({room,theme,onClose}){
+  const [exporting,setExporting]=useState(false);
+  const doExport=async()=>{
+    setExporting(true);
+    try{
+      const transcript=await fetchRoomTranscript(room);
+      const base=safeFileName(room.title)+"_"+(room.date||"session");
+      downloadFile(base+".html", buildHtmlExport(room,transcript,theme), "text/html;charset=utf-8");
+    }catch(err){
+      alert("내보내기에 실패했습니다: "+(err?.message||String(err)));
+    }
+    setExporting(false);
+  };
+  return(
+    <div className="coc-modal-backdrop" onClick={onClose}>
+      <div className="coc-modal" style={{maxWidth:400}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>채팅 기록 내보내기</div>
+            <button className="coc-btn ghost small" onClick={onClose} style={{padding:5}}><X size={12}/></button>
+          </div>
+          <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>"{room.title}"의 채팅 기록을 HTML 파일로 저장해요. 티스토리 등 다른 곳에 붙여넣어 백업할 수 있어요.</div>
+          <button className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} onClick={doExport} disabled={exporting}>
+            {exporting?"내보내는 중...":"HTML로 내보내기"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function RoomModal({room,onClose,onSaved,onDeleted,userCode,theme}){
@@ -1216,13 +1207,12 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode,theme}){
   const [regenerating,setRegenerating]=useState(false);
   const [copied,setCopied]=useState(false);
 
-  const handleExport=async(format)=>{
-    setExporting(format);
+  const handleExport=async()=>{
+    setExporting("html");
     try{
       const transcript=await fetchRoomTranscript(room);
       const base=safeFileName(room.title)+"_"+(room.date||"session");
-      if(format==="html") downloadFile(base+".html", buildHtmlExport(room,transcript,theme), "text/html;charset=utf-8");
-      else downloadFile(base+".txt", buildTextExport(room,transcript), "text/plain;charset=utf-8");
+      downloadFile(base+".html", buildHtmlExport(room,transcript,theme), "text/html;charset=utf-8");
     }catch(err){
       alert("내보내기에 실패했습니다: "+(err?.message||String(err)));
     }
@@ -1312,11 +1302,8 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode,theme}){
               <div className="coc-label" style={{marginBottom:6}}>채팅 기록 백업</div>
               <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:8}}>티스토리 등 다른 곳에 저장해두고 싶다면 먼저 내보내세요. 방을 삭제해도 백업 파일은 남아있어요.</div>
               <div style={{display:"flex",gap:8,marginBottom:14}}>
-                <button className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>handleExport("html")} disabled={!!exporting}>
+                <button className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={handleExport} disabled={!!exporting}>
                   {exporting==="html"?"내보내는 중...":"HTML로 내보내기"}
-                </button>
-                <button className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>handleExport("txt")} disabled={!!exporting}>
-                  {exporting==="txt"?"내보내는 중...":"TXT로 내보내기"}
                 </button>
               </div>
               <div style={{height:1,background:"var(--border-soft)",margin:"4px 0 10px"}}/>
@@ -1701,7 +1688,7 @@ function ChoiceCreatorModal({onClose,onCreate}){
 
   const addOption=()=>{
     const v=input.trim();
-    if(!v||options.includes(v))return;
+    if(!v)return;
     setOptions(o=>[...o,v]);setInput("");
   };
   const removeOption=i=>setOptions(o=>o.filter((_,idx)=>idx!==i));
