@@ -1044,7 +1044,7 @@ function RoomsTab({userCode,onEnterRoom,theme}){
       {editing&&<RoomModal room={editing} onClose={()=>setEditing(null)}
         onSaved={()=>setEditing(null)}
         onDeleted={()=>setEditing(null)}
-        userCode={userCode} theme={theme}/>}
+        userCode={userCode}/>}
       {exportingRoom&&<ExportModal room={exportingRoom} theme={theme} onClose={()=>setExportingRoom(null)}/>}
     </div>
   );
@@ -1149,8 +1149,10 @@ function buildHtmlExport(room,transcript,theme){
 
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtmlExport(room.title)} — 세션 기록</title>
-</head><body style="font-family:'Noto Sans KR',sans-serif;background:#fff;color:#223142;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
+</head><body>
+<div style="font-family:'Noto Sans KR',sans-serif;background:#fff;color:#223142;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
 ${tabsHtml}
+</div>
 </body></html>`;
 }
 
@@ -1195,29 +1197,17 @@ function ExportModal({room,theme,onClose}){
   );
 }
 
-function RoomModal({room,onClose,onSaved,onDeleted,userCode,theme}){
+function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
   const isEdit=!!room;
   const [title,setTitle]=useState(room?.title||"");
   const [date,setDate]=useState(room?.date||todayLocalISO());
   const [saving,setSaving]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
-  const [exporting,setExporting]=useState("");
   const [error,setError]=useState("");
   const [regenerating,setRegenerating]=useState(false);
   const [copied,setCopied]=useState(false);
 
-  const handleExport=async()=>{
-    setExporting("html");
-    try{
-      const transcript=await fetchRoomTranscript(room);
-      const base=safeFileName(room.title)+"_"+(room.date||"session");
-      downloadFile(base+".html", buildHtmlExport(room,transcript,theme), "text/html;charset=utf-8");
-    }catch(err){
-      alert("내보내기에 실패했습니다: "+(err?.message||String(err)));
-    }
-    setExporting("");
-  };
 
   const submit=async()=>{
     const t=title.trim();if(!t)return;
@@ -1298,14 +1288,6 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode,theme}){
 
           {isEdit&&(
             <>
-              <div style={{height:1,background:"var(--border-soft)",margin:"4px 0 10px"}}/>
-              <div className="coc-label" style={{marginBottom:6}}>채팅 기록 백업</div>
-              <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:8}}>티스토리 등 다른 곳에 저장해두고 싶다면 먼저 내보내세요. 방을 삭제해도 백업 파일은 남아있어요.</div>
-              <div style={{display:"flex",gap:8,marginBottom:14}}>
-                <button className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={handleExport} disabled={!!exporting}>
-                  {exporting==="html"?"내보내는 중...":"HTML로 내보내기"}
-                </button>
-              </div>
               <div style={{height:1,background:"var(--border-soft)",margin:"4px 0 10px"}}/>
               {confirmDelete?(
                 <div style={{background:"var(--bg-panel)",border:"1px solid var(--border)",borderRadius:8,padding:"12px 14px"}}>
@@ -2910,7 +2892,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       </div>
       {typingNames.length>0&&(
         <div style={{fontSize:11.5,color:"var(--text-faint)",padding:"4px 4px 0",flexShrink:0}}>
-          {typingNames.length===1?`${typingNames[0]}님이 입력 중...`:`${typingNames.join(", ")}님이 입력 중...`}
+          {typingNames.length===1?`${typingNames[0]} typing...`:`${typingNames.join(", ")} typing...`}
         </div>
       )}
 
@@ -3162,7 +3144,7 @@ function AppInner(){
           <div style={{maxWidth:680,margin:"0 auto 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <span className="coc-display heart-font" style={{fontSize:22,color:"var(--accent-deep)"}}>Heart Emoji</span>
-              <span style={{fontSize:12.5,color:"var(--text-faint)",marginLeft:6}}>· {profile.name||user.name}님</span>
+              <span style={{fontSize:12.5,color:"var(--text-faint)",marginLeft:6}}>· {profile.name||user.name}</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
               <div className="coc-tabbar">
