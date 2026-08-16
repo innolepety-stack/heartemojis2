@@ -162,11 +162,8 @@ input[type=number] { -moz-appearance: textfield; }
 .coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .coc-scroll::-webkit-scrollbar-track { background: transparent; }
 /* 모바일에서 세로 스크롤 중 화면이 좌우로 같이 흔들리는 현상 방지 */
-.msg-list-area { overflow-x: hidden; touch-action: pan-y; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
-/* 데스크톱(넓은 화면)에서는 모니터 해상도에 맞춰 채팅창을 더 넉넉하게 씁니다 */
-@media (min-width: 860px) {
-  .msg-list-area { height: calc(100vh - 300px) !important; max-height: 900px !important; }
-}
+/* flex 자식이 내용 크기만큼 고집하지 않고 실제로 줄어들 수 있도록 함 (화면 해상도에 맞춰 채팅창 전체가 딱 맞게 들어가기 위해 필요) */
+.msg-list-area { overflow-x: hidden; touch-action: pan-y; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; min-height: 0; }
 
 .coc-btn {
   font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 13.5px;
@@ -1108,7 +1105,7 @@ function buildHtmlExport(room,transcript){
             ? `<span style="${S.choicePicked}">${escapeHtmlExport(opt)} · ${escapeHtmlExport(picked.charName||"")}</span>`
             : `<span style="${S.choice}">${escapeHtmlExport(opt)}</span>`;
         }).join(" ");
-        return `<div style="${S.anon}"><div style="${S.choiceTitle}">당신은 무엇이든 선택할 수 있다.</div>${opts}</div>`;
+        return `<div style="${S.anon}">${opts}</div>`;
       }
       if(m.speaker==="dice"){
         let d=null;try{d=JSON.parse(m.text);}catch{}
@@ -1545,7 +1542,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   // GM이 보낸 이미지: 서술처럼 아바타·이름 없이 가운데 정렬로 표시
   if(isImg){
     return(
-      <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"8px 4px",gap:5}}>
+      <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5}}>
         {isMine&&(
           <span className="msg-actions" style={{display:"inline-flex",gap:3}}>
             <button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:0}}><Trash2 size={9}/></button>
@@ -1564,24 +1561,29 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
     let data=null; try{data=JSON.parse(items[0].text);}catch{}
     if(!data) return null;
     return(
-      <div style={{display:"flex",justifyContent:"center",padding:"8px 4px"}}>
-        <div style={{maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:14,background:"var(--bg-panel)",padding:"12px 14px",textAlign:"center"}}>
-          <div style={{fontSize:11,color:"var(--accent-deep)",fontWeight:700,marginBottom:9,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-            조사할 곳을 선택하세요
-            {isGM&&isMine&&<button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:0,display:"flex"}}><Trash2 size={10}/></button>}
-          </div>
+      <div style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
+        <div style={{position:"relative",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:14,background:"var(--bg-panel)",padding:"12px 14px",textAlign:"center"}}>
+          {isGM&&isMine&&(
+            <button type="button" onClick={()=>onDelete(items[0])}
+              style={{position:"absolute",top:6,right:6,background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex"}}>
+              <Trash2 size={10}/>
+            </button>
+          )}
           <div style={{display:"flex",flexWrap:"wrap",gap:7,justifyContent:"center"}}>
             {data.options.map(opt=>{
               const picked=data.picked?.[opt];
+              const lockedOut=!picked&&data.multi===false&&Object.keys(data.picked||{}).length>0;
+              const disabled=!!picked||lockedOut;
               return(
-                <button key={opt} type="button" disabled={!!picked} onClick={()=>onPickChoice(group,opt)}
+                <button key={opt} type="button" disabled={disabled} onClick={()=>onPickChoice(group,opt)}
                   style={{
-                    padding:"7px 14px",borderRadius:999,cursor:picked?"default":"pointer",
-                    border:"1.5px solid "+(picked?"var(--border)":"var(--accent)"),
-                    background:picked?"#fff":"var(--accent)",
-                    color:picked?"var(--text-faint)":"#fff",
+                    padding:"7px 14px",borderRadius:999,cursor:disabled?"default":"pointer",
+                    border:"1.5px solid "+(disabled?"var(--border)":"var(--accent)"),
+                    background:picked?"#fff":lockedOut?"var(--bg-panel)":"var(--accent)",
+                    color:disabled?"var(--text-faint)":"#fff",
                     fontSize:12.5,fontWeight:600,
                     textDecoration:picked?"line-through":"none",
+                    opacity:lockedOut?0.55:1,
                   }}>
                   {opt}
                 </button>
@@ -1621,7 +1623,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       );
     }
     return(
-      <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"10px 4px"}}>
+      <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
         <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
           {lines.map((line,i)=>(
             <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
@@ -1635,7 +1637,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   }
 
   return(
-    <div style={{display:"flex",gap:9,padding:"5px 0"}}>
+    <div style={{display:"flex",gap:9,padding:"6px 0"}}>
       <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:1}}>
         {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={11} color="var(--accent-soft)" style={{margin:8}}/>}
       </div>
@@ -1655,7 +1657,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
-            return <div key={i} style={{fontSize:14,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
+            return <div key={i} style={{fontSize:14,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
           })}
         </div>
       </div>
@@ -1669,6 +1671,7 @@ function ChoiceCreatorModal({onClose,onCreate}){
   const [options,setOptions]=useState([]);
   const [input,setInput]=useState("");
   const [creating,setCreating]=useState(false);
+  const [multi,setMulti]=useState(true); // true: 여러 개 선택 가능(조사 등) / false: 하나만 선택 가능(행선지 등)
 
   const addOption=()=>{
     const v=input.trim();
@@ -1679,7 +1682,7 @@ function ChoiceCreatorModal({onClose,onCreate}){
   const create=async()=>{
     if(options.length<2)return;
     setCreating(true);
-    await onCreate(options);
+    await onCreate(options,multi);
     setCreating(false);
   };
 
@@ -1691,13 +1694,32 @@ function ChoiceCreatorModal({onClose,onCreate}){
             <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>선택지 만들기</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
+
+          <div className="coc-label" style={{marginBottom:6}}>선택 방식</div>
+          <div style={{display:"flex",gap:6,marginBottom:14}}>
+            <button type="button" onClick={()=>setMulti(true)}
+              style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",textAlign:"center",
+                border:"1.5px solid "+(multi?"var(--accent)":"var(--border)"),
+                background:multi?"var(--bg-panel)":"#fff"}}>
+              <div style={{fontSize:12.5,fontWeight:multi?700:500,color:multi?"var(--accent-deep)":"var(--text-dim)"}}>여러 개 선택 가능</div>
+              <div style={{fontSize:10.5,color:"var(--text-faint)",marginTop:2}}>예: 조사할 곳들</div>
+            </button>
+            <button type="button" onClick={()=>setMulti(false)}
+              style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",textAlign:"center",
+                border:"1.5px solid "+(!multi?"var(--accent)":"var(--border)"),
+                background:!multi?"var(--bg-panel)":"#fff"}}>
+              <div style={{fontSize:12.5,fontWeight:!multi?700:500,color:!multi?"var(--accent-deep)":"var(--text-dim)"}}>하나만 선택 가능</div>
+              <div style={{fontSize:10.5,color:"var(--text-faint)",marginTop:2}}>예: 행선지 고르기</div>
+            </button>
+          </div>
+
           <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:12}}>
-            조사할 곳을 하나씩 입력하고 Enter를 눌러 추가하세요. (예: 소파, 침대, 책장, 서랍)
+            선택지를 하나씩 입력하고 Enter를 눌러 추가하세요. (예: 소파, 침대, 책장, 서랍)
           </div>
           <div style={{display:"flex",gap:7,marginBottom:12}}>
             <input className="coc-input" value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addOption();}}}
-              placeholder="조사할 곳 이름" autoFocus/>
+              placeholder="선택지 이름" autoFocus/>
             <button type="button" className="coc-btn small" onClick={addOption} disabled={!input.trim()}>추가</button>
           </div>
           {options.length>0&&(
@@ -2596,15 +2618,16 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const msg=group.items[0];
     let data=null; try{data=JSON.parse(msg.text);}catch{return;}
     if(data.picked&&data.picked[option])return; // 이미 누가 고른 선택지면 무시
+    if(data.multi===false&&Object.keys(data.picked||{}).length>0)return; // 하나만 선택 가능한데 이미 누가 골랐으면 무시
     const updatedData={...data,picked:{...(data.picked||{}),[option]:{userCode,charName:char?.name||profile.name||userCode}}};
     const tid=msg.tabId||"main";
     const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
     await storeSet(key,{...msg,text:JSON.stringify(updatedData)},true);
     const optionStyled=`<span style="color:var(--accent-deep);font-weight:700">${option}</span>`;
-    await doSend("system",`(${optionStyled})`,"","",tid);
+    await doSend("system",`${optionStyled}`,"","",tid);
   };
-  const handleCreateChoice=async(options)=>{
-    const payload=JSON.stringify({options,picked:{}});
+  const handleCreateChoice=async(options,multi)=>{
+    const payload=JSON.stringify({options,picked:{},multi});
     await doSend("choice",payload,"","");
     setShowChoiceCreator(false);
   };
@@ -2620,7 +2643,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   });
 
   return(
-    <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",minHeight:"calc(100vh - 140px)"}}>
+    <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 76px)"}}>
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
 
       {/* 헤더 */}
@@ -2793,7 +2816,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 메시지 목록 — GM 서브탭/NPC 이름 입력창 등이 아래에 추가로 나타나도
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
-      <div className="coc-card coc-scroll msg-list-area" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:3}}>
+      <div className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",minHeight:150,overflowY:"auto",padding:"10px",display:"flex",flexDirection:"column",gap:5}}>
         {groups.length===0&&(
           <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
             <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
