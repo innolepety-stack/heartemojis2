@@ -1566,7 +1566,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
     return(
       <div style={{display:"flex",justifyContent:"center",padding:"8px 4px"}}>
         <div style={{maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:14,background:"var(--bg-panel)",padding:"12px 14px",textAlign:"center"}}>
-          <div style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700,marginBottom:9,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <div style={{fontSize:11,color:"var(--accent-deep)",fontWeight:700,marginBottom:9,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
             조사할 곳을 선택하세요
             {isGM&&isMine&&<button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:0,display:"flex"}}><Trash2 size={10}/></button>}
           </div>
@@ -1580,7 +1580,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
                     border:"1.5px solid "+(picked?"var(--border)":"var(--accent)"),
                     background:picked?"#fff":"var(--accent)",
                     color:picked?"var(--text-faint)":"#fff",
-                    fontSize:13,fontWeight:600,
+                    fontSize:12.5,fontWeight:600,
                     textDecoration:picked?"line-through":"none",
                   }}>
                   {opt}
@@ -1607,7 +1607,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       return(
         <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
           <div style={{position:"relative",display:"inline-flex",alignItems:"center",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:999,background:"var(--bg-panel)",padding:"8px 18px",textAlign:"center"}}>
-            <span style={{fontSize:14.5,color:"var(--accent-deep)",fontWeight:600}}>
+            <span style={{fontSize:14,color:"var(--accent-deep)",fontWeight:600}}>
               {lines.map((line,i)=>(
                 <span key={i}>
                   <FormattedText text={line}/>
@@ -1624,7 +1624,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"10px 4px"}}>
         <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
           {lines.map((line,i)=>(
-            <div key={i} style={{fontSize:14.5,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
+            <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
               <FormattedText text={line}/>
             </div>
           ))}
@@ -1642,9 +1642,9 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:3}}>
           {/* NPC도 일반 캐릭터와 동일하게 */}
-          {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:"var(--accent-deep)",fontWeight:600,fontSize:12.5}}>{characterName}</span>}
-          {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:12.5}}>{characterName} <span className="coc-mono" style={{fontSize:10}}>OOC</span></span>}
-          <span className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
+          {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:"var(--accent-deep)",fontWeight:600,fontSize:12}}>{characterName}</span>}
+          {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:12}}>{characterName} <span className="coc-mono" style={{fontSize:9.5}}>OOC</span></span>}
+          <span className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
           {isMine&&!isDice&&(
             <span className="msg-actions" style={{display:"flex",gap:2,marginLeft:1}}>
               {items.length===1&&<button type="button" onClick={()=>onEdit(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",display:"flex"}} title="수정"><Pencil size={9}/></button>}
@@ -1655,7 +1655,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
-            return <div key={i} style={{fontSize:14.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
+            return <div key={i} style={{fontSize:14,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
           })}
         </div>
       </div>
@@ -1688,10 +1688,10 @@ function ChoiceCreatorModal({onClose,onCreate}){
       <div className="coc-modal" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>선택지 만들기</div>
+            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>선택지 만들기</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
-          <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:12}}>
+          <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:12}}>
             조사할 곳을 하나씩 입력하고 Enter를 눌러 추가하세요. (예: 소파, 침대, 책장, 서랍)
           </div>
           <div style={{display:"flex",gap:7,marginBottom:12}}>
@@ -1703,14 +1703,14 @@ function ChoiceCreatorModal({onClose,onCreate}){
           {options.length>0&&(
             <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:16}}>
               {options.map((o,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:5,background:"var(--bg-panel)",border:"1px solid var(--border)",borderRadius:999,padding:"5px 6px 5px 12px",fontSize:13}}>
+                <div key={i} style={{display:"flex",alignItems:"center",gap:5,background:"var(--bg-panel)",border:"1px solid var(--border)",borderRadius:999,padding:"5px 6px 5px 12px",fontSize:12.5}}>
                   {o}
-                  <button type="button" onClick={()=>removeOption(i)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:14,lineHeight:1}}>×</button>
+                  <button type="button" onClick={()=>removeOption(i)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:13.5,lineHeight:1}}>×</button>
                 </div>
               ))}
             </div>
           )}
-          {options.length===1&&<div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:10}}>선택지는 2개 이상부터 만들 수 있어요.</div>}
+          {options.length===1&&<div style={{fontSize:11,color:"var(--text-faint)",marginBottom:10}}>선택지는 2개 이상부터 만들 수 있어요.</div>}
           <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={options.length<2||creating} onClick={create}>
             {creating?"만드는 중...":`선택지 ${options.length}개로 만들기`}
           </button>
@@ -1759,21 +1759,21 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
       <div className="coc-modal" onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>핸드아웃 관리</div>
+            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>핸드아웃 관리</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
 
           {assigning?(
             <div>
               <button className="coc-btn ghost small" onClick={()=>setAssigning(null)} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
-              <div className="coc-display" style={{fontSize:14.5,marginBottom:4}}>{assigning.title}</div>
+              <div className="coc-display" style={{fontSize:14,marginBottom:4}}>{assigning.title}</div>
               <div className="coc-label" style={{marginBottom:8}}>누구에게 보여줄까요?</div>
               {roomParticipants.length===0?(
-                <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>아직 캐릭터를 만든 참가자가 없어요.</div>
+                <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:14}}>아직 캐릭터를 만든 참가자가 없어요.</div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
                   {roomParticipants.map(code=>(
-                    <label key={code} style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer",padding:"8px 10px",background:"var(--bg-panel)",borderRadius:8}}>
+                    <label key={code} style={{display:"flex",alignItems:"center",gap:8,fontSize:13.5,cursor:"pointer",padding:"8px 10px",background:"var(--bg-panel)",borderRadius:8}}>
                       <input type="checkbox" checked={!!selection[code]} onChange={e=>setSelection(s=>({...s,[code]:e.target.checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
                       {code}
                     </label>
@@ -1807,7 +1807,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
                 <Plus size={13}/> 새 핸드아웃 추가
               </button>
               {handouts.length===0?(
-                <div style={{color:"var(--text-faint)",fontSize:13,textAlign:"center",padding:24}}>아직 만든 핸드아웃이 없어요.</div>
+                <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 만든 핸드아웃이 없어요.</div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {handouts.map(h=>(
@@ -1815,8 +1815,8 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
                       {h.image?<img src={h.image} style={{width:40,height:40,borderRadius:6,objectFit:"cover",flexShrink:0}}/>:
                         <div style={{width:40,height:40,borderRadius:6,background:"var(--bg-panel)",flexShrink:0}}/>}
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:14,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title}</div>
-                        <div className="coc-mono" style={{fontSize:11,color:"var(--text-faint)"}}>
+                        <div style={{fontSize:13.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title}</div>
+                        <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
                           {(h.visibleTo||[]).length>0?`공개 대상: ${h.visibleTo.join(", ")}`:"아직 공개 안 됨"}
                         </div>
                       </div>
@@ -1843,36 +1843,36 @@ function HandoutViewerModal({handouts,madness,onClose}){
           {viewing?(
             <div>
               <button className="coc-btn ghost small" onClick={()=>setViewing(null)} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
-              <div className="coc-display" style={{fontSize:17,color:"var(--accent-deep)",marginBottom:12}}>{viewing.title}</div>
+              <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)",marginBottom:12}}>{viewing.title}</div>
               {viewing.image&&<img src={viewing.image} style={{width:"100%",borderRadius:10,border:"1px solid var(--border)",marginBottom:12}}/>}
-              {viewing.text&&<div style={{fontSize:14.5,whiteSpace:"pre-wrap",lineHeight:1.6}}>{viewing.text}</div>}
+              {viewing.text&&<div style={{fontSize:14,whiteSpace:"pre-wrap",lineHeight:1.6}}>{viewing.text}</div>}
             </div>
           ):(
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>핸드아웃</div>
+                <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>핸드아웃</div>
                 <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
               </div>
               <div style={{border:"1px solid "+(madness?.type?"#c05050":"var(--border-soft)"),background:madness?.type?"#fff5f5":"var(--bg-panel)",borderRadius:8,padding:"9px 12px",marginBottom:14}}>
                 <div className="coc-label" style={{marginBottom:madness?.type?4:0,color:madness?.type?"#c05050":undefined}}>광기</div>
                 {madness?.type?(
-                  <div style={{fontSize:13}}>
+                  <div style={{fontSize:12.5}}>
                     <span style={{fontWeight:700,color:"#c05050"}}>{madness.type} 광기</span>
-                    {madness.note&&<div style={{fontSize:12.5,color:"var(--text-dim)",marginTop:2}}>{madness.note}</div>}
+                    {madness.note&&<div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{madness.note}</div>}
                   </div>
                 ):(
-                  <div style={{fontSize:12.5,color:"var(--text-faint)"}}>없음</div>
+                  <div style={{fontSize:12,color:"var(--text-faint)"}}>없음</div>
                 )}
               </div>
               {handouts.length===0?(
-                <div style={{color:"var(--text-faint)",fontSize:13,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
+                <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {handouts.map(h=>(
                     <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setViewing(h)}>
                       {h.image?<img src={h.image} style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
                         <div style={{width:44,height:44,borderRadius:8,background:"var(--bg-panel)",flexShrink:0}}/>}
-                      <div style={{fontSize:14.5,fontWeight:600}}>{h.title}</div>
+                      <div style={{fontSize:14,fontWeight:600}}>{h.title}</div>
                     </div>
                   ))}
                 </div>
@@ -1956,7 +1956,7 @@ function BannerBuilderModal({onClose,onInsert}){
       <div className="coc-modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
         <div style={{padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>배너 만들기</div>
+            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>배너 만들기</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
 
@@ -1964,9 +1964,9 @@ function BannerBuilderModal({onClose,onInsert}){
           <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:12,marginBottom:14,minHeight:20}}>
             <div className="coc-label" style={{marginBottom:6}}>완성된 한 줄</div>
             {segments.length===0?(
-              <div style={{fontSize:13,color:"var(--text-faint)"}}>조각을 추가해보세요</div>
+              <div style={{fontSize:12.5,color:"var(--text-faint)"}}>조각을 추가해보세요</div>
             ):(
-              <div style={wrapBlock?{color:"#fff",backgroundColor:blockBg,textAlign:blockAlign,display:"block",padding:blockPadding+"px",borderRadius:4}:{fontSize:14}}>
+              <div style={wrapBlock?{color:"#fff",backgroundColor:blockBg,textAlign:blockAlign,display:"block",padding:blockPadding+"px",borderRadius:4}:{fontSize:13.5}}>
                 {segments.map(s=><span key={s.id} style={segReactStyle(s)}>{s.text}</span>)}
               </div>
             )}
@@ -1976,9 +1976,9 @@ function BannerBuilderModal({onClose,onInsert}){
           {segments.length>0&&(
             <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
               {segments.map(s=>(
-                <div key={s.id} style={{display:"flex",alignItems:"center",gap:5,background:"#fff",border:"1px solid var(--border)",borderRadius:999,padding:"4px 5px 4px 10px",fontSize:12}}>
+                <div key={s.id} style={{display:"flex",alignItems:"center",gap:5,background:"#fff",border:"1px solid var(--border)",borderRadius:999,padding:"4px 5px 4px 10px",fontSize:11.5}}>
                   <span style={segReactStyle(s)}>{s.text}</span>
-                  <button type="button" onClick={()=>removeSegment(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:13,lineHeight:1}}>×</button>
+                  <button type="button" onClick={()=>removeSegment(s.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:12.5,lineHeight:1}}>×</button>
                 </div>
               ))}
             </div>
@@ -2004,7 +2004,7 @@ function BannerBuilderModal({onClose,onInsert}){
                   <div className="coc-label" style={{marginBottom:5}}>글자색</div>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
-                    <input className="coc-input coc-mono" value={color} onChange={e=>setColor(e.target.value)} style={{fontSize:12}}/>
+                    <input className="coc-input coc-mono" value={color} onChange={e=>setColor(e.target.value)} style={{fontSize:11.5}}/>
                   </div>
                 </div>
                 <div style={{flex:1}}>
@@ -2014,7 +2014,7 @@ function BannerBuilderModal({onClose,onInsert}){
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6,opacity:useBg?1:0.4}}>
                     <input type="color" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:useBg?"pointer":"default"}}/>
-                    <input className="coc-input coc-mono" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{fontSize:12}}/>
+                    <input className="coc-input coc-mono" value={bgColor} onChange={e=>setBgColor(e.target.value)} disabled={!useBg} style={{fontSize:11.5}}/>
                   </div>
                 </div>
               </div>
@@ -2043,7 +2043,7 @@ function BannerBuilderModal({onClose,onInsert}){
                 <div className="coc-label" style={{marginBottom:5}}>배경색</div>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <input type="color" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{width:30,height:30,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
-                  <input className="coc-input coc-mono" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{fontSize:12}}/>
+                  <input className="coc-input coc-mono" value={blockBg} onChange={e=>setBlockBg(e.target.value)} style={{fontSize:11.5}}/>
                 </div>
               </div>
               <div style={{flex:1}}>
@@ -2060,7 +2060,7 @@ function BannerBuilderModal({onClose,onInsert}){
           <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={segments.length===0} onClick={insert}>
             채팅 입력창에 삽입
           </button>
-          <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
+          <div style={{fontSize:11,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
             "조각 추가"로 색이 다른 여러 단어를 계속 쌓은 뒤, 한 번에 삽입하세요.
           </div>
         </div>
@@ -2150,14 +2150,14 @@ function DicePanel({char,onRollToChat,roomId}){
         <div ref={panelRef} className="coc-scroll" style={{...panelStyle,width:"min(92vw, 360px)",maxHeight:"70vh",overflowY:"auto",background:"#fff",border:"1px solid var(--border)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",padding:"14px 14px 12px",zIndex:31}}>
           {char?.madness?.type&&(
             <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
-              <span style={{fontSize:12,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
-              {char.madness.note&&<div style={{fontSize:11.5,color:"var(--text-dim)",marginTop:2}}>{char.madness.note}</div>}
+              <span style={{fontSize:11.5,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
+              {char.madness.note&&<div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{char.madness.note}</div>}
             </div>
           )}
           <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
             {[["roll","판정"],["sheet","시트 수정"]].map(([v,l])=>(
               <button key={v} type="button" onClick={()=>setTab(v)}
-                style={{flex:1,padding:"7px 0",border:"none",background:tab===v?"var(--accent)":"#fff",color:tab===v?"#fff":"var(--text-dim)",fontSize:12.5,fontWeight:tab===v?700:500,cursor:"pointer"}}>
+                style={{flex:1,padding:"7px 0",border:"none",background:tab===v?"var(--accent)":"#fff",color:tab===v?"#fff":"var(--text-dim)",fontSize:12,fontWeight:tab===v?700:500,cursor:"pointer"}}>
                 {l}
               </button>
             ))}
@@ -2171,8 +2171,8 @@ function DicePanel({char,onRollToChat,roomId}){
                   return(
                     <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
                       style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                      <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
-                      <div className="coc-mono" style={{fontSize:14.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+                      <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
+                      <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
                     </button>
                   );
                 })}
@@ -2184,8 +2184,8 @@ function DicePanel({char,onRollToChat,roomId}){
                   return(
                     <button key={key} type="button" onClick={()=>roll(label,val)}
                       style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                      <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{label}</div>
-                      <div className="coc-mono" style={{fontSize:14.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+                      <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{label}</div>
+                      <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
                     </button>
                   );
                 })}
@@ -2197,8 +2197,8 @@ function DicePanel({char,onRollToChat,roomId}){
                   return(
                     <button key={name} type="button" onClick={()=>roll(name,val)}
                       style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                      <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{name}</span>
-                      <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
+                      <span style={{fontSize:12,color:"var(--text-dim)"}}>{name}</span>
+                      <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
                     </button>
                   );
                 })}
@@ -2210,8 +2210,8 @@ function DicePanel({char,onRollToChat,roomId}){
                     {char.customSkills.filter(c=>c.name).map(c=>(
                       <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
                         style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                        <span style={{fontSize:12.5,color:"var(--text-dim)"}}>{c.name}</span>
-                        <span className="coc-mono" style={{fontSize:12,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
+                        <span style={{fontSize:12,color:"var(--text-dim)"}}>{c.name}</span>
+                        <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
                       </button>
                     ))}
                   </div>
@@ -2629,9 +2629,9 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           <button className="coc-btn ghost small" onClick={onBack} style={{marginBottom:7}}><ArrowLeft size={12}/> 세션 목록</button>
           <div style={{display:"flex",alignItems:"center",gap:7}}>
             <div className="coc-display" style={{fontSize:16.5,color:"var(--accent-deep)"}}>{room.title}</div>
-            {isGM&&<span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
+            {isGM&&<span style={{fontSize:11.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
           </div>
-          <div className="coc-mono" style={{fontSize:12,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
+          <div className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           <button type="button" className="coc-btn ghost small" onClick={()=>setShowBgm(v=>!v)} style={{color:bgmUrl?"var(--accent-deep)":"var(--text-faint)"}}>
@@ -2648,7 +2648,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           )}
           <div style={{position:"relative"}} ref={participantsRef}>
             <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)"}}>
-              <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:11}}>♥</span>
+              <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:10.5}}>♥</span>
               참가자 ({participantsList.length})
             </button>
             {showParticipants&&(
@@ -2661,12 +2661,12 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                     return(
                       <div key={code}>
                         <div style={{display:"flex",alignItems:"center",gap:7}}>
-                          <span style={{color:online?"#e0507a":"var(--border)",fontSize:13,lineHeight:1,flexShrink:0}}>♥</span>
-                          <span style={{fontSize:13,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
-                          {code===room.creatorCode&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
+                          <span style={{color:online?"#e0507a":"var(--border)",fontSize:12.5,lineHeight:1,flexShrink:0}}>♥</span>
+                          <span style={{fontSize:12.5,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
+                          {code===room.creatorCode&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
                           {isGM&&code!==userCode&&(
                             <button type="button" onClick={()=>{setMadnessTarget(madnessTarget===code?null:code);setMadnessType("");setMadnessNote("");}}
-                              style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10.5,cursor:"pointer",color:"var(--text-dim)"}}>
+                              style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer",color:"var(--text-dim)"}}>
                               광기
                             </button>
                           )}
@@ -2676,7 +2676,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                             <div style={{display:"flex",gap:4,marginBottom:6}}>
                               {["없음","단기적","장기적"].map(t=>(
                                 <button key={t} type="button" onClick={()=>setMadnessType(t==="없음"?"":t)}
-                                  style={{flex:1,fontSize:11,padding:"4px 0",borderRadius:5,cursor:"pointer",
+                                  style={{flex:1,fontSize:10.5,padding:"4px 0",borderRadius:5,cursor:"pointer",
                                     background:(t==="없음"?madnessType==="":madnessType===t)?"var(--accent)":"#fff",
                                     color:(t==="없음"?madnessType==="":madnessType===t)?"#fff":"var(--text-dim)",
                                     border:"1px solid "+((t==="없음"?madnessType==="":madnessType===t)?"var(--accent)":"var(--border)")}}>
@@ -2685,7 +2685,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                               ))}
                             </div>
                             <input className="coc-input" value={madnessNote} onChange={e=>setMadnessNote(e.target.value)}
-                              placeholder="광기 내용 (선택)" style={{fontSize:12,padding:"5px 8px",marginBottom:6}}/>
+                              placeholder="광기 내용 (선택)" style={{fontSize:11.5,padding:"5px 8px",marginBottom:6}}/>
                             <div style={{display:"flex",gap:5}}>
                               <button type="button" className="coc-btn small" style={{flex:1,justifyContent:"center"}} onClick={()=>saveMadness(code)}>저장</button>
                               <button type="button" className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>setMadnessTarget(null)}>취소</button>
@@ -2703,13 +2703,13 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
             {char?.avatar?<img src={char.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={13} color="var(--accent-soft)" style={{margin:9}}/>}
           </div>
           <div>
-            <div style={{fontSize:14,fontWeight:600}}>{char?.name}</div>
-            <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>HP {char?.derived?.HP}/{char?.derived?.maxHP} SAN {char?.derived?.SAN}/{char?.derived?.maxSAN}</div>
+            <div style={{fontSize:13.5,fontWeight:600}}>{char?.name}</div>
+            <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>HP {char?.derived?.HP}/{char?.derived?.maxHP} SAN {char?.derived?.SAN}/{char?.derived?.maxSAN}</div>
           </div>
           {myChars.length>1&&(
             <select className="coc-select" value={char?.id||""} title="캐릭터 빠른 전환"
               onChange={e=>{const picked=myChars.find(c=>c.id===e.target.value);if(picked)onSwitchCharacter(picked);}}
-              style={{maxWidth:96,fontSize:12,padding:"5px 6px"}}>
+              style={{maxWidth:96,fontSize:11.5,padding:"5px 6px"}}>
               {myChars.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
             </select>
           )}
@@ -2731,21 +2731,21 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
             </button>
           )}
           {bgmUrl&&bgmStarted&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <div style={{flex:1,fontSize:13,color:"var(--text-dim)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bgmUrl}</div>
+            <div style={{flex:1,fontSize:12.5,color:"var(--text-dim)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bgmUrl}</div>
             <button type="button" className="coc-btn ghost small" onClick={handleStopBgm}>정지</button>
           </div>}
           {bgmUrl&&bgmStarted&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{fontSize:12.5,color:"var(--text-dim)",flexShrink:0}}>내 볼륨</span>
+            <span style={{fontSize:12,color:"var(--text-dim)",flexShrink:0}}>내 볼륨</span>
             <input type="range" min={0} max={100} value={bgmVolume}
               onChange={e=>setBgmVolume(Number(e.target.value))}
               style={{flex:1,accentColor:"var(--accent)"}}/>
-            <span className="coc-mono" style={{fontSize:12,color:"var(--text-faint)",width:26,textAlign:"right",flexShrink:0}}>{bgmVolume}</span>
+            <span className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)",width:26,textAlign:"right",flexShrink:0}}>{bgmVolume}</span>
           </div>}
           {isGM&&<div style={{display:"flex",gap:7}}>
             <input className="coc-input" value={bgmInput} onChange={e=>setBgmInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleSetBgm();}}} placeholder="YouTube 링크를 붙여넣으세요" style={{flex:1}}/>
             <button type="button" className="coc-btn small" onClick={handleSetBgm} disabled={!bgmInput.trim()}>설정</button>
           </div>}
-          {!isGM&&!bgmUrl&&<div style={{fontSize:13.5,color:"var(--text-faint)"}}>GM이 BGM을 설정하면 자동으로 재생됩니다.</div>}
+          {!isGM&&!bgmUrl&&<div style={{fontSize:13,color:"var(--text-faint)"}}>GM이 BGM을 설정하면 자동으로 재생됩니다.</div>}
         </div>
       )}
 
@@ -2754,7 +2754,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
         {visibleTabs.map(t=>(
           <div key={t.id} style={{display:"flex",alignItems:"center"}}>
             <div className={"chat-tab"+(activeTab===t.id?" active":"")} onClick={()=>setActiveTab(t.id)}>
-              {t.invited&&t.invited.length>0&&<span style={{marginRight:3,fontSize:11}}>🔒</span>}
+              {t.invited&&t.invited.length>0&&<span style={{marginRight:3,fontSize:10.5}}>🔒</span>}
               {t.label}
             </div>
             {isGM&&t.id!=="main"&&(
@@ -2768,12 +2768,12 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
               <input value={newTabName} onChange={e=>setNewTabName(e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addTab();}if(e.key==="Escape")setShowAddTab(false);}}
                 placeholder="탭 이름" autoFocus
-                style={{width:90,fontSize:13,padding:"3px 7px",border:"1px solid var(--border)",borderRadius:5,outline:"none",color:"var(--text)",background:"#fff"}}/>
+                style={{width:90,fontSize:12.5,padding:"3px 7px",border:"1px solid var(--border)",borderRadius:5,outline:"none",color:"var(--text)",background:"#fff"}}/>
               {/* 초대 대상 선택 — 체크 안 하면 GM만 보이는 탭이 됨 */}
               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                {roomParticipants.length===0&&<span style={{fontSize:12,color:"var(--text-faint)"}}>초대할 참가자가 아직 없어요</span>}
+                {roomParticipants.length===0&&<span style={{fontSize:11.5,color:"var(--text-faint)"}}>초대할 참가자가 아직 없어요</span>}
                 {roomParticipants.map(code=>(
-                  <label key={code} style={{display:"flex",alignItems:"center",gap:3,fontSize:12.5,color:"var(--text-dim)",cursor:"pointer"}}>
+                  <label key={code} style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:"var(--text-dim)",cursor:"pointer"}}>
                     <input type="checkbox" checked={!!inviteSelection[code]}
                       onChange={e=>setInviteSelection(prev=>({...prev,[code]:e.target.checked}))}
                       style={{width:13,height:13,cursor:"pointer"}}/>
@@ -2781,7 +2781,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                   </label>
                 ))}
               </div>
-              <button type="button" className="coc-btn small" style={{padding:"3px 8px",fontSize:12}} onClick={addTab} disabled={!newTabName.trim()}>추가</button>
+              <button type="button" className="coc-btn small" style={{padding:"3px 8px",fontSize:11.5}} onClick={addTab} disabled={!newTabName.trim()}>추가</button>
               <button type="button" className="coc-btn ghost small" style={{padding:"3px 6px"}} onClick={()=>{setShowAddTab(false);setInviteSelection({});}}><X size={10}/></button>
             </div>
           ):(
@@ -2793,9 +2793,9 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 메시지 목록 — GM 서브탭/NPC 이름 입력창 등이 아래에 추가로 나타나도
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
-      <div className="coc-card coc-scroll msg-list-area" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:7}}>
+      <div className="coc-card coc-scroll msg-list-area" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:3}}>
         {groups.length===0&&(
-          <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13.5,textAlign:"center"}}>
+          <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
             <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
           </div>
         )}
@@ -2838,7 +2838,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                   <div style={{display:"flex",gap:6}}>
                     <input className="coc-input" value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
                       onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();sendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}}
-                      placeholder="이미지 링크 (Imgur 등)" style={{flex:1,fontSize:12.5}}/>
+                      placeholder="이미지 링크 (Imgur 등)" style={{flex:1,fontSize:12}}/>
                     <button type="button" className="coc-btn small" disabled={!imgUrlInput.trim()}
                       onClick={()=>{sendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}>
                       삽입
@@ -2867,7 +2867,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                   borderLeft:i===0?"none":"1px solid var(--border)",
                   background:gmTab===key?"var(--accent)":"#fff",
                   color:gmTab===key?"#fff":"var(--text-dim)",
-                  fontSize:12.5,fontWeight:gmTab===key?700:500,cursor:"pointer",
+                  fontSize:12,fontWeight:gmTab===key?700:500,cursor:"pointer",
                 }}>
                 {short}
               </button>
@@ -2878,7 +2878,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="NPC 이름 (미입력 시 'NPC')" style={{marginBottom:6}}/>
         )}
         {isGM&&speaker==="gm"&&(gmTab==="choice"||gmTab==="handout")?(
-          <div style={{fontSize:12.5,color:"var(--text-faint)",padding:"10px 2px"}}>
+          <div style={{fontSize:12,color:"var(--text-faint)",padding:"10px 2px"}}>
             위 {gmTab==="choice"?"'선택'":"'H/O'"} 버튼을 눌러 {gmTab==="choice"?"선택지를 만들어보세요.":"핸드아웃을 관리해보세요."}
           </div>
         ):(
@@ -2889,7 +2889,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                 placeholder={placeholder()} style={{flex:1,resize:"none"}}/>
               <button type="button" className="coc-btn" style={{flexShrink:0,alignSelf:"flex-end",padding:"10px 14px"}} onClick={send}><Send size={13}/></button>
             </div>
-            <div style={{fontSize:12,color:"var(--text-faint)",marginTop:4}}>Enter: 전송 · Shift+Enter: 줄바꿈</div>
+            <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:4}}>Enter: 전송 · Shift+Enter: 줄바꿈</div>
           </>
         )}
       </div>
@@ -2919,7 +2919,7 @@ class ErrorBoundary extends React.Component {
     if (this.state.error) {
       return (
         <div style={{minHeight:"100vh",padding:20,fontFamily:"monospace",background:"#fff5f5",color:"#7a1a1a"}}>
-          <div style={{fontWeight:700,fontSize:17,marginBottom:10}}>⚠️ 화면에 에러가 발생했습니다</div>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:10}}>⚠️ 화면에 에러가 발생했습니다</div>
           <div style={{marginBottom:14}}>
             <button
               onClick={()=>this.setState({error:null,info:null})}
@@ -2927,14 +2927,14 @@ class ErrorBoundary extends React.Component {
               다시 시도
             </button>
           </div>
-          <div style={{fontSize:14.5,fontWeight:700,marginBottom:6}}>{String(this.state.error && this.state.error.message)}</div>
-          <pre style={{whiteSpace:"pre-wrap",fontSize:12.5,background:"#fff",border:"1px solid #eab",borderRadius:6,padding:12,overflowX:"auto"}}>
+          <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>{String(this.state.error && this.state.error.message)}</div>
+          <pre style={{whiteSpace:"pre-wrap",fontSize:12,background:"#fff",border:"1px solid #eab",borderRadius:6,padding:12,overflowX:"auto"}}>
 {String(this.state.error && this.state.error.stack)}
           </pre>
           {this.state.info && (
             <details style={{marginTop:10}}>
-              <summary style={{cursor:"pointer",fontSize:13.5}}>컴포넌트 스택 보기</summary>
-              <pre style={{whiteSpace:"pre-wrap",fontSize:12.5,background:"#fff",border:"1px solid #eab",borderRadius:6,padding:12,overflowX:"auto"}}>
+              <summary style={{cursor:"pointer",fontSize:13}}>컴포넌트 스택 보기</summary>
+              <pre style={{whiteSpace:"pre-wrap",fontSize:12,background:"#fff",border:"1px solid #eab",borderRadius:6,padding:12,overflowX:"auto"}}>
 {this.state.info.componentStack}
               </pre>
             </details>
