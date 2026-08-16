@@ -239,9 +239,8 @@ input[type=number] { -moz-appearance: textfield; }
   border-bottom: 2px solid transparent;
 }
 .coc-tab.active { color: var(--accent-deep); border-bottom-color: var(--accent); }
-.msg-actions { opacity: 1; }
-.chat-tab-bar { display:flex; gap:2px; overflow-x:auto; border-bottom:1px solid var(--border-soft); margin-bottom:8px; }
-.chat-tab { font-size: 13px; font-weight:600; padding:7px 13px; cursor:pointer; color:var(--text-faint); border-bottom:2px solid transparent; white-space:nowrap; }
+.chat-tab-bar { display:flex; gap:2px; overflow-x:auto; overflow-y:hidden; border-bottom:1px solid var(--border-soft); margin-bottom:8px; flex-shrink:0; }
+.chat-tab { font-size: 13px; font-weight:600; padding:7px 13px; cursor:pointer; color:var(--text-faint); border-bottom:2px solid transparent; white-space:nowrap; flex-shrink:0; }
 .chat-tab.active { color:var(--accent-deep); border-bottom-color:var(--accent); }
 `;
 
@@ -967,11 +966,10 @@ function RoomsTab({userCode,onEnterRoom}){
 
   return(
     <div style={{maxWidth:680,margin:"0 auto"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div className="coc-display" style={{fontSize:16.5,color:"var(--accent-deep)"}}>세션 목록</div>
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",marginBottom:16}}>
         <div style={{display:"flex",gap:8}}>
           <button className="coc-btn ghost" onClick={()=>setShowJoin(true)}>방 참가</button>
-          <button className="coc-btn" onClick={()=>setShowCreate(true)}><Plus size={13}/> 새 세션</button>
+          <button className="coc-btn" onClick={()=>setShowCreate(true)}><Plus size={13}/> 새 게임</button>
         </div>
       </div>
       {loading?(
@@ -979,7 +977,7 @@ function RoomsTab({userCode,onEnterRoom}){
       ):rooms.length===0?(
         <div className="coc-card" style={{padding:36,textAlign:"center"}}>
           <div style={{color:"var(--text-dim)",fontSize:14.5,marginBottom:5}}>참가 중인 세션이 없습니다.</div>
-          <div style={{color:"var(--text-faint)",fontSize:13}}>'새 세션'으로 만들거나, 초대 코드를 받았다면 '방 참가'를 눌러보세요.</div>
+          <div style={{color:"var(--text-faint)",fontSize:13}}>새 게임으로 만들거나, 초대 코드를 받았다면 방 참가를 눌러보세요.</div>
         </div>
       ):(
         <div style={{display:"grid",gap:10}}>
@@ -988,13 +986,12 @@ function RoomsTab({userCode,onEnterRoom}){
             return(
               <div key={r.id} className="coc-card" style={{padding:"16px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
                 onClick={()=>onEnterRoom(r)}>
-                <div className="coc-folder-tab">No.{String(rooms.length-i).padStart(3,"0")}</div>
+                <div className="coc-folder-tab">No.{String(rooms.length-i).padStart(3,"0")}{isMyRoom&&" · GM"}</div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div>
                     <div className="coc-display" style={{fontSize:15.5,color:"var(--text)"}}>{r.title}</div>
                     <div className="coc-mono" style={{fontSize:12,color:"var(--text-faint)",marginTop:4}}>{fmtDate(r.date)}</div>
                   </div>
-                  {isMyRoom&&<span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
                   {isMyRoom&&(
@@ -1253,14 +1250,14 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
           <div className="coc-label" style={{marginBottom:5}}>세션 제목</div>
-          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 인스머스의 그림자" style={{marginBottom:14}} autoFocus/>
+          <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="시나리오 제목을 입력하세요" style={{marginBottom:14}} autoFocus/>
           <div className="coc-label" style={{marginBottom:5}}>날짜</div>
           <input type="date" className="coc-input coc-mono" value={date} onChange={e=>setDate(e.target.value)} style={{marginBottom:18}}/>
 
           {isEdit&&(
             <div style={{marginBottom:18}}>
               <div className="coc-label" style={{marginBottom:5}}>초대 코드</div>
-              <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:8}}>이 코드를 플레이어에게 알려주면, '방 참가' 버튼에 입력해서 들어올 수 있어요.</div>
+              <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:8}}>이 코드를 플레이어에게 알려 주면 들어올 수 있어요.</div>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <div className="coc-mono" style={{flex:1,textAlign:"center",fontSize:20.5,letterSpacing:"0.25em",padding:"9px 0",background:"var(--bg-panel)",border:"1px solid var(--border)",borderRadius:8,color:"var(--accent-deep)",fontWeight:700}}>
                   {room.inviteCode||"------"}
@@ -1402,9 +1399,9 @@ function CharacterSelectScreen({room,userCode,onSelect,onBack}){
 /* ============================== CHAT ============================== */
 
 const GM_TABS=[
-  {key:"narrate",label:"서술",short:"서술",placeholder:"스토리를 서술하세요..."},
-  {key:"judge",label:"판정",short:"판정",placeholder:"어떤 기능치를 판정합니까?"},
-  {key:"npc",label:"대사",short:"대사",placeholder:"NPC의 대사를 입력하세요..."},
+  {key:"narrate",label:"서술",short:"서술",placeholder:"......."},
+  {key:"judge",label:"판정",short:"판정",placeholder:"@@ 판정이라 입력하세요."},
+  {key:"npc",label:"대사",short:"대사",placeholder:"......."},
   {key:"choice",label:"선택지",short:"선택",placeholder:""},
   {key:"handout",label:"핸드아웃",short:"H/O",placeholder:""},
 ];
@@ -1465,7 +1462,7 @@ function groupMessages(msgs){
   const groups=[];
   for(const m of msgs){
     const last=groups[groups.length-1];
-    const sameBlock=last&&m.speaker!=="choice"&&last.speaker===m.speaker&&last.userCode===m.userCode&&last.characterName===m.characterName&&m.timestamp-last.lastTimestamp<60000;
+    const sameBlock=last&&m.speaker!=="choice"&&m.speaker!=="judge"&&last.speaker===m.speaker&&last.userCode===m.userCode&&last.characterName===m.characterName&&m.timestamp-last.lastTimestamp<60000;
     if(sameBlock){last.lines.push(m.text);last.items.push(m);last.lastTimestamp=m.timestamp;}
     else groups.push({id:m.id,speaker:m.speaker,userCode:m.userCode,characterName:m.characterName,avatar:m.avatar,timestamp:m.timestamp,lastTimestamp:m.timestamp,lines:[m.text],items:[m]});
   }
@@ -1542,12 +1539,8 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   // GM이 보낸 이미지: 서술처럼 아바타·이름 없이 가운데 정렬로 표시
   if(isImg){
     return(
-      <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5}}>
-        {isMine&&(
-          <span className="msg-actions" style={{display:"inline-flex",gap:3}}>
-            <button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:0}}><Trash2 size={9}/></button>
-          </span>
-        )}
+      <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5,cursor:isMine?"pointer":"default"}}
+        onDoubleClick={()=>isMine&&onEdit(items[0])}>
         {lines.map((line,i)=>(
           <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:280,maxHeight:220,borderRadius:8,objectFit:"contain"}}/>
         ))}
@@ -1597,18 +1590,14 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 
   // 서술: 헤더 없이 중앙 정렬, 그냥 텍스트만
   // 판정 요청(GM이 판정을 걸 때): 서술과 같이 중앙 정렬하되, 눈에 띄도록 둥근 블록으로 감쌈
-  // 수정·삭제는 GM 전용, 마우스를 올렸을 때만 표시
+  // 수정·삭제는 GM 전용, 더블클릭으로 수정창을 엽니다
   if(isAnon){
-    const editButtons=isGM&&isMine&&(
-      <span className="msg-actions" style={{position:"absolute",left:"100%",top:"50%",transform:"translateY(-50%)",marginLeft:6,display:"inline-flex",gap:3,whiteSpace:"nowrap"}}>
-        {items.length===1&&<button type="button" onClick={()=>onEdit(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:0}}><Pencil size={9}/></button>}
-        <button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:0}}><Trash2 size={9}/></button>
-      </span>
-    );
+    const canEdit=isGM&&isMine;
     if(isJudge){
       return(
         <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
-          <div style={{position:"relative",display:"inline-flex",alignItems:"center",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:999,background:"var(--bg-panel)",padding:"8px 18px",textAlign:"center"}}>
+          <div style={{position:"relative",display:"inline-flex",alignItems:"center",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:999,background:"var(--bg-panel)",padding:"8px 18px",textAlign:"center",cursor:canEdit?"pointer":"default"}}
+            onDoubleClick={()=>canEdit&&items.length===1&&onEdit(items[0])}>
             <span style={{fontSize:14,color:"var(--accent-deep)",fontWeight:600}}>
               {lines.map((line,i)=>(
                 <span key={i}>
@@ -1617,27 +1606,27 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
                 </span>
               ))}
             </span>
-            {editButtons}
           </div>
         </div>
       );
     }
     return(
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
-        <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
+        <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8,cursor:canEdit?"pointer":"default"}}
+          onDoubleClick={()=>canEdit&&items.length===1&&onEdit(items[0])}>
           {lines.map((line,i)=>(
             <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
               <FormattedText text={line}/>
             </div>
           ))}
-          {editButtons}
         </div>
       </div>
     );
   }
 
   return(
-    <div style={{display:"flex",gap:9,padding:"6px 0"}}>
+    <div style={{display:"flex",gap:9,padding:"6px 0",cursor:isMine&&!isDice?"pointer":"default"}}
+      onDoubleClick={()=>isMine&&!isDice&&items.length===1&&onEdit(items[0])}>
       <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:1}}>
         {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={11} color="var(--accent-soft)" style={{margin:8}}/>}
       </div>
@@ -1647,12 +1636,6 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
           {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:"var(--accent-deep)",fontWeight:600,fontSize:12}}>{characterName}</span>}
           {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:12}}>{characterName} <span className="coc-mono" style={{fontSize:9.5}}>OOC</span></span>}
           <span className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
-          {isMine&&!isDice&&(
-            <span className="msg-actions" style={{display:"flex",gap:2,marginLeft:1}}>
-              {items.length===1&&<button type="button" onClick={()=>onEdit(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 2px",display:"flex"}} title="수정"><Pencil size={9}/></button>}
-              <button type="button" onClick={()=>onDelete(items[0])} style={{background:"none",border:"none",cursor:"pointer",color:"#c05050",padding:"0 2px",display:"flex"}} title="삭제"><Trash2 size={9}/></button>
-            </span>
-          )}
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lines.map((line,i)=>{
@@ -1702,14 +1685,12 @@ function ChoiceCreatorModal({onClose,onCreate}){
                 border:"1.5px solid "+(multi?"var(--accent)":"var(--border)"),
                 background:multi?"var(--bg-panel)":"#fff"}}>
               <div style={{fontSize:12.5,fontWeight:multi?700:500,color:multi?"var(--accent-deep)":"var(--text-dim)"}}>여러 개 선택 가능</div>
-              <div style={{fontSize:10.5,color:"var(--text-faint)",marginTop:2}}>예: 조사할 곳들</div>
             </button>
             <button type="button" onClick={()=>setMulti(false)}
               style={{flex:1,padding:"8px 4px",borderRadius:8,cursor:"pointer",textAlign:"center",
                 border:"1.5px solid "+(!multi?"var(--accent)":"var(--border)"),
                 background:!multi?"var(--bg-panel)":"#fff"}}>
               <div style={{fontSize:12.5,fontWeight:!multi?700:500,color:!multi?"var(--accent-deep)":"var(--text-dim)"}}>하나만 선택 가능</div>
-              <div style={{fontSize:10.5,color:"var(--text-faint)",marginTop:2}}>예: 행선지 고르기</div>
             </button>
           </div>
 
@@ -2591,7 +2572,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const handleKeyDown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
   const placeholder=()=>{
     if(isGM&&speaker==="gm")return GM_TABS.find(x=>x.key===gmTab)?.placeholder||"";
-    return`${char?.name||"캐릭터"}의 대사나 행동을 입력하세요...`;
+    return`.......`;
   };
 
   const startEdit=msg=>{setEditingMsg(msg);setEditText(msg.text);};
@@ -2647,7 +2628,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
 
       {/* 헤더 */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,flexWrap:"wrap",gap:8,flexShrink:0}}>
         <div>
           <button className="coc-btn ghost small" onClick={onBack} style={{marginBottom:7}}><ArrowLeft size={12}/> 세션 목록</button>
           <div style={{display:"flex",alignItems:"center",gap:7}}>
@@ -2743,7 +2724,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
 
       {/* BGM 패널 */}
       {showBgm&&(
-        <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:10,padding:"11px 13px",marginBottom:8}}>
+        <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:10,padding:"11px 13px",marginBottom:8,flexShrink:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
             <div className="coc-label">BGM</div>
             <button type="button" onClick={()=>setShowBgm(false)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2}}><X size={13}/></button>
@@ -2835,10 +2816,17 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                 <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>메시지 수정</div>
                 <button className="coc-btn ghost small" onClick={()=>setEditingMsg(null)} style={{padding:5}}><X size={12}/></button>
               </div>
-              <textarea className="coc-input" rows={4} value={editText} onChange={e=>setEditText(e.target.value)} autoFocus style={{marginBottom:12}}/>
-              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                <button className="coc-btn ghost small" onClick={()=>setEditingMsg(null)}>취소</button>
-                <button className="coc-btn small" onClick={submitEdit} disabled={!editText.trim()}>수정 완료</button>
+              {editingMsg.speaker==="image"?(
+                <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:14}}>이미지 메시지는 내용을 수정할 수 없어요. 삭제만 가능해요.</div>
+              ):(
+                <textarea className="coc-input" rows={4} value={editText} onChange={e=>setEditText(e.target.value)} autoFocus style={{marginBottom:12}}/>
+              )}
+              <div style={{display:"flex",gap:8,justifyContent:"space-between"}}>
+                <button className="coc-btn ghost small" style={{color:"#c05050",borderColor:"#e8b8b8"}} onClick={()=>{deleteMsg(editingMsg);setEditingMsg(null);}}><Trash2 size={11}/> 삭제</button>
+                <div style={{display:"flex",gap:8}}>
+                  <button className="coc-btn ghost small" onClick={()=>setEditingMsg(null)}>취소</button>
+                  {editingMsg.speaker!=="image"&&<button className="coc-btn small" onClick={submitEdit} disabled={!editText.trim()}>수정 완료</button>}
+                </div>
               </div>
             </div>
           </div>
@@ -2846,7 +2834,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       )}
 
       {/* 입력창 */}
-      <div style={{marginTop:8}}>
+      <div style={{marginTop:8,flexShrink:0}}>
         <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
           <button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="ic")} onClick={()=>setSpeaker("ic")}><Sparkles size={11}/> {char?.name||"캐릭터"}</button>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
@@ -2898,11 +2886,11 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           </div>
         )}
         {isGM&&speaker==="gm"&&gmTab==="npc"&&(
-          <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="NPC 이름 (미입력 시 'NPC')" style={{marginBottom:6}}/>
+          <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="이름 (미입력 시 NPC로 출력됩니다.)" style={{marginBottom:6}}/>
         )}
         {isGM&&speaker==="gm"&&(gmTab==="choice"||gmTab==="handout")?(
           <div style={{fontSize:12,color:"var(--text-faint)",padding:"10px 2px"}}>
-            위 {gmTab==="choice"?"'선택'":"'H/O'"} 버튼을 눌러 {gmTab==="choice"?"선택지를 만들어보세요.":"핸드아웃을 관리해보세요."}
+            위 {gmTab==="choice"?"'선택'":"'H/O'"} 버튼을 눌러 {gmTab==="choice"?"선택지를 만들어보세요.":"핸드아웃을 관리해 보세요."}
           </div>
         ):(
           <>
@@ -2933,7 +2921,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
 }
 
 /* ============================== ERROR BOUNDARY ============================== */
-// 렌더링 중 에러가 나면 하얀 화면 대신 실제 에러 내용을 화면에 보여줍니다.
+// 렌더링 중 에러가 나면 하얀 화면 대신 실제 에러 내용을 화면에 보여 줍니다.
 class ErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state = { error: null, info: null }; }
   static getDerivedStateFromError(error){ return { error }; }
