@@ -1421,14 +1421,6 @@ function pickEulReul(word){
   const hasBatchim=(code-0xAC00)%28!==0;
   return hasBatchim?"을":"를";
 }
-function pickIGa(word){
-  if(!word) return "가";
-  const last=word[word.length-1];
-  const code=last.charCodeAt(0);
-  if(code<0xAC00||code>0xD7A3) return "가";
-  const hasBatchim=(code-0xAC00)%28!==0;
-  return hasBatchim?"이":"가";
-}
 
 // 채팅에 [[1d10]], [[2d6+3]] 같은 표기를 적으면 전송 시점에 실제로 주사위를 굴려서
 // 그 결과값으로 바꿔치기합니다. (한 번 굴리고 나면 값이 고정되어 저장되므로,
@@ -1632,7 +1624,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"10px 4px"}}>
         <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
           {lines.map((line,i)=>(
-            <div key={i} style={{fontSize:14.5,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?12:0}}>
+            <div key={i} style={{fontSize:14.5,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
               <FormattedText text={line}/>
             </div>
           ))}
@@ -1660,7 +1652,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
             </span>
           )}
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:3}}>
+        <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
             return <div key={i} style={{fontSize:14.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
@@ -2608,10 +2600,8 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const tid=msg.tabId||"main";
     const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
     await storeSet(key,{...msg,text:JSON.stringify(updatedData)},true);
-    const charName=char?.name||profile.name||userCode;
-    const nameStyled=`<span style="color:var(--accent-deep);font-weight:700">${charName}</span>`;
     const optionStyled=`<span style="color:var(--accent-deep);font-weight:700">${option}</span>`;
-    await doSend("system",`${nameStyled}${pickIGa(charName)} ${optionStyled}${pickEulReul(option)} 선택했다`,"","",tid);
+    await doSend("system",`(${optionStyled})`,"","",tid);
   };
   const handleCreateChoice=async(options)=>{
     const payload=JSON.stringify({options,picked:{}});
@@ -2803,7 +2793,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 메시지 목록 — GM 서브탭/NPC 이름 입력창 등이 아래에 추가로 나타나도
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
-      <div className="coc-card coc-scroll msg-list-area" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:1}}>
+      <div className="coc-card coc-scroll msg-list-area" style={{height:"46vh",minHeight:220,maxHeight:520,flexShrink:0,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:7}}>
         {groups.length===0&&(
           <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13.5,textAlign:"center"}}>
             <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
