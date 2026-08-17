@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
-  Crown, Settings, Trash2
+  Crown, Settings, Trash2, Bell
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -1572,10 +1572,10 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   // GM이 보낸 이미지: 서술처럼 아바타·이름 없이 가운데 정렬로 표시
   if(isImg){
     return(
-      <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5,cursor:isMine?"pointer":"default"}}
-        onClick={withDoubleTap(()=>isMine&&onEdit(items[0]))}>
+      <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5}}>
         {lines.map((line,i)=>(
-          <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:280,maxHeight:220,borderRadius:8,objectFit:"contain"}}/>
+          <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:280,maxHeight:220,borderRadius:8,objectFit:"contain",cursor:isMine?"pointer":"default"}}
+            onClick={withDoubleTap(()=>isMine&&onEdit(items[i]))}/>
         ))}
       </div>
     );
@@ -1645,10 +1645,10 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
     }
     return(
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
-        <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8,cursor:canEdit?"pointer":"default"}}
-          onClick={withDoubleTap(()=>canEdit&&items.length===1&&onEdit(items[0]))}>
+        <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
           {lines.map((line,i)=>(
-            <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0}}>
+            <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0,cursor:canEdit?"pointer":"default"}}
+              onClick={withDoubleTap(()=>canEdit&&onEdit(items[i]))}>
               <FormattedText text={line}/>
             </div>
           ))}
@@ -1658,8 +1658,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   }
 
   return(
-    <div style={{display:"flex",gap:9,padding:"6px 0",cursor:isMine&&!isDice?"pointer":"default"}}
-      onClick={withDoubleTap(()=>isMine&&!isDice&&items.length===1&&onEdit(items[0]))}>
+    <div style={{display:"flex",gap:9,padding:"6px 0"}}>
       <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:1}}>
         {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={11} color="var(--accent-soft)" style={{margin:8}}/>}
       </div>
@@ -1673,7 +1672,13 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
         <div style={{display:"flex",flexDirection:"column",gap:7}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
-            return <div key={i} style={{fontSize:14,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word"}}><FormattedText text={line}/></div>;
+            const editable=isMine&&!isDice;
+            return (
+              <div key={i} style={{fontSize:14,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",cursor:editable?"pointer":"default"}}
+                onClick={withDoubleTap(()=>editable&&onEdit(items[i]))}>
+                <FormattedText text={line}/>
+              </div>
+            );
           })}
         </div>
       </div>
@@ -2299,12 +2304,39 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   // 대부분 차단합니다. 그래서 첫 재생은 반드시 사용자의 탭 한 번을 거치도록 하고,
   // 이후로는(같은 화면에 머무는 동안) URL이 바뀌어도 다시 탭할 필요 없이 이어집니다.
   const [bgmStarted,setBgmStarted]=useState(false);
-  const bottomRef=useRef(null);
   const msgListRef=useRef(null);
+  // 채팅 목록을 맨 아래로 스크롤합니다. scrollIntoView는 모바일(특히 iOS Safari)에서
+  // 관성 스크롤·중첩 레이아웃과 얽혀 가끔 씹히는 경우가 있어서, 스크롤 컨테이너의
+  // scrollTop을 직접 최댓값으로 설정하는 더 확실한 방식을 씁니다.
+  const scrollMsgListToBottom=(smooth)=>{
+    const el=msgListRef.current;
+    if(!el)return;
+    if(smooth) el.scrollTo({top:el.scrollHeight,behavior:"smooth"});
+    else el.scrollTop=el.scrollHeight;
+  };
   const inputRef=useRef(null);
   const imgInputRef=useRef(null);
   const firstLoad=useRef({});
   const isGM=userCode===room.creatorCode;
+
+  // 모바일에서 다른 앱/탭에 갔다 오면 주소창이 접혔다 펴지면서 화면 크기가 살짝 바뀌어서,
+  // 실제로는 맨 아래에 있었는데도 "맨 아래 근처" 판정이 어긋나 자동 스크롤이 안 되는 경우가 있어요.
+  // 그래서 나가기 직전 상태를 기억해뒀다가, 돌아왔을 때 맨 아래였다면 다시 맨 아래로 맞춰줍니다.
+  const wasAtBottomRef=useRef(true);
+  useEffect(()=>{
+    const onVisibilityChange=()=>{
+      if(document.visibilityState==="hidden"){
+        if(msgListRef.current){
+          const el=msgListRef.current;
+          wasAtBottomRef.current=el.scrollHeight-el.scrollTop-el.clientHeight<120;
+        }
+      }else if(document.visibilityState==="visible"&&wasAtBottomRef.current){
+        setTimeout(()=>scrollMsgListToBottom(false),120);
+      }
+    };
+    document.addEventListener("visibilitychange",onVisibilityChange);
+    return()=>document.removeEventListener("visibilitychange",onVisibilityChange);
+  },[]);
 
   // 초대 대상 선택지 + 내 캐릭터 목록(빠른 전환용): 이 방의 캐릭터를 실시간으로 구독합니다.
   const [roomParticipants,setRoomParticipants]=useState([]);
@@ -2376,13 +2408,14 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       const now=Date.now();
       if(now-lastTypingBeatRef.current>2500){
         lastTypingBeatRef.current=now;
-        storeSet(key,{userCode,charName:char?.name||profile.name||userCode,lastSeen:now},true);
+        const typingName=(isGM&&speaker==="gm")?"GM":(char?.name||profile.name||userCode);
+        storeSet(key,{userCode,charName:typingName,lastSeen:now},true);
       }
     }else{
       lastTypingBeatRef.current=0;
       storeDelete(key,true);
     }
-  },[text,room.id,activeTab,userCode,char?.name,profile.name]);
+  },[text,room.id,activeTab,userCode,char?.name,profile.name,isGM,speaker]);
   useEffect(()=>()=>{ storeDelete(`typing:${room.id}:${activeTab}:${userCode}`,true); },[room.id,activeTab,userCode]);
 
   const [typingMap,setTypingMap]=useState({});
@@ -2495,7 +2528,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
 
   // 다른 탭을 봤다가 이 탭으로 돌아왔을 때도 항상 맨 아래(최신 메시지)로 스크롤합니다.
   useEffect(()=>{
-    setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end"}),50);
+    setTimeout(()=>scrollMsgListToBottom(false),50);
   },[activeTab]);
 
   useEffect(()=>{
@@ -2549,11 +2582,11 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       const wasFirstLoad=!firstLoad.current[activeTab];
       if(wasFirstLoad){
         firstLoad.current[activeTab]=true;
-        setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end"}),50);
+        setTimeout(()=>scrollMsgListToBottom(false),50);
       }else if(hasNewMsg&&wasNearBottom){
         // 이미 채팅 맨 아래 근처를 보고 있었다면, 새 메시지가 오면 자동으로 따라 내려갑니다.
         // (예전 메시지를 읽으려고 위로 스크롤해둔 상태라면 방해하지 않고 그대로 둡니다.)
-        setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"smooth"}),50);
+        setTimeout(()=>scrollMsgListToBottom(true),50);
       }
       // 방에 처음 들어가서 기존 채팅 전체를 불러오는 순간에는 소리가 안 나야 하므로,
       // 처음 로드가 아닐 때만(=진짜 새로 도착한 메시지일 때만) 재생합니다.
@@ -2630,7 +2663,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
     const msg={id:msgId,roomId:room.id,userCode,tabId:tid,speaker:sp,characterName:charName,avatar:av||"",text:t,timestamp:Date.now()};
     setTabMsgMaps(prev=>({...prev,[tid]:new Map(prev[tid]||new Map()).set(msg.id,msg)}));
-    setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"smooth"}),20);
+    setTimeout(()=>scrollMsgListToBottom(true),20);
     storeSet(key,msg,true).then(r=>{if(!r.ok)console.error("저장 실패:",r.error);});
     return true;
   },[room.id,userCode,activeTab]);
@@ -2669,7 +2702,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
     const msg={id:msgId,roomId:room.id,userCode,tabId:tid,speaker:"image",characterName:char.name||profile.name||userCode,avatar:char.avatar||"",text:dataUrlOrLink,timestamp:Date.now()};
     setTabMsgMaps(prev=>({...prev,[tid]:new Map(prev[tid]||new Map()).set(msg.id,msg)}));
-    setTimeout(()=>bottomRef.current?.scrollIntoView({block:"end",behavior:"smooth"}),20);
+    setTimeout(()=>scrollMsgListToBottom(true),20);
     storeSet(key,msg,true);
   };
   const sendImage=async(file)=>{
@@ -2754,24 +2787,24 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           <div className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <button type="button" className="coc-btn ghost small" onClick={()=>setShowBgm(v=>!v)} style={{color:bgmUrl?"var(--accent-deep)":"var(--text-faint)"}}>
+          <button type="button" className="coc-btn ghost small" onClick={()=>setShowBgm(v=>!v)} style={{color:bgmUrl?"var(--accent-deep)":"var(--text-faint)",flexShrink:0,whiteSpace:"nowrap"}}>
             BGM {bgmUrl?(bgmStarted?"재생 중":"탭 필요"):"없음"}
           </button>
-          <button type="button" className="coc-btn ghost small" onClick={()=>setShowHandoutViewer(true)} style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)"}}>
+          <button type="button" className="coc-btn ghost small" onClick={()=>setShowHandoutViewer(true)} style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)",flexShrink:0,whiteSpace:"nowrap"}}>
             핸드아웃{myHandouts.length>0?` (${myHandouts.length})`:""}
           </button>
           {notifPermission!=="unsupported"&&(
             <button type="button" className="coc-btn ghost small" onClick={requestNotif} disabled={notifPermission==="granted"}
-              style={{color:notifPermission==="granted"?"var(--accent-deep)":"var(--text-faint)"}}>
+              style={{color:notifPermission==="granted"?"var(--accent-deep)":"var(--text-faint)",flexShrink:0,whiteSpace:"nowrap"}}>
               {notifPermission==="granted"?"알림 켜짐":notifPermission==="denied"?"알림 차단됨":"알림 켜기"}
             </button>
           )}
-          <button type="button" className="coc-btn ghost small" onClick={toggleSound}
-            style={{color:soundEnabled?"var(--accent-deep)":"var(--text-faint)"}}>
-            {soundEnabled?"소리 켜짐":"소리 꺼짐"}
+          <button type="button" className="coc-btn ghost small" onClick={toggleSound} title={soundEnabled?"알람 켜짐":"알람 꺼짐"}
+            style={{color:soundEnabled?"var(--accent-deep)":"var(--text-faint)",padding:"7px 9px"}}>
+            <Bell size={14}/>
           </button>
-          <div style={{position:"relative"}} ref={participantsRef}>
-            <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)"}}>
+          <div style={{position:"relative",flexShrink:0}} ref={participantsRef}>
+            <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)",whiteSpace:"nowrap"}}>
               <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:10.5}}>♥</span>
               참가자 ({participantsList.length})
             </button>
@@ -2917,20 +2950,21 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 메시지 목록 — GM 서브탭/NPC 이름 입력창 등이 아래에 추가로 나타나도
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
-      <div ref={msgListRef} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",minHeight:150,overflowY:"auto",padding:"10px",display:"flex",flexDirection:"column",gap:5}}>
-        {groups.length===0&&(
-          <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
-            <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
-          </div>
-        )}
-        {groups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice}/>)}
-        <div ref={bottomRef}/>
-      </div>
-      {typingNames.length>0&&(
-        <div style={{fontSize:11.5,color:"var(--text-faint)",padding:"4px 4px 0",flexShrink:0}}>
-          {typingNames.length===1?`${typingNames[0]}님이 입력 중...`:`${typingNames.join(", ")}님이 입력 중...`}
+      <div style={{position:"relative",flex:"1 1 auto",minHeight:150,display:"flex",flexDirection:"column"}}>
+        <div ref={msgListRef} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5}}>
+          {groups.length===0&&(
+            <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
+              <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
+            </div>
+          )}
+          {groups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice}/>)}
         </div>
-      )}
+        {/* "OO님이 입력 중..." 표시 전용 자리. 항상 이 자리가 고정으로 있고 텍스트만 나타났다 사라져서,
+            떴다 안 떴다 할 때 채팅창이나 아래 탭이 밀리지 않습니다. */}
+        <div style={{position:"absolute",left:12,right:12,bottom:6,fontSize:11,color:"var(--text-faint)",pointerEvents:"none",height:14,overflow:"hidden"}}>
+          {typingNames.length>0&&(typingNames.length===1?`${typingNames[0]}님이 입력 중...`:`${typingNames.join(", ")}님이 입력 중...`)}
+        </div>
+      </div>
 
       {/* 메시지 수정 모달 */}
       {editingMsg&&(
