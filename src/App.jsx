@@ -2284,6 +2284,27 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     if(charDoc) await storeSet(key,{...charDoc,madness:{type:madnessType,note:madnessNote}},true);
     setMadnessTarget(null);
   };
+
+  // GM이 참가자의 이성(SAN)을 감소시키는 기능. 시트에 실제로 반영하고,
+  // "OO의 이성이 N 감소했습니다." 안내를 채팅에도 함께 남깁니다.
+  const [sanTarget,setSanTarget]=useState(null);
+  const [sanAmount,setSanAmount]=useState("");
+  const applySanLoss=async(code)=>{
+    const p=presenceMap[code];
+    const amt=parseInt(sanAmount,10);
+    if(!p?.charId||!amt||amt<=0){ setSanTarget(null); setSanAmount(""); return; }
+    const key=`char:${room.id}:${p.charId}`;
+    const charDoc=await storeGet(key,true);
+    if(charDoc){
+      const curSAN=charDoc.derived?.SAN??0;
+      const nextSAN=Math.max(0,curSAN-amt);
+      await storeSet(key,{...charDoc,derived:{...charDoc.derived,SAN:nextSAN}},true);
+      const name=charDoc.name||p.charName||"캐릭터";
+      await doSend("system",`${name}의 이성이 ${amt} 감소했습니다.`,"","");
+    }
+    setSanTarget(null);
+    setSanAmount("");
+  };
   const [showHandoutManager,setShowHandoutManager]=useState(false);
   const [showHandoutViewer,setShowHandoutViewer]=useState(false);
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
@@ -2635,9 +2656,15 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                           <span style={{fontSize:12.5,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
                           {code===room.creatorCode&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
                           {isGM&&code!==userCode&&(
-                            <button type="button" onClick={()=>{setMadnessTarget(madnessTarget===code?null:code);setMadnessType("");setMadnessNote("");}}
+                            <button type="button" onClick={()=>{setMadnessTarget(madnessTarget===code?null:code);setMadnessType("");setMadnessNote("");setSanTarget(null);}}
                               style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer",color:"var(--text-dim)"}}>
                               광기
+                            </button>
+                          )}
+                          {isGM&&code!==userCode&&(
+                            <button type="button" onClick={()=>{setSanTarget(sanTarget===code?null:code);setSanAmount("");setMadnessTarget(null);}}
+                              style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer",color:"var(--text-dim)"}}>
+                              이성-
                             </button>
                           )}
                         </div>
@@ -2659,6 +2686,19 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                             <div style={{display:"flex",gap:5}}>
                               <button type="button" className="coc-btn small" style={{flex:1,justifyContent:"center"}} onClick={()=>saveMadness(code)}>저장</button>
                               <button type="button" className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>setMadnessTarget(null)}>취소</button>
+                            </div>
+                          </div>
+                        )}
+                        {sanTarget===code&&(
+                          <div style={{marginTop:6,marginLeft:15,padding:8,background:"var(--bg-panel)",borderRadius:8}}>
+                            <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:6}}>감소시킬 이성 수치를 입력하세요. 저장하면 시트에 바로 반영되고, 채팅에도 안내가 남아요.</div>
+                            <input className="coc-input" type="number" min="1" value={sanAmount}
+                              onChange={e=>setSanAmount(e.target.value)}
+                              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();applySanLoss(code);}}}
+                              placeholder="예: 5" style={{fontSize:11.5,padding:"5px 8px",marginBottom:6}}/>
+                            <div style={{display:"flex",gap:5}}>
+                              <button type="button" className="coc-btn small" style={{flex:1,justifyContent:"center"}} onClick={()=>applySanLoss(code)}>적용</button>
+                              <button type="button" className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>{setSanTarget(null);setSanAmount("");}}>취소</button>
                             </div>
                           </div>
                         )}
@@ -2833,7 +2873,9 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
             </div>
           )}
           <button type="button" className="coc-btn ghost small" onClick={emphasizeSelection} title="입력창에서 텍스트를 드래그해 선택한 뒤 눌러주세요">
-            <span style={{color:"var(--accent-deep)",fontWeight:700}}>강조</span>하기
+            <span>
+              <span style={{color:"var(--accent-deep)",fontWeight:700}}>강조</span>하기
+            </span>
           </button>
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
