@@ -4,8 +4,11 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell
 } from "lucide-react";
-// ⚠️ 미리보기 전용 버전: 실제 배포 시 쓰는 Firebase 대신,
-// 클로드 아티팩트 안에서만 동작하는 임시 저장소(window.storage)를 사용합니다.
+import { db } from "./firebase";
+import {
+  doc, getDoc, setDoc, deleteDoc,
+  collection, query, orderBy, startAt, endAt, getDocs, onSnapshot,
+} from "firebase/firestore";
 
 /* ============================== CONFIG ============================== */
 // 고정 코드(0303/0217) 로그인 대신 닉네임+비밀번호 회원가입으로 로그인합니다.
@@ -23,25 +26,36 @@ function isValidUsername(name) {
   return /^[a-zA-Z0-9가-힣_-]{2,20}$/.test(name);
 }
 
-// ⚠️ 미리보기 버전에서는 클로드 아티팩트 정책상 localStorage를 쓸 수 없어서
-// "로그인 상태 유지" 기능이 비활성화되어 있습니다(항상 아무것도 저장/기억하지 않음).
-// 실제 배포판(App.jsx)에서는 정상적으로 동작합니다.
+// "로그인 상태 유지" — 이 기기(브라우저)에만 저장되는 자동 로그인 정보입니다.
+// 비밀번호 원문이 아니라 해시값만 저장합니다.
 const REMEMBER_KEY = "heartEmojiRememberMe";
-function saveRememberedAuth(username, passwordHash) {}
-function loadRememberedAuth() { return null; }
-function clearRememberedAuth() {}
+function saveRememberedAuth(username, passwordHash) {
+  try { localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username, passwordHash })); } catch {}
+}
+function loadRememberedAuth() {
+  try { const raw = localStorage.getItem(REMEMBER_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function clearRememberedAuth() {
+  try { localStorage.removeItem(REMEMBER_KEY); } catch {}
+}
 
-// ⚠️ 미리보기 버전에서는 localStorage를 쓸 수 없어서 배너 설정 기억 기능이
-// 비활성화되어 있습니다(매번 기본값에서 시작). 실제 배포판에서는 정상 동작합니다.
+// 배너 만들기에서 마지막으로 썼던 색상·서식을 이 기기(브라우저)에 기억해둡니다.
 const BANNER_PREFS_KEY = "heartEmojiBannerPrefs";
-function loadBannerPrefs() { return null; }
-function saveBannerPrefs(prefs) {}
+function loadBannerPrefs() {
+  try { const raw = localStorage.getItem(BANNER_PREFS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function saveBannerPrefs(prefs) {
+  try { localStorage.setItem(BANNER_PREFS_KEY, JSON.stringify(prefs)); } catch {}
+}
 
-// ⚠️ 미리보기 버전에서는 localStorage를 쓸 수 없어서 하트 버튼 위치 기억 기능이
-// 비활성화되어 있습니다(드래그는 되지만 새로고침하면 초기화돼요). 실제 배포판은 정상 동작합니다.
+// 하트(다이스/시트) 버튼 위치를 이 기기(브라우저)에 기억해둡니다. 사용자가 드래그로 옮길 수 있습니다.
 const HEART_POS_KEY = "heartEmojiHeartButtonPos";
-function loadHeartPos() { return null; }
-function saveHeartPos(pos) {}
+function loadHeartPos() {
+  try { const raw = localStorage.getItem(HEART_POS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function saveHeartPos(pos) {
+  try { localStorage.setItem(HEART_POS_KEY, JSON.stringify(pos)); } catch {}
+}
 
 // 새 메시지 알림음 — 음원 파일 없이 Web Audio API로 짧은 "딩" 소리를 직접 만들어 재생합니다.
 function playNotifSound() {
@@ -60,11 +74,14 @@ function playNotifSound() {
     setTimeout(()=>ctx.close(), 500);
   } catch {}
 }
-// ⚠️ 미리보기 버전에서는 localStorage를 쓸 수 없어서 알림음 설정 기억 기능이
-// 비활성화되어 있습니다(매번 켜짐 상태로 시작). 소리 자체는 정상 재생됩니다.
+// 알림음 켜짐/꺼짐은 이 기기(브라우저)에 기억해둡니다.
 const SOUND_PREF_KEY = "heartEmojiSoundEnabled";
-function loadSoundPref() { return true; }
-function saveSoundPref(v) {}
+function loadSoundPref() {
+  try { const raw = localStorage.getItem(SOUND_PREF_KEY); return raw===null ? true : raw==="1"; } catch { return true; }
+}
+function saveSoundPref(v) {
+  try { localStorage.setItem(SOUND_PREF_KEY, v ? "1" : "0"); } catch {}
+}
 
 const SKILL_LIST = [
   ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
@@ -352,70 +369,72 @@ function blankProfile(name="") { return {name,avatar:""}; }
 // shared 파라미터는 기존 호출부와의 호환을 위해 남겨두었을 뿐 실제로는 사용하지 않습니다
 // (원본 코드가 어차피 모든 곳에서 shared:true로만 호출했기 때문에 컬렉션을 하나로 통일했습니다).
 
+const KV_COLLECTION = "kv";
+
 async function storeGet(key, _shared) {
   try {
-    const r = await window.storage.get(key, true);
-    if (!r) return null;
-    return JSON.parse(r.value);
+    const snap = await getDoc(doc(db, KV_COLLECTION, key));
+    if (!snap.exists()) return null;
+    return snap.data().value;
   } catch { return null; }
 }
 async function storeSet(key, value, _shared) {
   let lastError = "";
   for (let i = 0; i < 3; i++) {
     try {
-      const r = await window.storage.set(key, JSON.stringify(value), true);
-      if (!r) throw new Error("빈 응답");
+      await setDoc(doc(db, KV_COLLECTION, key), { value, updatedAt: Date.now() });
       return { ok: true };
     } catch (err) {
       lastError = err?.message || String(err);
-      if (i < 2) await new Promise(res => setTimeout(res, 400));
+      if (i < 2) await new Promise(r => setTimeout(r, 500));
     }
   }
   return { ok: false, error: lastError };
 }
 async function storeDelete(key, _shared) {
-  try { await window.storage.delete(key, true); return true; } catch { return false; }
+  try { await deleteDoc(doc(db, KV_COLLECTION, key)); return true; } catch { return false; }
 }
 async function storeListValues(prefix, _shared) {
   try {
-    const r = await window.storage.list(prefix, true);
-    if (!r || !r.keys) return [];
+    const col = collection(db, KV_COLLECTION);
+    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
+    const snap = await getDocs(q);
     const out = [];
-    for (const k of r.keys) {
-      const v = await storeGet(k, true);
-      if (v !== null) out.push({ key: k, value: v });
-    }
+    snap.forEach(d => out.push({ key: d.id, value: d.data().value }));
     return out;
   } catch { return []; }
 }
 async function storeListKeys(prefix, _shared) {
   try {
-    const r = await window.storage.list(prefix, true);
-    return { keys: (r && r.keys) || [] };
+    const col = collection(db, KV_COLLECTION);
+    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
+    const snap = await getDocs(q);
+    return { keys: snap.docs.map(d => d.id) };
   } catch { return { keys: [] }; }
 }
 
+// ---- 실시간 리스너 (onSnapshot) ----
+// 기존 storeListValues/storeGet은 매번 전체를 다시 읽어오는 방식(폴링)이라
+// Firestore 무료 요금제의 "하루 읽기 5만 건" 한도를 채팅이 길어질수록 빠르게 소모했습니다.
+// onSnapshot은 최초 1회만 전체를 읽고, 그 뒤로는 "바뀐 문서"만 전송받기 때문에
+// 폴링 대비 읽기 횟수가 크게 줄어듭니다. 반환값은 구독 해제 함수(unsubscribe)입니다.
 function storeListenPrefix(prefix, onChange) {
-  let stopped = false;
-  const poll = async () => {
-    if (stopped) return;
-    const list = await storeListValues(prefix, true);
-    if (!stopped) onChange(list);
-  };
-  poll();
-  const id = setInterval(poll, 2500);
-  return () => { stopped = true; clearInterval(id); };
+  try {
+    const col = collection(db, KV_COLLECTION);
+    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
+    return onSnapshot(q, snap => {
+      const out = [];
+      snap.forEach(d => out.push({ key: d.id, value: d.data().value }));
+      onChange(out);
+    }, () => {});
+  } catch { return () => {}; }
 }
 function storeListenDoc(key, onChange) {
-  let stopped = false;
-  const poll = async () => {
-    if (stopped) return;
-    const v = await storeGet(key, true);
-    if (!stopped) onChange(v);
-  };
-  poll();
-  const id = setInterval(poll, 2500);
-  return () => { stopped = true; clearInterval(id); };
+  try {
+    return onSnapshot(doc(db, KV_COLLECTION, key), snap => {
+      onChange(snap.exists() ? snap.data().value : null);
+    }, () => {});
+  } catch { return () => {}; }
 }
 
 async function fileToResizedDataURL(file, maxSize=220) {
@@ -2266,16 +2285,21 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const [speaker,setSpeaker]=useState("ic");
   const [gmTab,setGmTab]=useState("narrate");
   const [npcName,setNpcName]=useState("");
+  const [npcAvatar,setNpcAvatar]=useState("");
+  const npcAvatarInputRef=useRef(null);
   const [char,setChar]=useState(character);
-  const [editingChar,setEditingChar]=useState(false);
   const [editingMsg,setEditingMsg]=useState(null);
   const [editText,setEditText]=useState("");
   const [bgmUrl,setBgmUrl]=useState("");
   const [bgmInput,setBgmInput]=useState("");
   const [showBgm,setShowBgm]=useState(false);
   // 볼륨은 방(Firestore)에 저장하지 않고 이 기기(브라우저)에만 개인적으로 저장합니다.
-  // (미리보기 버전은 localStorage를 쓸 수 없어서 매번 기본값 70에서 시작합니다.)
-  const [bgmVolume,setBgmVolume]=useState(70);
+  const [bgmVolume,setBgmVolume]=useState(()=>{
+    try{
+      const v=Number(localStorage.getItem("bgmVolume"));
+      return Number.isFinite(v)&&v>=0&&v<=100?v:70;
+    }catch{return 70;}
+  });
   const iframeRef=useRef(null);
   // 모바일 브라우저는 사용자가 직접 탭하지 않은 자동재생(특히 소리 있는 미디어)을
   // 대부분 차단합니다. 그래서 첫 재생은 반드시 사용자의 탭 한 번을 거치도록 하고,
@@ -2605,6 +2629,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
 
   // 볼륨 변경 시 저장 + 현재 재생 중인 플레이어에 즉시 반영
   useEffect(()=>{
+    try{ localStorage.setItem("bgmVolume",String(bgmVolume)); }catch{}
     sendPlayerCommand("setVolume",[bgmVolume]);
   },[bgmVolume]);
 
@@ -2656,7 +2681,8 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     let ok=false;
     if(isGM&&speaker==="gm"){
       const name=gmTab==="npc"?(npcName.trim()||"NPC"):(profile.name||userCode);
-      ok=await doSend(gmTab,t,name,profile.avatar);
+      const avatar=gmTab==="npc"?(npcAvatar||profile.avatar):profile.avatar;
+      ok=await doSend(gmTab,t,name,avatar);
     }else{ok=await doSend("ic",t,char.name,char.avatar);}
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
   };
@@ -2851,7 +2877,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
               {myChars.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
             </select>
           )}
-          <button className="coc-btn ghost small" onClick={()=>setEditingChar(true)}><Pencil size={11}/></button>
           <button className="coc-btn ghost small" onClick={onChangeCharacter}><Users size={11}/></button>
         </div>
       </div>
@@ -3029,7 +3054,16 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           </div>
         )}
         {isGM&&speaker==="gm"&&gmTab==="npc"&&(
-          <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="이름 (미입력 시 NPC로 출력됩니다.)" style={{marginBottom:6}}/>
+          <div style={{marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:34,height:34,borderRadius:"50%",overflow:"hidden",border:"1px solid var(--border)",background:"var(--bg-panel)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {npcAvatar?<img src={npcAvatar} alt="NPC" className="coc-avatar" style={{width:"100%",height:"100%"}}/>:<Sparkles size={13} color="var(--accent-soft)"/>}
+            </div>
+            <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="이름 (미입력 시 NPC로 출력됩니다.)" style={{flex:1}}/>
+            <input ref={npcAvatarInputRef} type="file" accept="image/*" style={{display:"none"}}
+              onChange={async e=>{const f=e.target.files?.[0];if(!f)return;setNpcAvatar(await fileToResizedDataURL(f,220));e.target.value="";}}/>
+            <button type="button" className="coc-btn ghost small" onClick={()=>npcAvatarInputRef.current?.click()} style={{flexShrink:0}}><Camera size={12}/></button>
+            {npcAvatar&&<button type="button" className="coc-btn ghost small" onClick={()=>setNpcAvatar("")} style={{flexShrink:0}}><X size={12}/></button>}
+          </div>
         )}
         {isGM&&speaker==="gm"&&(gmTab==="choice"||gmTab==="handout")?(
           <div style={{fontSize:12,color:"var(--text-faint)",padding:"10px 2px"}}>
@@ -3048,7 +3082,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
         )}
       </div>
 
-      {editingChar&&<CharacterEditModal initial={{id:char.id,sheet:char,createdAt:char.createdAt}} roomId={room.id} userCode={userCode} onClose={()=>setEditingChar(false)} onSaved={c=>{setChar(c);setEditingChar(false);}}/>}
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
