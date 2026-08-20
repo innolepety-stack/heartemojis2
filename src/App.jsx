@@ -1362,54 +1362,6 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved}){
   );
 }
 
-function CharacterSelectScreen({room,userCode,onSelect,onBack}){
-  const [myChars,setMyChars]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [editing,setEditing]=useState(null);
-
-  useEffect(()=>{
-    const unsub=storeListenPrefix(`char:${room.id}:`,list=>{
-      const chars=list.map(x=>x.value).filter(c=>c.ownerCode===userCode);
-      setMyChars(chars);setLoading(false);
-    });
-    return()=>unsub();
-  },[room.id,userCode]);
-
-  return(
-    <div style={{maxWidth:680,margin:"0 auto"}}>
-      <button className="coc-btn ghost small" onClick={onBack} style={{marginBottom:14}}><ArrowLeft size={12}/> 세션 목록</button>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
-        <div className="coc-display" style={{fontSize:17.5,color:"var(--accent-deep)"}}>{room.title}</div>
-        {room.creatorCode===userCode&&<span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
-      </div>
-      <div className="coc-mono" style={{fontSize:12,color:"var(--text-faint)",marginBottom:20}}>{fmtDate(room.date)}</div>
-      <div className="coc-label" style={{marginBottom:9}}>이 세션에서 플레이할 캐릭터를 선택하세요</div>
-      {loading?<div style={{color:"var(--text-faint)",fontSize:13.5,padding:18}}>불러오는 중...</div>:(
-        <div style={{display:"grid",gap:9,marginBottom:22}}>
-          {myChars.map(c=>(
-            <div key={c.id} className="coc-card" style={{padding:13,display:"flex",alignItems:"center",gap:12}}>
-              <div style={{width:44,height:44,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)"}}>
-                {c.avatar?<img src={c.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={18} color="var(--accent-soft)" style={{margin:13}}/>}
-              </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:15,fontWeight:600}}>{c.name}</div>
-                <div className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)"}}>HP {c.derived?.HP}/{c.derived?.maxHP} · SAN {c.derived?.SAN}/{c.derived?.maxSAN}</div>
-              </div>
-              <button className="coc-btn ghost small" onClick={()=>setEditing({id:c.id,sheet:c,createdAt:c.createdAt})}><Pencil size={11}/> 수정</button>
-              <button className="coc-btn small" onClick={()=>onSelect(c)}>선택</button>
-            </div>
-          ))}
-          <button className="coc-btn ghost" style={{justifyContent:"center",padding:13,borderStyle:"dashed"}}
-            onClick={()=>setEditing({id:newId(),sheet:blankCharSheet(),createdAt:Date.now()})}>
-            <Plus size={13}/> 새 캐릭터 만들기
-          </button>
-        </div>
-      )}
-      {editing&&<CharacterEditModal initial={editing} roomId={room.id} userCode={userCode} onClose={()=>setEditing(null)} onSaved={()=>setEditing(null)}/>}
-    </div>
-  );
-}
-
 /* ============================== CHAT ============================== */
 
 const GM_TABS=[
@@ -2081,7 +2033,7 @@ function DicePanel({char,onRollToChat,roomId}){
 }
 
 
-function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchCharacter,onBack}){
+function ChatScreen({room,userCode,profile,character,onBack}){
   const [tabs,setTabs]=useState([{id:"main",label:"메인"}]);
   const [activeTab,setActiveTab]=useState("main");
   const [newTabName,setNewTabName]=useState("");
@@ -2096,7 +2048,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const npcAvatarInputRef=useRef(null);
   const [judgeTargets,setJudgeTargets]=useState([]); // 판정 대상으로 고른 참가자 code 목록
   const [judgeSkill,setJudgeSkill]=useState("");
-  const [char,setChar]=useState(character);
+  const [char,setChar]=useState(character||null);
+  const [showCharMenu,setShowCharMenu]=useState(false);
+  const [creatingChar,setCreatingChar]=useState(false);
+  const charMenuRef=useRef(null);
   const [editingMsg,setEditingMsg]=useState(null);
   const [editText,setEditText]=useState("");
   const [bgmUrl,setBgmUrl]=useState("");
@@ -2199,6 +2154,20 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     });
     return()=>unsub();
   },[room.id,room.creatorCode,userCode]);
+
+  // 캐릭터가 아직 안 골라진 상태(방에 처음 들어왔거나, 갖고 있던 캐릭터가 있는 경우)라면
+  // 자동으로 첫 번째 캐릭터를 골라줍니다. 캐릭터가 하나도 없으면 그대로 null로 남아있고,
+  // 하단 "캐릭터 만들기" 버튼으로 직접 만들 때까지 닉네임으로 표시됩니다.
+  useEffect(()=>{
+    if(!char&&myChars.length>0) setChar(myChars[0]);
+  },[myChars]);
+
+  // 캐릭터 관리 팝업(만들기/전환) 바깥을 클릭하면 닫습니다.
+  useEffect(()=>{
+    const h=e=>{ if(charMenuRef.current&&!charMenuRef.current.contains(e.target)) setShowCharMenu(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[]);
 
   // 핸드아웃: GM이 만들고 특정 참가자에게 공개하는 자료(텍스트+사진). 방 전체를 실시간 구독합니다.
   const [handouts,setHandouts]=useState([]);
@@ -2548,7 +2517,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       const name=gmTab==="npc"?(npcName.trim()||"NPC"):(profile.name||userCode);
       const avatar=gmTab==="npc"?(npcAvatar||profile.avatar):profile.avatar;
       ok=await doSend(gmTab,t,name,avatar);
-    }else{ok=await doSend("ic",t,char.name,char.avatar);}
+    }else{
+      if(!char){ setCreatingChar(true); return; } // 캐릭터가 아직 없으면 만들기 창부터 열어줍니다.
+      ok=await doSend("ic",t,char.name,char.avatar);
+    }
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
   };
 
@@ -2585,7 +2557,7 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     const tid=activeTab;
     const msgId=newId();
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
-    const msg={id:msgId,roomId:room.id,userCode,tabId:tid,speaker:"image",characterName:char.name||profile.name||userCode,avatar:char.avatar||"",text:dataUrlOrLink,timestamp:Date.now()};
+    const msg={id:msgId,roomId:room.id,userCode,tabId:tid,speaker:"image",characterName:char?.name||profile.name||userCode,avatar:char?.avatar||"",text:dataUrlOrLink,timestamp:Date.now()};
     setTabMsgMaps(prev=>({...prev,[tid]:new Map(prev[tid]||new Map()).set(msg.id,msg)}));
     setTimeout(()=>scrollMsgListToBottom(true),20);
     storeSet(key,msg,true);
@@ -2766,17 +2738,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
             {char?.avatar?<img src={char.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={13} color="var(--accent-soft)" style={{margin:9}}/>}
           </div>
           <div>
-            <div style={{fontSize:13.5,fontWeight:600}}>{char?.name}</div>
-            <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>HP {char?.derived?.HP}/{char?.derived?.maxHP} SAN {char?.derived?.SAN}/{char?.derived?.maxSAN}</div>
+            <div style={{fontSize:13.5,fontWeight:600}}>{char?.name||profile.name||userCode}</div>
+            {char?<div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>HP {char?.derived?.HP}/{char?.derived?.maxHP} SAN {char?.derived?.SAN}/{char?.derived?.maxSAN}</div>
+              :<div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>아직 캐릭터가 없어요</div>}
           </div>
-          {myChars.length>1&&(
-            <select className="coc-select" value={char?.id||""} title="캐릭터 빠른 전환"
-              onChange={e=>{const picked=myChars.find(c=>c.id===e.target.value);if(picked)onSwitchCharacter(picked);}}
-              style={{maxWidth:96,fontSize:11.5,padding:"5px 6px"}}>
-              {myChars.map(c=>(<option key={c.id} value={c.id}>{c.name}</option>))}
-            </select>
-          )}
-          <button className="coc-btn ghost small" onClick={onChangeCharacter}><Users size={11}/></button>
         </div>
       </div>
 
@@ -2901,7 +2866,32 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {/* 입력창 */}
       <div style={{marginTop:8,flexShrink:0}}>
         <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
-          <button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="ic")} onClick={()=>setSpeaker("ic")}><Sparkles size={11}/> {char?.name||"캐릭터"}</button>
+          <div ref={charMenuRef} style={{position:"relative"}}>
+            <button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="ic")}
+              onClick={()=>{ if(char)setSpeaker("ic"); setShowCharMenu(v=>!v); }}>
+              <Sparkles size={11}/> {char?.name||profile.name||userCode} <ChevronDown size={10} style={{marginLeft:1}}/>
+            </button>
+            {showCharMenu&&(
+              <div style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,zIndex:20,minWidth:170,background:"#fff",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:6}}>
+                {myChars.map(c=>(
+                  <button key={c.id} type="button"
+                    onClick={()=>{setChar(c);setSpeaker("ic");setShowCharMenu(false);}}
+                    style={{display:"flex",alignItems:"center",gap:6,width:"100%",padding:"7px 8px",background:char?.id===c.id?"var(--bg-panel)":"none",border:"none",borderRadius:6,cursor:"pointer",fontSize:12.5,color:"var(--text)",textAlign:"left"}}>
+                    <span style={{width:20,height:20,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {c.avatar?<img src={c.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={10} color="var(--accent-soft)"/>}
+                    </span>
+                    {c.name}
+                  </button>
+                ))}
+                <button type="button" onClick={()=>{setCreatingChar(true);setShowCharMenu(false);}}
+                  style={{display:"flex",alignItems:"center",gap:5,width:"100%",padding:"7px 8px",background:"none",border:"none",
+                    borderTop:myChars.length>0?"1px solid var(--border-soft)":"none",marginTop:myChars.length>0?4:0,
+                    cursor:"pointer",fontSize:12.5,color:"var(--accent-deep)",fontWeight:600,textAlign:"left"}}>
+                  <Plus size={12}/> 캐릭터 만들기
+                </button>
+              </div>
+            )}
+          </div>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
           {isGM&&(
             <div ref={imgPopoverRef} style={{position:"relative"}}>
@@ -3020,7 +3010,9 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
-      <DicePanel char={char} onRollToChat={sendDice} roomId={room.id}/>
+      {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
+        onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
+      {char&&<DicePanel char={char} onRollToChat={sendDice} roomId={room.id}/>}
     </div>
   );
 }
@@ -3071,7 +3063,6 @@ function AppInner(){
   const [profile,setProfile]=useState(blankProfile());
   const [profileLoaded,setProfileLoaded]=useState(false);
   const [activeRoom,setActiveRoom]=useState(null);
-  const [activeChar,setActiveChar]=useState(null);
   const [themeKey,setThemeKey]=useState("sky");
   const [customColor,setCustomColor]=useState("#2e9bdb");
 
@@ -3137,13 +3128,11 @@ function AppInner(){
     </div>
   );
 
-  const logout=()=>{clearRememberedAuth();setUser(null);setActiveRoom(null);setActiveChar(null);setTab("rooms");};
+  const logout=()=>{clearRememberedAuth();setUser(null);setActiveRoom(null);setTab("rooms");};
 
   let body;
-  if(activeRoom&&!activeChar){
-    body=<CharacterSelectScreen room={activeRoom} userCode={user.code} onSelect={c=>setActiveChar(c)} onBack={()=>setActiveRoom(null)}/>;
-  }else if(activeRoom&&activeChar){
-    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} character={activeChar} onChangeCharacter={()=>setActiveChar(null)} onSwitchCharacter={c=>setActiveChar(c)} onBack={()=>{setActiveRoom(null);setActiveChar(null);}}/>;
+  if(activeRoom){
+    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectPreset={handleThemePreset} onSelectCustom={handleThemeCustom}/>;
   }else if(tab==="profile"){
