@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
-  Crown, Settings, Trash2, Bell
+  Crown, Settings, Trash2, Bell, BellOff, Music, Folder
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -2094,6 +2094,8 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const [npcName,setNpcName]=useState("");
   const [npcAvatar,setNpcAvatar]=useState("");
   const npcAvatarInputRef=useRef(null);
+  const [judgeTargets,setJudgeTargets]=useState([]); // 판정 대상으로 고른 참가자 code 목록
+  const [judgeSkill,setJudgeSkill]=useState("");
   const [char,setChar]=useState(character);
   const [editingMsg,setEditingMsg]=useState(null);
   const [editText,setEditText]=useState("");
@@ -2126,6 +2128,39 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const imgInputRef=useRef(null);
   const firstLoad=useRef({});
   const isGM=userCode===room.creatorCode;
+
+  // 다른 탭에 새 메시지가 왔는지: 탭별 최근 메시지 신호(activity)를 구독해서,
+  // "내가 그 탭에서 마지막으로 본 메시지 id"와 다르면 점을 띄웁니다.
+  const [tabActivity,setTabActivity]=useState({}); // {tabId:{lastId,lastTimestamp}}
+  const lastSeenIdRef=useRef({}); // {tabId:lastId} — 그 탭을 마지막으로 봤을 때의 최신 메시지 id
+  const activityInitializedRef=useRef(false);
+  useEffect(()=>{
+    const unsub=storeListenPrefix(`activity:${room.id}:`,list=>{
+      const map={};
+      list.forEach(x=>{
+        const tid=x.key.split(":").pop();
+        map[tid]=x.value;
+      });
+      if(!activityInitializedRef.current){
+        // 방에 처음 들어왔을 때는 이미 있던 대화들을 전부 "이미 봤다"로 취급합니다.
+        // (그래야 그 이후 실제로 새로 도착한 메시지에만 점이 떠요.)
+        Object.entries(map).forEach(([tid,v])=>{ lastSeenIdRef.current[tid]=v.lastId; });
+        activityInitializedRef.current=true;
+      }
+      setTabActivity(map);
+    });
+    return()=>unsub();
+  },[room.id]);
+  // 지금 보고 있는 탭은 "봤다"고 기록 (탭을 켜자마자, 그리고 그 탭에 새 활동이 잡힐 때마다)
+  useEffect(()=>{
+    if(tabActivity[activeTab]) lastSeenIdRef.current[activeTab]=tabActivity[activeTab].lastId;
+  },[activeTab,tabActivity]);
+  const hasUnread=tabId=>{
+    if(tabId===activeTab)return false;
+    const a=tabActivity[tabId];
+    if(!a)return false;
+    return lastSeenIdRef.current[tabId]!==a.lastId;
+  };
 
   // 모바일에서 다른 앱/탭에 갔다 오면 주소창이 접혔다 펴지면서 화면 크기가 살짝 바뀌어서,
   // 실제로는 맨 아래에 있었는데도 "맨 아래 근처" 판정이 어긋나 자동 스크롤이 안 되는 경우가 있어요.
@@ -2498,6 +2533,9 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
     setTabMsgMaps(prev=>({...prev,[tid]:new Map(prev[tid]||new Map()).set(msg.id,msg)}));
     setTimeout(()=>scrollMsgListToBottom(true),20);
     storeSet(key,msg,true).then(r=>{if(!r.ok)console.error("저장 실패:",r.error);});
+    // 다른 탭을 보고 있는 사람들에게 "새 메시지 있음" 점을 띄우기 위한 가벼운 신호.
+    // 메시지 전체를 매번 구독하면 비용이 크니, 탭별로 최근 메시지 id만 담은 아주 작은 문서를 따로 둡니다.
+    storeSet(`activity:${room.id}:${tid}`,{lastId:msgId,lastTimestamp:msg.timestamp},true);
     return true;
   },[room.id,userCode,activeTab]);
 
@@ -2512,6 +2550,19 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       ok=await doSend(gmTab,t,name,avatar);
     }else{ok=await doSend("ic",t,char.name,char.avatar);}
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
+  };
+
+  // 참가자 code로 화면에 보여줄 캐릭터 이름을 찾습니다 (본인은 char, 그 외엔 presence 기록).
+  const nameOfParticipant=code=>code===userCode?(char?.name||"GM"):(presenceMap[code]?.charName||code);
+
+  // 판정 요청 조합: 대상(전원/개별 선택) + 기능치 이름을 테마색으로, "판정"은 기본색으로 맨 뒤에 자동 붙입니다.
+  // var(--accent-deep)를 쓰기 때문에 보는 사람마다 자기 테마색으로 보여요.
+  const sendJudgeRequest=async()=>{
+    if(judgeTargets.length===0||!judgeSkill.trim())return;
+    const names=judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ");
+    const markup=`<span style="color:var(--accent-deep);font-weight:700">${names}</span> <span style="color:var(--accent-deep);font-weight:700">${judgeSkill.trim()}</span> 판정`;
+    const ok=await doSend("judge",markup,"","");
+    if(ok){setJudgeTargets([]);setJudgeSkill("");}
   };
 
   // 입력창에서 드래그로 선택한 부분을 테마색으로 감쌉니다. var(--accent-deep)를 쓰기 때문에
@@ -2621,11 +2672,13 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           <div className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <button type="button" className="coc-btn ghost small" onClick={()=>setShowBgm(v=>!v)} style={{color:bgmUrl?"var(--accent-deep)":"var(--text-faint)",flexShrink:0,whiteSpace:"nowrap"}}>
-            BGM {bgmUrl?(bgmStarted?"재생 중":"탭 필요"):"없음"}
+          <button type="button" className="coc-btn ghost small" onClick={()=>setShowBgm(v=>!v)} title={bgmUrl?(bgmStarted?"BGM 재생 중":"BGM 탭 필요"):"BGM 없음"}
+            style={{color:bgmUrl?"var(--accent-deep)":"var(--text-faint)",padding:"5px 9px"}}>
+            <Music size={14}/>
           </button>
-          <button type="button" className="coc-btn ghost small" onClick={()=>setShowHandoutViewer(true)} style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)",flexShrink:0,whiteSpace:"nowrap"}}>
-            핸드아웃{myHandouts.length>0?` (${myHandouts.length})`:""}
+          <button type="button" className="coc-btn ghost small" onClick={()=>setShowHandoutViewer(true)} title={`핸드아웃${myHandouts.length>0?` (${myHandouts.length})`:""}`}
+            style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)",padding:"5px 9px"}}>
+            <Folder size={14}/>
           </button>
           {notifPermission!=="unsupported"&&(
             <button type="button" className="coc-btn ghost small" onClick={requestNotif} disabled={notifPermission==="granted"}
@@ -2635,12 +2688,12 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
           )}
           <button type="button" className="coc-btn ghost small" onClick={toggleSound} title={soundEnabled?"알람 켜짐":"알람 꺼짐"}
             style={{color:soundEnabled?"var(--accent-deep)":"var(--text-faint)",padding:"5px 9px"}}>
-            <Bell size={14}/>
+            {soundEnabled?<Bell size={14}/>:<BellOff size={14}/>}
           </button>
           <div style={{position:"relative",flexShrink:0}} ref={participantsRef}>
-            <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} style={{color:"var(--text-faint)",whiteSpace:"nowrap"}}>
-              <span style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--border)",marginRight:4,fontSize:10.5}}>♥</span>
-              참가자 ({participantsList.length})
+            <button type="button" className="coc-btn ghost small" onClick={()=>setShowParticipants(v=>!v)} title={`참가자 (${participantsList.length})`}
+              style={{color:participantsList.some(c=>c!==userCode&&isOnline(c))?"#e0507a":"var(--text-faint)",padding:"5px 9px"}}>
+              <Users size={14}/>
             </button>
             {showParticipants&&(
               <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:20,minWidth:180,background:"#fff",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
@@ -2762,9 +2815,10 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       <div className="chat-tab-bar">
         {visibleTabs.map(t=>(
           <div key={t.id} style={{display:"flex",alignItems:"center"}}>
-            <div className={"chat-tab"+(activeTab===t.id?" active":"")} onClick={()=>setActiveTab(t.id)}>
+            <div className={"chat-tab"+(activeTab===t.id?" active":"")} onClick={()=>setActiveTab(t.id)} style={{position:"relative"}}>
               {t.invited&&t.invited.length>0&&<span style={{marginRight:3,fontSize:10.5}}>🔒</span>}
               {t.label}
+              {hasUnread(t.id)&&<span style={{position:"absolute",top:2,right:-2,width:7,height:7,borderRadius:"50%",background:"#e0507a"}}/>}
             </div>
             {isGM&&t.id!=="main"&&(
               <button type="button" onClick={()=>removeTab(t.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 4px",fontSize:15,lineHeight:1,opacity:0.5}}>×</button>
@@ -2915,6 +2969,40 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
         {isGM&&speaker==="gm"&&(gmTab==="choice"||gmTab==="handout")?(
           <div style={{fontSize:12,color:"var(--text-faint)",padding:"10px 2px"}}>
             위 {gmTab==="choice"?"'선택'":"'H/O'"} 버튼을 눌러 {gmTab==="choice"?"선택지를 만들어보세요.":"핸드아웃을 관리해 보세요."}
+          </div>
+        ):isGM&&speaker==="gm"&&gmTab==="judge"?(
+          <div style={{padding:"4px 2px"}}>
+            <div className="coc-label" style={{marginBottom:6}}>판정 대상</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+              <button type="button" className="coc-btn small"
+                onClick={()=>setJudgeTargets(judgeTargets.length===participantsList.length?[]:[...participantsList])}
+                style={{background:judgeTargets.length===participantsList.length&&participantsList.length>0?"var(--accent)":"#fff",
+                  color:judgeTargets.length===participantsList.length&&participantsList.length>0?"#fff":"var(--text-dim)",
+                  border:"1px solid "+(judgeTargets.length===participantsList.length&&participantsList.length>0?"var(--accent)":"var(--border)")}}>
+                전원
+              </button>
+              {participantsList.map(code=>{
+                const active=judgeTargets.includes(code);
+                return(
+                  <button key={code} type="button" className="coc-btn small"
+                    onClick={()=>setJudgeTargets(t=>active?t.filter(c=>c!==code):[...t,code])}
+                    style={{background:active?"var(--accent)":"#fff",color:active?"#fff":"var(--text-dim)",border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
+                    {nameOfParticipant(code)}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="coc-label" style={{marginBottom:6}}>판정할 기능치</div>
+            <div style={{display:"flex",gap:7,marginBottom:8}}>
+              <input className="coc-input" value={judgeSkill} onChange={e=>setJudgeSkill(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();sendJudgeRequest();}}}
+                placeholder="예: 이성, 백병전..." style={{flex:1}}/>
+              <button type="button" className="coc-btn" style={{flexShrink:0}} disabled={judgeTargets.length===0||!judgeSkill.trim()} onClick={sendJudgeRequest}><Send size={13}/></button>
+            </div>
+            <div style={{fontSize:11.5,color:"var(--text-faint)"}}>
+              미리보기: <span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeTargets.length===0?"...":judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ")}</span>
+              {" "}<span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeSkill.trim()||"..."}</span> 판정
+            </div>
           </div>
         ):(
           <>
