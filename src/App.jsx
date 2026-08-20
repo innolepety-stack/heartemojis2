@@ -39,15 +39,6 @@ function clearRememberedAuth() {
   try { localStorage.removeItem(REMEMBER_KEY); } catch {}
 }
 
-// 배너 만들기에서 마지막으로 썼던 색상·서식을 이 기기(브라우저)에 기억해둡니다.
-const BANNER_PREFS_KEY = "heartEmojiBannerPrefs";
-function loadBannerPrefs() {
-  try { const raw = localStorage.getItem(BANNER_PREFS_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
-}
-function saveBannerPrefs(prefs) {
-  try { localStorage.setItem(BANNER_PREFS_KEY, JSON.stringify(prefs)); } catch {}
-}
-
 // 하트(다이스/시트) 버튼 위치를 이 기기(브라우저)에 기억해둡니다. 사용자가 드래그로 옮길 수 있습니다.
 const HEART_POS_KEY = "heartEmojiHeartButtonPos";
 function loadHeartPos() {
@@ -1925,6 +1916,14 @@ function HandoutViewerModal({handouts,madness,onClose}){
     </div>
   );
 }
+
+function DicePanel({char,onRollToChat,roomId}){
+  const [open,setOpen]=useState(false);
+  const [tab,setTab]=useState("roll");
+  const [sheetDraft,setSheetDraft]=useState(char);
+  const [saving,setSaving]=useState(false);
+  const panelRef=useRef(null);
+
   // 하트 버튼을 드래그로 원하는 위치에 옮길 수 있습니다. (이 기기에 위치가 기억돼요)
   const [pos,setPos]=useState(()=>loadHeartPos());
   const dragInfo=useRef({dragging:false,moved:false,startX:0,startY:0,startPosX:0,startPosY:0});
@@ -2290,7 +2289,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
   const [showImgPopover,setShowImgPopover]=useState(false);
   const [imgUrlInput,setImgUrlInput]=useState("");
-  const [showBannerBuilder,setShowBannerBuilder]=useState(false);
   const imgPopoverRef=useRef(null);
   useEffect(()=>{
     if(!showImgPopover)return;
@@ -2834,9 +2832,8 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
                 onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}/>
             </div>
           )}
-          {isGM&&<button type="button" className="coc-btn ghost small" onClick={()=>setShowBannerBuilder(true)}>배너 만들기</button>}
           <button type="button" className="coc-btn ghost small" onClick={emphasizeSelection} title="입력창에서 텍스트를 드래그해 선택한 뒤 눌러주세요">
-            <span style={{color:"var(--accent-deep)",fontWeight:700}}>강조</span>
+            <span style={{color:"var(--accent-deep)",fontWeight:700}}>강조</span>하기
           </button>
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
@@ -2893,12 +2890,6 @@ function ChatScreen({room,userCode,profile,character,onChangeCharacter,onSwitchC
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
-      {showBannerBuilder&&(
-        <BannerBuilderModal
-          onClose={()=>setShowBannerBuilder(false)}
-          onInsert={markup=>setText(prev=>prev?prev+"\n"+markup:markup)}
-        />
-      )}
       <DicePanel char={char} onRollToChat={sendDice} roomId={room.id}/>
     </div>
   );
