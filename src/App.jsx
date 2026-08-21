@@ -626,7 +626,7 @@ function storeListenDoc(key, onChange) {
   } catch { return () => {}; }
 }
 
-async function fileToResizedDataURL(file, maxSize=220) {
+async function fileToResizedDataURL(file, maxSize=220, quality=0.9) {
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onload=()=>{
@@ -638,12 +638,23 @@ async function fileToResizedDataURL(file, maxSize=220) {
         const canvas=document.createElement("canvas");
         canvas.width=width;canvas.height=height;
         canvas.getContext("2d").drawImage(img,0,0,width,height);
-        resolve(canvas.toDataURL("image/jpeg",0.9));
+        resolve(canvas.toDataURL("image/jpeg",quality));
       };
       img.onerror=reject; img.src=reader.result;
     };
     reader.onerror=reject; reader.readAsDataURL(file);
   });
+}
+// 배경/장면 이미지처럼 "최대한 화질을 살리고 싶은" 사진용: Firestore 문서 용량 한도
+// 안에서 가능한 가장 큰 크기·높은 화질로 자동으로 맞춰줍니다(무손실은 아니지만,
+// 일반 사진에서는 육안으로 차이를 느끼기 어려운 수준까지 화질을 끌어올려요).
+async function fileToBestQualityDataURL(file, maxBytes=900000) {
+  const attempts=[[1800,0.95],[1600,0.93],[1400,0.9],[1200,0.88],[1000,0.85],[800,0.8]];
+  for(const [size,q] of attempts){
+    const url=await fileToResizedDataURL(file,size,q);
+    if(url.length*0.75<=maxBytes) return url;
+  }
+  return fileToResizedDataURL(file,700,0.75);
 }
 // 채팅으로 보내는 이미지는 PNG로 저장해 투명 배경(알파 채널)을 유지합니다.
 async function fileToResizedPNG(file, maxSize=480) {
@@ -2940,7 +2951,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     return()=>unsub();
   },[room.id]);
   const uploadScene=async file=>{
-    const url=await fileToResizedDataURL(file,900);
+    const url=await fileToBestQualityDataURL(file);
     await storeSet(`scene:${room.id}`,{url},true);
   };
   const clearScene=async()=>{ await storeSet(`scene:${room.id}`,{url:""},true); };
