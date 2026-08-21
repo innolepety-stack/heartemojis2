@@ -1487,7 +1487,6 @@ function FormattedText({text,style={}}){
 function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   const{speaker,characterName,avatar,timestamp,lines,items}=group;
   const isAnon=speaker==="narrate"||speaker==="judge"||speaker==="system";
-  const isJudge=speaker==="judge";
   const isDice=speaker==="dice";
   const isImg=speaker==="image";
   const isChoice=speaker==="choice";
@@ -1560,23 +1559,6 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   // 수정·삭제는 GM 전용, 더블클릭으로 수정창을 엽니다
   if(isAnon){
     const canEdit=isGM&&isMine;
-    if(isJudge){
-      return(
-        <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
-          <div style={{position:"relative",display:"inline-flex",alignItems:"center",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:999,background:"var(--bg-panel)",padding:"8px 18px",textAlign:"center",cursor:canEdit?"pointer":"default"}}
-            onClick={withDoubleTap(()=>canEdit&&items.length===1&&onEdit(items[0]))}>
-            <span style={{fontSize:14,color:"var(--accent-deep)",fontWeight:600}}>
-              {lines.map((line,i)=>(
-                <span key={i}>
-                  <FormattedText text={line}/>
-                  {i<lines.length-1&&<br/>}
-                </span>
-              ))}
-            </span>
-          </div>
-        </div>
-      );
-    }
     return(
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
         <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
@@ -3024,7 +3006,7 @@ function ChatScreen({room,userCode,profile,onBack}){
               <button type="button" className="coc-btn" style={{flexShrink:0}} disabled={judgeTargets.length===0||!judgeSkill.trim()} onClick={sendJudgeRequest}><Send size={13}/></button>
             </div>
             <div style={{fontSize:11.5,color:"var(--text-faint)"}}>
-              미리보기: <span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeTargets.length===0?"...":judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ")}</span>
+              미리보기: <span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeTargets.length===0?"...":judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ")}</span>,
               {" "}<span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeSkill.trim()||"..."}</span> 판정
             </div>
           </div>
