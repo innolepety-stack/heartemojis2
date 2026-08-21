@@ -222,8 +222,10 @@ input[type=number] { -moz-appearance: textfield; }
    모바일에서는 지금까지 쓰던 화면 그대로 유지되고, 이 레이아웃은 아예 적용되지 않습니다. */
 .stage-panel { display: none; }
 @media (min-width: 1024px) {
-  .chat-desktop-wrap { display: flex; flex-direction: row; gap: 16px; align-items: stretch; height: calc(100dvh - 76px); }
-  .chat-desktop-wrap > .chat-font { flex: 0 0 420px; max-width: 420px !important; width: 420px; height: 100% !important; margin: 0 !important; }
+  .chat-desktop-wrap { display: flex; flex-direction: row; gap: 0; align-items: stretch; height: calc(100dvh - 76px); }
+  .chat-desktop-wrap > .chat-icon-rail { margin-right: 16px; }
+  .chat-desktop-wrap > .stage-panel { margin-right: 10px; }
+  .chat-desktop-wrap > .chat-font { flex: 0 0 var(--chat-w, 420px); max-width: var(--chat-w, 420px) !important; width: var(--chat-w, 420px); height: 100% !important; margin: 0 !important; }
   .stage-panel {
     display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0;
     border-radius: 16px; border: 1px solid var(--border);
@@ -231,8 +233,20 @@ input[type=number] { -moz-appearance: textfield; }
        그림이 없을 때는 아래 그라데이션이 그대로 보입니다. */
     background: linear-gradient(160deg, var(--bg-panel) 0%, var(--surface) 60%);
     background-size: cover; background-position: center; background-repeat: no-repeat;
-    position: relative; overflow: hidden;
+    position: relative; overflow: hidden; transition: outline-color .15s;
+    outline: 2px dashed transparent; outline-offset: -2px;
   }
+  .stage-panel.drag-over { outline-color: var(--accent); background-color: var(--accent-soft); }
+}
+/* 채팅창 폭 조절 핸들: 데스크톱 2단 레이아웃에서만 보입니다. */
+.chat-resize-handle { display: none; }
+@media (min-width: 1024px) {
+  .chat-resize-handle {
+    display: flex; align-items: center; justify-content: center;
+    width: 14px; flex-shrink: 0; cursor: col-resize; user-select: none; touch-action: none;
+  }
+  .chat-resize-handle::after { content: ""; width: 4px; height: 52px; border-radius: 3px; background: var(--border); transition: background .15s; }
+  .chat-resize-handle:hover::after, .chat-resize-handle.dragging::after { background: var(--accent); }
 }
 /* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
 .stage-scene { flex: 1; position: relative; min-height: 0; }
@@ -1761,7 +1775,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
     return(
       <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5}}>
         {lines.map((line,i)=>(
-          <img key={i} src={line} alt="전송된 이미지" style={{maxWidth:280,maxHeight:220,borderRadius:8,objectFit:"contain",cursor:isMine?"pointer":"default"}}
+          <img key={i} src={line} alt="전송된 이미지" style={{width:"68%",maxWidth:420,minWidth:120,maxHeight:340,borderRadius:8,objectFit:"contain",cursor:isMine?"pointer":"default"}}
             onClick={withDoubleTap(()=>isMine&&onEdit(items[i]))}/>
         ))}
       </div>
@@ -2842,6 +2856,51 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   };
   const clearScene=async()=>{ await storeSet(`scene:${room.id}`,{url:""},true); };
 
+  // GM이 무대 위로 이미지 파일을 드래그&드롭하면 바로 배경으로 설정됩니다.
+  const [stageDragOver,setStageDragOver]=useState(false);
+  const handleStageDrop=async e=>{
+    e.preventDefault(); e.stopPropagation();
+    setStageDragOver(false);
+    if(!isGM) return;
+    const file=[...(e.dataTransfer?.files||[])].find(f=>f.type.startsWith("image/"));
+    if(file) await uploadScene(file);
+  };
+  const handleStageDragOver=e=>{
+    if(!isGM) return;
+    e.preventDefault(); e.stopPropagation();
+    if(!stageDragOver) setStageDragOver(true);
+  };
+  const handleStageDragLeave=e=>{
+    e.preventDefault(); e.stopPropagation();
+    setStageDragOver(false);
+  };
+
+  // PC 2단 레이아웃에서 우측 채팅창 폭을 좌우로 드래그해서 조절합니다.
+  // 채팅창을 줄이면 좌측 무대(stage-panel)가 flex:1이라 자동으로 넓어집니다.
+  const [chatWidth,setChatWidth]=useState(()=>{
+    const saved=Number(localStorage.getItem("chatPanelWidth"));
+    return saved>=320&&saved<=900?saved:420;
+  });
+  const chatResizeRef=useRef(null);
+  const startChatResize=e=>{
+    e.preventDefault();
+    const startX=e.clientX;
+    const startWidth=chatWidth;
+    chatResizeRef.current?.classList.add("dragging");
+    const onMove=ev=>{
+      const next=Math.min(900,Math.max(320,startWidth+(startX-ev.clientX)));
+      setChatWidth(next);
+    };
+    const onUp=()=>{
+      chatResizeRef.current?.classList.remove("dragging");
+      document.removeEventListener("mousemove",onMove);
+      document.removeEventListener("mouseup",onUp);
+      setChatWidth(w=>{ try{localStorage.setItem("chatPanelWidth",String(w));}catch{} return w; });
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  };
+
 
   // 내 캐릭터 문서를 실시간으로 구독합니다. GM이 광기를 부여하는 등 외부에서
   // 캐릭터 정보가 바뀌면, 방을 나갔다 들어올 필요 없이 바로 반영됩니다.
@@ -3033,7 +3092,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   });
 
   return(
-    <div className="chat-desktop-wrap">
+    <div className="chat-desktop-wrap" style={{"--chat-w":`${chatWidth}px`}}>
       <div className="chat-icon-rail">
         <div className="rail-title">
           <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3063,7 +3122,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
         {isGM&&(
           <>
             <button type="button" className={"chat-icon-btn"+(sceneUrl?" on":"")} onClick={()=>sceneInputRef.current?.click()}
-              title={sceneUrl?"배경 이미지 변경 (PC 화면 좌측 무대에 표시)":"배경 이미지 설정 (PC 화면 좌측 무대에 표시)"}>
+              title={sceneUrl?"배경 이미지 변경 (클릭해서 선택, 또는 무대 위로 파일을 끌어다 놓아도 됩니다)":"배경 이미지 설정 (클릭해서 선택, 또는 무대 위로 파일을 끌어다 놓아도 됩니다)"}>
               <ImageIcon size={18}/>
             </button>
             <input ref={sceneInputRef} type="file" accept="image/*" style={{display:"none"}}
@@ -3175,7 +3234,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
         </div>
       </div>
 
-      <div className="stage-panel" style={sceneUrl?{backgroundImage:`url(${sceneUrl})`}:undefined}>
+      <div className={"stage-panel"+(stageDragOver?" drag-over":"")} style={sceneUrl?{backgroundImage:`url(${sceneUrl})`}:undefined}
+        onDragOver={handleStageDragOver} onDragEnter={handleStageDragOver} onDragLeave={handleStageDragLeave} onDrop={handleStageDrop}>
+        {isGM&&stageDragOver&&(
+          <div style={{position:"absolute",inset:0,zIndex:9,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
+            <div style={{background:"var(--glass)",backdropFilter:"blur(4px)",borderRadius:12,padding:"14px 20px",fontSize:14,fontWeight:600,color:"var(--accent-deep)"}}>
+              여기에 놓으면 배경으로 설정됩니다
+            </div>
+          </div>
+        )}
         {/* PC에서는 헤더가 좌측 세로 아이콘 바로 옮겨가서, 방 제목/날짜는 무대 위 오버레이로 살짝만 표시합니다 */}
         <div className="stage-title-overlay">
           <div style={{display:"flex",alignItems:"center",gap:7}}>
@@ -3220,6 +3287,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           <div className="vn-narration-box"><FormattedText text={latestDialogue.text}/></div>
         )}
       </div>
+    <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
     <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 76px)"}}>
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
 
