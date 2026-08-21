@@ -1976,11 +1976,14 @@ function DecorateModal({onClose,onSendText,onSendImageUrl}){
 // 무대 위에 올려두는 사진/토큰 한 장. 드래그로 옮기고, 우측 하단 손잡이로 크기를 조절합니다.
 // 방에 있는 모든 사람에게 똑같이 보여요(GM만 옮기고/지울 수 있어요). 드래그·리사이즈 도중에는
 // 화면에서만 바로바로 움직이다가, 손을 뗀 순간에만 서버에 저장해서(=다른 사람 화면에 반영) 씁니다.
-function StageToken({layer,onUpdate,onRemove,onFocus,onCommit,onContextMenu,canEdit}){
+// 무대 위에 올려두는 사진/토큰 한 장. 드래그로 옮기고, 우측 하단 손잡이로 크기를 조절합니다.
+// 방에 있는 모든 사람에게 똑같이 보여요(GM만 옮기고/크기 조절할 수 있어요). 삭제·순서 변경은
+// 좌측 아이콘 바의 "레이어" 패널에서 합니다(포토샵 레이어창처럼요). 드래그·리사이즈 도중에는
+// 화면에서만 바로바로 움직이다가, 손을 뗀 순간에만 서버에 저장해서(=다른 사람 화면에 반영) 씁니다.
+function StageToken({layer,zIndex,onUpdate,onCommit,canEdit}){
   const onDragMouseDown=e=>{
     if(!canEdit||e.button!==0)return;
     e.stopPropagation();e.preventDefault();
-    onFocus();
     const startX=e.clientX,startY=e.clientY;
     const origX=layer.x,origY=layer.y;
     let last={x:origX,y:origY};
@@ -1995,7 +1998,6 @@ function StageToken({layer,onUpdate,onRemove,onFocus,onCommit,onContextMenu,canE
   const onResizeMouseDown=e=>{
     if(!canEdit)return;
     e.stopPropagation();e.preventDefault();
-    onFocus();
     const startX=e.clientX,startY=e.clientY;
     const origW=layer.width,origH=layer.height;
     let last={width:origW,height:origH};
@@ -2012,8 +2014,7 @@ function StageToken({layer,onUpdate,onRemove,onFocus,onCommit,onContextMenu,canE
   };
   return(
     <div onMouseDown={onDragMouseDown}
-      onContextMenu={e=>{ if(!canEdit)return; e.preventDefault(); e.stopPropagation(); onFocus(); onContextMenu(e.clientX,e.clientY); }}
-      style={{position:"absolute",left:layer.x,top:layer.y,width:layer.width,height:layer.height,zIndex:layer.z||1,cursor:canEdit?"move":"default",touchAction:"none"}}>
+      style={{position:"absolute",left:layer.x,top:layer.y,width:layer.width,height:layer.height,zIndex,cursor:canEdit?"move":"default",touchAction:"none"}}>
       <img src={layer.url} draggable={false} alt=""
         style={{width:"100%",height:"100%",objectFit:"contain",userSelect:"none",pointerEvents:"none",filter:"drop-shadow(0 4px 10px rgba(0,0,0,0.25))"}}/>
       {canEdit&&(
@@ -2910,28 +2911,31 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   // GM이 무대 위로 이미지 파일을 드래그&드롭하면 바로 배경으로 설정됩니다.
   const [stageDragOver,setStageDragOver]=useState(false);
   // 무대 레이어(사진/토큰): 방에 있는 모든 사람에게 똑같이 보이도록 Firestore로 동기화합니다.
-  // GM만 추가/이동/크기조절/삭제할 수 있고, 드래그·리사이즈 도중에는 화면에서만 바로바로
-  // 움직이다가 손을 뗀 순간에만 저장해서(=다른 사람 화면 반영) 씁니다.
+  // 포토샵 레이어창처럼, 목록 맨 위(=배열 0번)가 가장 앞에 나옵니다. GM만 좌측 아이콘 바의
+  // "레이어" 패널에서 추가/삭제/순서변경(드래그)을 할 수 있고, 드래그 이동은 무대 위에서
+  // 손을 뗀 순간에만 저장해서(=다른 사람 화면 반영) 씁니다.
   const [layers,setLayers]=useState([]);
   const [showLayerPanel,setShowLayerPanel]=useState(false);
   const [layerUrlInput,setLayerUrlInput]=useState("");
-  const [layerContextMenu,setLayerContextMenu]=useState(null); // {id,x,y}
+  const [layerDragIndex,setLayerDragIndex]=useState(null); // 레이어 패널 목록에서 드래그 중인 항목의 인덱스
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
   const layerFileInputRef=useRef(null);
-  const layerZRef=useRef(1);
+  const layerPanelRef=useRef(null);
   useEffect(()=>{
-    const unsub=storeListenDoc(`layers:${room.id}`,d=>{
-      const ls=d?.layers||[];
-      setLayers(ls);
-      layerZRef.current=ls.reduce((m,l)=>Math.max(m,l.z||1),1);
-    });
+    const unsub=storeListenDoc(`layers:${room.id}`,d=>{ setLayers(d?.layers||[]); });
     return()=>unsub();
   },[room.id]);
+  useEffect(()=>{
+    if(!showLayerPanel)return;
+    const onDocClick=e=>{ if(layerPanelRef.current&&!layerPanelRef.current.contains(e.target)) setShowLayerPanel(false); };
+    document.addEventListener("mousedown",onDocClick);
+    return()=>document.removeEventListener("mousedown",onDocClick);
+  },[showLayerPanel]);
   const syncLayers=next=>{ storeSet(`layers:${room.id}`,{layers:next},true); };
+  // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
   const addLayer=url=>{
-    layerZRef.current+=1;
     setLayers(ls=>{
-      const next=[...ls,{id:newId(),url,x:60,y:60,width:140,height:140,z:layerZRef.current}];
+      const next=[{id:newId(),url,x:60,y:60,width:140,height:140},...ls];
       syncLayers(next);
       return next;
     });
@@ -2953,13 +2957,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     syncLayers(next);
     return next;
   });
-  const bringLayerToFront=id=>{ layerZRef.current+=1; updateLayerLocal(id,{z:layerZRef.current}); };
-  useEffect(()=>{
-    if(!layerContextMenu)return;
-    const close=()=>setLayerContextMenu(null);
-    document.addEventListener("click",close);
-    return()=>document.removeEventListener("click",close);
-  },[layerContextMenu]);
+  // 레이어 패널 목록에서 드래그로 순서 바꾸기 (포토샵 레이어창처럼, 목록 순서가 곧 쌓임 순서입니다)
+  const reorderLayer=(fromIdx,toIdx)=>setLayers(ls=>{
+    const next=[...ls];
+    const [moved]=next.splice(fromIdx,1);
+    next.splice(toIdx,0,moved);
+    syncLayers(next);
+    return next;
+  });
   const handleStageDrop=async e=>{
     e.preventDefault(); e.stopPropagation();
     setStageDragOver(false);
@@ -3252,6 +3257,54 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
                 <Trash2 size={18}/>
               </button>
             )}
+            <div style={{position:"relative",flexShrink:0}} ref={layerPanelRef}>
+              <button type="button" className={"chat-icon-btn"+(layers.length>0?" on":"")} onClick={()=>setShowLayerPanel(v=>!v)}
+                title="무대에 사진/토큰을 올리고 순서를 정리합니다 (방에 있는 모두에게 보여요)">
+                <Layers size={18}/>
+                {layers.length>0&&<span className="dot"/>}
+              </button>
+              {showLayerPanel&&(
+                <div className="rail-participants-flyout" style={{width:220}}>
+                  <div className="coc-label" style={{marginBottom:8}}>레이어</div>
+                  <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:8}}
+                    onClick={()=>layerFileInputRef.current?.click()}>
+                    <Camera size={13}/> 사진 추가
+                  </button>
+                  <input ref={layerFileInputRef} type="file" accept="image/*" style={{display:"none"}}
+                    onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await addLayerFromFile(f);e.target.value="";}}/>
+                  <div style={{display:"flex",gap:6,marginBottom:10}}>
+                    <input className="coc-input" value={layerUrlInput} onChange={e=>setLayerUrlInput(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter"&&layerUrlInput.trim()){e.preventDefault();addLayer(layerUrlInput.trim());setLayerUrlInput("");}}}
+                      placeholder="이미지 링크" style={{flex:1,fontSize:11.5}}/>
+                    <button type="button" className="coc-btn ghost small" disabled={!layerUrlInput.trim()}
+                      onClick={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");}}>추가</button>
+                  </div>
+                  {layers.length===0?(
+                    <div style={{fontSize:11.5,color:"var(--text-faint)",textAlign:"center",padding:"8px 0"}}>아직 올린 사진이 없어요</div>
+                  ):(
+                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                      {layers.map((l,i)=>(
+                        <div key={l.id} draggable
+                          onDragStart={()=>setLayerDragIndex(i)}
+                          onDragOver={e=>e.preventDefault()}
+                          onDrop={()=>{ if(layerDragIndex!==null&&layerDragIndex!==i) reorderLayer(layerDragIndex,i); setLayerDragIndex(null); }}
+                          onDragEnd={()=>setLayerDragIndex(null)}
+                          style={{display:"flex",alignItems:"center",gap:7,padding:"5px 6px",borderRadius:6,cursor:"grab",
+                            background:layerDragIndex===i?"var(--accent-soft)":"var(--bg-panel)"}}>
+                          <span style={{fontSize:11,color:"var(--text-faint)",flexShrink:0}}>⠿</span>
+                          <div style={{width:26,height:26,borderRadius:4,overflow:"hidden",flexShrink:0,background:"#fff"}}>
+                            <img src={l.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          </div>
+                          <span style={{fontSize:11.5,color:"var(--text-dim)",flex:1}}>레이어 {layers.length-i}</span>
+                          <button type="button" onClick={()=>removeLayer(l.id)}
+                            style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -3381,23 +3434,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           </button>
         )}
         <div className="stage-scene">
-          {layers.map(l=>(
-            <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked}
+          {layers.map((l,i)=>(
+            <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
               onUpdate={patch=>updateLayerLocal(l.id,patch)}
-              onCommit={patch=>commitLayer(l.id,patch)}
-              onRemove={()=>removeLayer(l.id)}
-              onFocus={()=>bringLayerToFront(l.id)}
-              onContextMenu={(x,y)=>setLayerContextMenu({id:l.id,x,y})}/>
+              onCommit={patch=>commitLayer(l.id,patch)}/>
           ))}
-          {layerContextMenu&&(
-            <div onClick={e=>e.stopPropagation()}
-              style={{position:"fixed",top:layerContextMenu.y,left:layerContextMenu.x,zIndex:100,background:"#fff",border:"1px solid var(--border)",borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.18)",padding:4}}>
-              <button type="button" onClick={()=>{removeLayer(layerContextMenu.id);setLayerContextMenu(null);}}
-                style={{display:"block",width:"100%",textAlign:"left",padding:"7px 16px",background:"none",border:"none",cursor:"pointer",fontSize:12.5,color:"#e0507a",whiteSpace:"nowrap"}}>
-                삭제
-              </button>
-            </div>
-          )}
           {activeChoice&&(()=>{
             let data=null;try{data=JSON.parse(activeChoice.text);}catch{}
             if(!data)return null;
@@ -3628,11 +3669,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
               <Brush size={12}/> 꾸미기
             </button>
           )}
-          {isGM&&(
-            <button type="button" className="coc-btn ghost small" onClick={()=>setShowLayerPanel(v=>!v)} title="좌측 무대에 사진/토큰을 올려서 옮기고 크기를 조절합니다 (방에 있는 모두에게 보여요)">
-              <Layers size={12}/> 레이어
-            </button>
-          )}
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -3726,42 +3762,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
       </div>
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
-      {showLayerPanel&&(
-        <div className="coc-modal-backdrop" onClick={()=>setShowLayerPanel(false)}>
-          <div className="coc-modal" style={{maxWidth:360}} onClick={e=>e.stopPropagation()}>
-            <div style={{padding:20}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>레이어</div>
-                <button className="coc-btn ghost small" onClick={()=>setShowLayerPanel(false)} style={{padding:6}}><X size={13}/></button>
-              </div>
-              <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:14}}>
-                추가한 사진은 좌측 무대 위에서 드래그로 옮기고, 우측 하단 손잡이로 크기를 조절할 수 있어요.
-                방에 있는 모든 사람에게 똑같이 보여요. 삭제하려면 토큰을 우클릭하세요.
-              </div>
-              <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:10}}
-                onClick={()=>layerFileInputRef.current?.click()}>
-                <Camera size={13}/> 사진으로 토큰 추가
-              </button>
-              <input ref={layerFileInputRef} type="file" accept="image/*" style={{display:"none"}}
-                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await addLayerFromFile(f);e.target.value="";setShowLayerPanel(false);}}/>
-              <div style={{display:"flex",gap:7,marginBottom:14}}>
-                <input className="coc-input" value={layerUrlInput} onChange={e=>setLayerUrlInput(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"&&layerUrlInput.trim()){e.preventDefault();addLayer(layerUrlInput.trim());setLayerUrlInput("");setShowLayerPanel(false);}}}
-                  placeholder="이미지 링크 (Imgur 등)" style={{flex:1}}/>
-                <button type="button" className="coc-btn small" disabled={!layerUrlInput.trim()}
-                  onClick={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");setShowLayerPanel(false);}}>
-                  추가
-                </button>
-              </div>
-              {layers.length>0&&(
-                <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center"}} onClick={()=>setLayers([])}>
-                  전부 지우기 ({layers.length})
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
       {showDecorate&&<DecorateModal onClose={()=>setShowDecorate(false)}
         onSendText={markup=>doSend("narrate",markup,"","")}
         onSendImageUrl={url=>sendImageUrl(url)}/>}
