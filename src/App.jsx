@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
-  Crown, Settings, Trash2, Bell, BellOff, Music, Folder
+  Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock
 } from "lucide-react";
 import { db } from "./firebase";
 import {
   doc, getDoc, setDoc, deleteDoc,
   collection, query, orderBy, startAt, endAt, getDocs, onSnapshot,
+  enableNetwork, disableNetwork,
 } from "firebase/firestore";
 
 /* ============================== CONFIG ============================== */
@@ -2037,9 +2038,17 @@ function ChatScreen({room,userCode,profile,character,onBack}){
   const [tabs,setTabs]=useState([{id:"main",label:"메인"}]);
   const [activeTab,setActiveTab]=useState("main");
   const [newTabName,setNewTabName]=useState("");
+  const [renamingTab,setRenamingTab]=useState(null);
+  const [renameValue,setRenameValue]=useState("");
   const [showAddTab,setShowAddTab]=useState(false);
   const [inviteSelection,setInviteSelection]=useState({}); // {code:true} — 새 탭 생성 시 초대할 대상
   const [tabMsgMaps,setTabMsgMaps]=useState({"main":new Map()});
+  // tabMsgMaps state는 React가 실제로 언제 갱신 함수를 실행하는지 보장이 안 되기 때문에,
+  // "새 메시지가 있는지" 같은 걸 setState 콜백 밖에서 곧바로 읽으면 타이밍에 따라 값이
+  // 다르게 나올 수 있어요(그래서 스크롤이 가끔 안 됐던 거예요). 항상 최신값을 동기적으로
+  // 읽을 수 있는 ref를 별도로 같이 유지합니다.
+  const tabMsgMapsRef=useRef(tabMsgMaps);
+  useEffect(()=>{ tabMsgMapsRef.current=tabMsgMaps; },[tabMsgMaps]);
   const [text,setText]=useState("");
   const [speaker,setSpeaker]=useState("ic");
   const [gmTab,setGmTab]=useState("narrate");
@@ -2128,8 +2137,14 @@ function ChatScreen({room,userCode,profile,character,onBack}){
           const el=msgListRef.current;
           wasAtBottomRef.current=el.scrollHeight-el.scrollTop-el.clientHeight<120;
         }
-      }else if(document.visibilityState==="visible"&&wasAtBottomRef.current){
-        setTimeout(()=>scrollMsgListToBottom(false),120);
+      }else if(document.visibilityState==="visible"){
+        // 화면이 꺼지거나 다른 앱에 갔다 오면, 배터리 절약을 위해 브라우저가 실시간 연결을
+        // 잠깐 멈춰뒀다가, 뭔가 액션(메시지 전송 등)이 있을 때만 밀린 메시지를 한꺼번에
+        // 쏟아내는 경우가 있어요. 화면이 다시 보이는 순간 연결을 강제로 껐다 켜서,
+        // 밀린 내용이 있으면 곧바로(사람이 뭔가 하지 않아도) 반영되도록 합니다.
+        disableNetwork(db).then(()=>enableNetwork(db)).then(()=>{
+          if(wasAtBottomRef.current) setTimeout(()=>scrollMsgListToBottom(false),300);
+        }).catch(()=>{});
       }
     };
     document.addEventListener("visibilitychange",onVisibilityChange);
@@ -2264,15 +2279,15 @@ function ChatScreen({room,userCode,profile,character,onBack}){
   // (iOS Safari는 일반 브라우저 탭에서는 이 기능을 지원하지 않아요 — 홈 화면에 추가한
   // 앱(PWA) 형태로 열었을 때만 iOS에서도 동작합니다. 안드로이드/PC는 바로 됩니다.)
   const [notifPermission,setNotifPermission]=useState(("Notification" in window)?Notification.permission:"unsupported");
-  const requestNotif=async()=>{
-    if(!("Notification" in window)){ alert("이 브라우저에서는 알림 기능을 지원하지 않아요."); return; }
-    const perm=await Notification.requestPermission();
-    setNotifPermission(perm);
-  };
 
-  // 새 메시지 알림음 켜기/끄기 (이 기기에 기억됨)
+  // 새 메시지 알림(브라우저 알림 + 소리)을 하나로 합친 토글. 이 기기에 켜짐/꺼짐 상태가 기억됩니다.
   const [soundEnabled,setSoundEnabled]=useState(loadSoundPref);
-  const toggleSound=()=>{
+  const toggleNotif=async()=>{
+    const turningOn=!soundEnabled;
+    if(turningOn&&"Notification" in window&&notifPermission==="default"){
+      const perm=await Notification.requestPermission();
+      setNotifPermission(perm);
+    }
     setSoundEnabled(v=>{ saveSoundPref(!v); return !v; });
   };
 
@@ -2370,48 +2385,56 @@ function ChatScreen({room,userCode,profile,character,onBack}){
       const filtered=activeTab==="main"
         ?list.filter(x=>!x.value.tabId||x.value.tabId==="main")
         :list;
+
+      // "새 메시지가 있는지", "누가 보냈는지" 같은 판단은 React의 setState 콜백이 실행되는
+      // 시점에 의존하지 않도록, ref(tabMsgMapsRef)를 기준으로 여기서 먼저 동기적으로 계산합니다.
+      const incoming=new Map();
+      for(const{value:m}of filtered)incoming.set(m.id,m);
+      const prevMap=tabMsgMapsRef.current[activeTab]||new Map();
       let hasNewMsg=false;
       let hasNewFromOthers=false;
+      incoming.forEach((m,id)=>{
+        if(!prevMap.has(id)){
+          hasNewMsg=true;
+          if(m.userCode!==userCode) hasNewFromOthers=true;
+        }
+      });
+
       let wasNearBottom=false;
       if(msgListRef.current){
         const el=msgListRef.current;
         wasNearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<200;
       }
-      setTabMsgMaps(prev=>{
-        const incoming=new Map();
-        for(const{value:m}of filtered)incoming.set(m.id,m);
-        const prevMap=prev[activeTab]||new Map();
+
+      // 브라우저 알림: 처음 이 탭을 여는 순간(전체 과거 기록 불러오기)은 제외하고,
+      // 새로 도착한 메시지 중 내가 보낸 게 아니고, 탭이 백그라운드이고, 알림 토글이 켜져있을 때만 알립니다.
+      if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"&&soundEnabled){
         incoming.forEach((m,id)=>{
-          if(!prevMap.has(id)){
-            hasNewMsg=true;
-            if(m.userCode!==userCode) hasNewFromOthers=true;
+          if(!prevMap.has(id)&&m.userCode!==userCode){
+            try{
+              const body=m.speaker==="image"?"이미지를 보냈어요"
+                :m.speaker==="dice"?"주사위를 굴렸어요"
+                :m.speaker==="choice"?"선택지를 만들었어요"
+                :(m.text||"").replace(/<[^>]+>/g,"").slice(0,80);
+              new Notification(`${m.characterName||"메시지"} · ${room.title}`,{body});
+            }catch{}
           }
         });
-        // 브라우저 알림: 처음 이 탭을 여는 순간(전체 과거 기록 불러오기)은 제외하고,
-        // 새로 도착한 메시지 중 내가 보낸 게 아니고, 탭이 백그라운드일 때만 알립니다.
-        if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"){
-          incoming.forEach((m,id)=>{
-            if(!prevMap.has(id)&&m.userCode!==userCode){
-              try{
-                const body=m.speaker==="image"?"이미지를 보냈어요"
-                  :m.speaker==="dice"?"주사위를 굴렸어요"
-                  :m.speaker==="choice"?"선택지를 만들었어요"
-                  :(m.text||"").replace(/<[^>]+>/g,"").slice(0,80);
-                new Notification(`${m.characterName||"메시지"} · ${room.title}`,{body});
-              }catch{}
-            }
-          });
-        }
-        // 방금 보낸 메시지가 서버에 아직 반영되기 전에 목록을 다시 읽어오면
-        // 순간적으로 화면에서 사라졌다 나타나는 깜빡임이 생길 수 있어서,
-        // 8초 이내에 보낸 메시지는 서버 목록에 없어도 잠시 그대로 유지합니다.
-        const merged=new Map(incoming);
-        const now=Date.now();
-        prevMap.forEach((m,id)=>{
-          if(!merged.has(id)&&now-m.timestamp<8000) merged.set(id,m);
-        });
-        return{...prev,[activeTab]:merged};
+      }
+
+      // 방금 보낸 메시지가 서버에 아직 반영되기 전에 목록을 다시 읽어오면
+      // 순간적으로 화면에서 사라졌다 나타나는 깜빡임이 생길 수 있어서,
+      // 8초 이내에 보낸 메시지는 서버 목록에 없어도 잠시 그대로 유지합니다.
+      const merged=new Map(incoming);
+      const now=Date.now();
+      prevMap.forEach((m,id)=>{
+        if(!merged.has(id)&&now-m.timestamp<8000) merged.set(id,m);
       });
+
+      // ref는 여기서 바로(동기적으로) 갱신하고, state는 화면 반영용으로 그대로 대입만 합니다.
+      tabMsgMapsRef.current={...tabMsgMapsRef.current,[activeTab]:merged};
+      setTabMsgMaps(prev=>({...prev,[activeTab]:merged}));
+
       const wasFirstLoad=!firstLoad.current[activeTab];
       if(wasFirstLoad){
         firstLoad.current[activeTab]=true;
@@ -2432,7 +2455,7 @@ function ChatScreen({room,userCode,profile,character,onBack}){
       }
     });
     return()=>unsub();
-  },[room.id,activeTab,userCode]);
+  },[room.id,activeTab,userCode,soundEnabled]);
 
   useEffect(()=>{
     const unsub=storeListenDoc(`bgm:${room.id}`,d=>{ if(d) setBgmUrl(d.url||""); });
@@ -2489,6 +2512,12 @@ function ChatScreen({room,userCode,profile,character,onBack}){
     await storeSet(`tabs:${room.id}`,next,true);
     if(activeTab===tabId)setActiveTab("main");
   };
+  const renameTab=async(tabId,label)=>{
+    const trimmed=label.trim();if(!trimmed)return;
+    const next=tabs.map(t=>t.id===tabId?{...t,label:trimmed}:t);
+    setTabs(next);
+    await storeSet(`tabs:${room.id}`,next,true);
+  };
 
   const doSend=useCallback(async(sp,msgText,charName,av,tabId)=>{
     // 공백(스페이스, 　 같은 전각 공백 포함)만 있는 메시지도 여백용으로 보낼 수 있게,
@@ -2499,7 +2528,9 @@ function ChatScreen({room,userCode,profile,character,onBack}){
     const msgId=newId();
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
     const msg={id:msgId,roomId:room.id,userCode,tabId:tid,speaker:sp,characterName:charName,avatar:av||"",text:t,timestamp:Date.now()};
-    setTabMsgMaps(prev=>({...prev,[tid]:new Map(prev[tid]||new Map()).set(msg.id,msg)}));
+    const nextMap=new Map(tabMsgMapsRef.current[tid]||new Map()).set(msg.id,msg);
+    tabMsgMapsRef.current={...tabMsgMapsRef.current,[tid]:nextMap};
+    setTabMsgMaps(prev=>({...prev,[tid]:nextMap}));
     setTimeout(()=>scrollMsgListToBottom(true),20);
     storeSet(key,msg,true).then(r=>{if(!r.ok)console.error("저장 실패:",r.error);});
     // 다른 탭을 보고 있는 사람들에게 "새 메시지 있음" 점을 띄우기 위한 가벼운 신호.
@@ -2652,13 +2683,8 @@ function ChatScreen({room,userCode,profile,character,onBack}){
             style={{color:myHandouts.length>0?"var(--accent-deep)":"var(--text-faint)",padding:"5px 9px"}}>
             <Folder size={14}/>
           </button>
-          {notifPermission!=="unsupported"&&(
-            <button type="button" className="coc-btn ghost small" onClick={requestNotif} disabled={notifPermission==="granted"}
-              style={{color:notifPermission==="granted"?"var(--accent-deep)":"var(--text-faint)",flexShrink:0,whiteSpace:"nowrap"}}>
-              {notifPermission==="granted"?"알림 켜짐":notifPermission==="denied"?"알림 차단됨":"알림 켜기"}
-            </button>
-          )}
-          <button type="button" className="coc-btn ghost small" onClick={toggleSound} title={soundEnabled?"알람 켜짐":"알람 꺼짐"}
+          <button type="button" className="coc-btn ghost small" onClick={toggleNotif}
+            title={notifPermission==="denied"?"브라우저에서 알림이 차단되어 있어요 (소리만 켜짐/꺼짐)":soundEnabled?"알림 켜짐":"알림 꺼짐"}
             style={{color:soundEnabled?"var(--accent-deep)":"var(--text-faint)",padding:"5px 9px"}}>
             {soundEnabled?<Bell size={14}/>:<BellOff size={14}/>}
           </button>
@@ -2780,12 +2806,25 @@ function ChatScreen({room,userCode,profile,character,onBack}){
       <div className="chat-tab-bar">
         {visibleTabs.map(t=>(
           <div key={t.id} style={{display:"flex",alignItems:"center"}}>
-            <div className={"chat-tab"+(activeTab===t.id?" active":"")} onClick={()=>setActiveTab(t.id)} style={{position:"relative"}}>
-              {t.invited&&t.invited.length>0&&<span style={{marginRight:3,fontSize:10.5}}>🔒</span>}
-              {t.label}
-              {hasUnread(t.id)&&<span style={{position:"absolute",top:2,right:-2,width:7,height:7,borderRadius:"50%",background:"#e0507a"}}/>}
-            </div>
-            {isGM&&t.id!=="main"&&(
+            {renamingTab===t.id?(
+              <input value={renameValue} onChange={e=>setRenameValue(e.target.value)} autoFocus
+                onKeyDown={e=>{
+                  if(e.key==="Enter"){e.preventDefault();renameTab(t.id,renameValue);setRenamingTab(null);}
+                  if(e.key==="Escape")setRenamingTab(null);
+                }}
+                onBlur={()=>{renameTab(t.id,renameValue);setRenamingTab(null);}}
+                style={{width:80,fontSize:12.5,padding:"4px 7px",border:"1px solid var(--accent)",borderRadius:5,outline:"none",color:"var(--text)",background:"#fff"}}/>
+            ):(
+              <div className={"chat-tab"+(activeTab===t.id?" active":"")} onClick={()=>setActiveTab(t.id)} style={{position:"relative",display:"flex",alignItems:"center",gap:3}}>
+                {t.invited&&t.invited.length>0&&<Lock size={10} style={{opacity:0.6}}/>}
+                {t.label}
+                {hasUnread(t.id)&&<span style={{position:"absolute",top:2,right:-2,width:7,height:7,borderRadius:"50%",background:"#e0507a"}}/>}
+              </div>
+            )}
+            {isGM&&renamingTab!==t.id&&(
+              <button type="button" onClick={()=>{setRenamingTab(t.id);setRenameValue(t.label);}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",display:"flex",opacity:0.5}}><Pencil size={10}/></button>
+            )}
+            {isGM&&t.id!=="main"&&renamingTab!==t.id&&(
               <button type="button" onClick={()=>removeTab(t.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 4px",fontSize:15,lineHeight:1,opacity:0.5}}>×</button>
             )}
           </div>
