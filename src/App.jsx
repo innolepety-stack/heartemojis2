@@ -2558,7 +2558,7 @@ function ChatScreen({room,userCode,profile,onBack}){
   const sendJudgeRequest=async()=>{
     if(judgeTargets.length===0||!judgeSkill.trim())return;
     const names=judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ");
-    const markup=`<span style="color:var(--accent-deep);font-weight:700">${names}</span> <span style="color:var(--accent-deep);font-weight:700">${judgeSkill.trim()}</span> 판정`;
+    const markup=`<span style="color:var(--accent-deep);font-weight:700">${names}</span>, <span style="color:var(--accent-deep);font-weight:700">${judgeSkill.trim()}</span> 판정`;
     const ok=await doSend("judge",markup,"","");
     if(ok){setJudgeTargets([]);setJudgeSkill("");}
   };
