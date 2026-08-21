@@ -1873,9 +1873,10 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 /* ============================== 선택지(조사 스팟) ============================== */
 
 // "꾸미기" 도구: 좌측 무대에 표시될 서술 문구를 폰트 크기/색상/굵기/기울임/밑줄/취소선으로
-// 꾸며서 조각조각 이어붙이고, 이미지 링크도 바로 삽입할 수 있는 GM 전용 도구입니다.
-// (웹 전용 기능이라, 이 모달 자체는 어디서든 열리지만 결과가 보이는 좌측 무대는 PC에서만 보여요.)
-function DecorateModal({onClose,onSendText,onSendImageUrl}){
+// 꾸며서 하나의 문장으로 이어붙이고, 이미지 링크도 바로 삽입할 수 있는 GM 전용 도구입니다.
+// 시트(♥ 버튼)처럼 떠 있는 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고,
+// 제목줄을 잡고 끌어서 원하는 자리로 옮길 수 있습니다.
+function DecoratePanel({onClose,onSendText,onSendImageUrl}){
   const [text,setText]=useState("");
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState("#c0392b");
@@ -1883,8 +1884,33 @@ function DecorateModal({onClose,onSendText,onSendImageUrl}){
   const [italic,setItalic]=useState(false);
   const [underline,setUnderline]=useState(false);
   const [strike,setStrike]=useState(false);
-  const [segments,setSegments]=useState([]);
+  const [code,setCode]=useState(""); // 누적된 서식 코드 (하나로 이어지는 문장)
   const [imgUrl,setImgUrl]=useState("");
+  const wrapRef=useRef(null);
+  const [pos,setPos]=useState(null);
+  const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
+
+  const clamp=(x,y)=>{
+    const el=wrapRef.current;
+    const w=el?el.offsetWidth:400;
+    const h=el?el.offsetHeight:300;
+    return { x:Math.max(4,Math.min(window.innerWidth-w-4,x)), y:Math.max(4,Math.min(window.innerHeight-h-4,y)) };
+  };
+  const onPointerDown=e=>{
+    const rect=wrapRef.current.getBoundingClientRect();
+    drag.current={on:true,moved:false,sx:e.clientX,sy:e.clientY,ox:rect.left,oy:rect.top};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove=e=>{
+    const d=drag.current;
+    if(!d.on)return;
+    const dx=e.clientX-d.sx, dy=e.clientY-d.sy;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true;
+    if(!d.moved)return;
+    setPos(clamp(d.ox+dx,d.oy+dy));
+  };
+  const onPointerUp=()=>{ drag.current.on=false; };
+  const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
 
   const wrapWithFormatting=raw=>{
     let v=raw;
@@ -1896,15 +1922,13 @@ function DecorateModal({onClose,onSendText,onSendImageUrl}){
   };
   const addSegment=()=>{
     if(!text.trim())return;
-    setSegments(s=>[...s,wrapWithFormatting(text)]);
+    setCode(c=>c?`${c} ${wrapWithFormatting(text)}`:wrapWithFormatting(text));
     setText("");
   };
-  const removeSegment=i=>setSegments(s=>s.filter((_,idx)=>idx!==i));
-  const sendSegments=()=>{
-    if(segments.length===0)return;
-    onSendText(segments.join(" "));
-    setSegments([]);
-    onClose();
+  const sendCode=()=>{
+    if(!code.trim())return;
+    onSendText(code);
+    setCode("");
   };
 
   const toggleBtnStyle=active=>({
@@ -1914,59 +1938,72 @@ function DecorateModal({onClose,onSendText,onSendImageUrl}){
     borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12.5,fontWeight:700,
   });
 
+  const anchor=pos ? {position:"fixed",left:pos.x,top:pos.y} : {position:"fixed",right:18,bottom:90};
+
   return(
-    <div className="coc-modal-backdrop" onClick={onClose}>
-      <div className="coc-modal" style={{maxWidth:440}} onClick={e=>e.stopPropagation()}>
-        <div style={{padding:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>꾸미기</div>
-            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
-          </div>
+    <div ref={wrapRef}
+      style={{...anchor,width:"min(94vw, 460px)",maxHeight:"82vh",display:"flex",flexDirection:"column",
+        background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
 
-          <div className="coc-label" style={{marginBottom:6}}>텍스트 서식</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-            <button type="button" onClick={()=>setBold(v=>!v)} style={toggleBtnStyle(bold)}>B</button>
-            <button type="button" onClick={()=>setItalic(v=>!v)} style={{...toggleBtnStyle(italic),fontStyle:"italic"}}>I</button>
-            <button type="button" onClick={()=>setUnderline(v=>!v)} style={{...toggleBtnStyle(underline),textDecoration:"underline"}}>U</button>
-            <button type="button" onClick={()=>setStrike(v=>!v)} style={{...toggleBtnStyle(strike),textDecoration:"line-through"}}>S</button>
-            <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:34,height:34,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
-            <input type="number" value={fontSize} min={10} max={60} onChange={e=>setFontSize(Number(e.target.value)||16)}
-              style={{width:56,border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",fontSize:12.5}}/>
-            <span style={{fontSize:11,color:"var(--text-faint)",alignSelf:"center"}}>px</span>
-          </div>
-          <div style={{display:"flex",gap:7,marginBottom:12}}>
-            <input className="coc-input" value={text} onChange={e=>setText(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSegment();}}}
-              placeholder="문구 입력 후 조각 추가" style={{flex:1}}/>
-            <button type="button" className="coc-btn small" onClick={addSegment} disabled={!text.trim()}>조각 추가</button>
-          </div>
-          {segments.length>0&&(
-            <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:14,padding:10,background:"var(--bg-panel)",borderRadius:8}}>
-              {segments.map((seg,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:5,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:999,padding:"4px 4px 4px 12px",fontSize:12}}>
-                  <FormattedText text={seg}/>
-                  <button type="button" onClick={()=>removeSegment(i)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",fontSize:13.5,lineHeight:1}}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:10,marginBottom:18}}
-            disabled={segments.length===0} onClick={sendSegments}>
-            서술로 보내기
+      {/* 제목 줄 — 여기를 잡고 끌면 창이 움직입니다 */}
+      <div {...dragProps}
+        style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
+          background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
+        <Brush size={14} color="var(--accent-deep)"/>
+        <span style={{flex:1,fontSize:13,fontWeight:700,color:"var(--accent-deep)"}}>꾸미기</span>
+        <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose}
+          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <Minus size={13}/>
+        </button>
+      </div>
+
+      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"14px 16px",touchAction:"pan-y"}}>
+        <div className="coc-label" style={{marginBottom:6}}>서식들</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+          <button type="button" onClick={()=>setBold(v=>!v)} style={toggleBtnStyle(bold)}>B</button>
+          <button type="button" onClick={()=>setItalic(v=>!v)} style={{...toggleBtnStyle(italic),fontStyle:"italic"}}>I</button>
+          <button type="button" onClick={()=>setUnderline(v=>!v)} style={{...toggleBtnStyle(underline),textDecoration:"underline"}}>U</button>
+          <button type="button" onClick={()=>setStrike(v=>!v)} style={{...toggleBtnStyle(strike),textDecoration:"line-through"}}>S</button>
+          <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:34,height:34,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+          <input type="number" value={fontSize} min={10} max={60} onChange={e=>setFontSize(Number(e.target.value)||16)}
+            style={{width:56,border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",fontSize:12.5}}/>
+          <span style={{fontSize:11,color:"var(--text-faint)",alignSelf:"center"}}>px</span>
+        </div>
+        <div style={{display:"flex",gap:7,marginBottom:14}}>
+          <input className="coc-input" value={text} onChange={e=>setText(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSegment();}}}
+            placeholder="여기에서 글자를 쓴 다음, 서식 버튼을 눌러 꾸미세요" style={{flex:1}}/>
+          <button type="button" className="coc-btn small" onClick={addSegment} disabled={!text.trim()}>꾸미기</button>
+        </div>
+
+        <div className="coc-label" style={{marginBottom:6}}>코드</div>
+        <textarea className="coc-input" value={code} onChange={e=>setCode(e.target.value)} rows={2}
+          placeholder="위에서 꾸민 조각들이 여기에 하나의 문장으로 이어져요 (직접 수정도 가능해요)"
+          style={{width:"100%",fontFamily:"JetBrains Mono,monospace",fontSize:11,resize:"vertical",marginBottom:10,boxSizing:"border-box"}}/>
+
+        <div className="coc-label" style={{marginBottom:6}}>미리보기</div>
+        <div style={{minHeight:44,padding:"10px 12px",background:"var(--bg-panel)",borderRadius:8,marginBottom:14,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}>
+          {code.trim()?<FormattedText text={code}/>:<span style={{color:"var(--text-faint)",fontSize:12.5}}>여기에 미리보기가 나와요</span>}
+        </div>
+
+        <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:10,marginBottom:18}}
+          disabled={!code.trim()} onClick={sendCode}>
+          서술로 보내기
+        </button>
+
+        <div className="coc-divider" style={{margin:"0 0 14px"}}/>
+
+        <div className="coc-label" style={{marginBottom:6}}>이미지 링크로 보내기</div>
+        <div style={{display:"flex",gap:7}}>
+          <input className="coc-input" value={imgUrl} onChange={e=>setImgUrl(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(imgUrl.trim()){onSendImageUrl(imgUrl.trim());setImgUrl("");}}}}
+            placeholder="이미지 링크 (Imgur 등)" style={{flex:1}}/>
+          <button type="button" className="coc-btn small" disabled={!imgUrl.trim()}
+            onClick={()=>{onSendImageUrl(imgUrl.trim());setImgUrl("");}}>
+            전송
           </button>
-
-          <div className="coc-divider" style={{margin:"0 0 14px"}}/>
-
-          <div className="coc-label" style={{marginBottom:6}}>이미지 링크로 보내기</div>
-          <div style={{display:"flex",gap:7}}>
-            <input className="coc-input" value={imgUrl} onChange={e=>setImgUrl(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(imgUrl.trim()){onSendImageUrl(imgUrl.trim());setImgUrl("");onClose();}}}}
-              placeholder="이미지 링크 (Imgur 등)" style={{flex:1}}/>
-            <button type="button" className="coc-btn small" disabled={!imgUrl.trim()}
-              onClick={()=>{onSendImageUrl(imgUrl.trim());setImgUrl("");onClose();}}>
-              전송
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -3762,7 +3799,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
       </div>
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
-      {showDecorate&&<DecorateModal onClose={()=>setShowDecorate(false)}
+      {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
         onSendText={markup=>doSend("narrate",markup,"","")}
         onSendImageUrl={url=>sendImageUrl(url)}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
