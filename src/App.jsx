@@ -3,7 +3,7 @@ import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
-  Image as ImageIcon
+  Image as ImageIcon, Moon, Sun, Minus, Brush
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -119,8 +119,8 @@ const SKILL_LIST_SORTED = [...SKILL_LIST].sort((a,b)=>a[0].localeCompare(b[0],"k
 
 const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
 const CHAR_LABEL = {
-  STR: "근력", CON: "체력", SIZ: "체격", DEX: "민첩",
-  APP: "외모", INT: "지능", POW: "정신력", EDU: "교육",
+  STR: "근력", CON: "건강", SIZ: "크기", DEX: "민첩",
+  APP: "외모", INT: "지능", POW: "정신", EDU: "교육",
 };
 
 /* ============================== THEMES ============================== */
@@ -2198,55 +2198,69 @@ function HandoutViewerModal({handouts,madness,onClose}){
 }
 
 function DicePanel({char,onRollToChat,roomId}){
+  // 접으면 하트 버튼, 펼치면 시트/판정 창이 되는 떠 있는 패널입니다.
+  // 펼친 채로 계속 볼 수 있고(바깥을 눌러도 닫히지 않음), 원하는 자리로 끌어다 놓을 수 있어요.
   const [open,setOpen]=useState(false);
   const [tab,setTab]=useState("roll");
   const [sheetDraft,setSheetDraft]=useState(char);
   const [saving,setSaving]=useState(false);
-  const panelRef=useRef(null);
+  const wrapRef=useRef(null);
 
-  // 하트 버튼을 드래그로 원하는 위치에 옮길 수 있습니다. (이 기기에 위치가 기억돼요)
+  // 위치는 이 기기(브라우저)에 기억됩니다.
   const [pos,setPos]=useState(()=>loadHeartPos());
-  const dragInfo=useRef({dragging:false,moved:false,startX:0,startY:0,startPosX:0,startPosY:0});
-  const btnSize=52;
-
-  const onPointerDown=e=>{
-    const rect=e.currentTarget.getBoundingClientRect();
-    dragInfo.current={dragging:true,moved:false,startX:e.clientX,startY:e.clientY,startPosX:rect.left,startPosY:rect.top};
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onPointerMove=e=>{
-    const d=dragInfo.current;
-    if(!d.dragging)return;
-    const dx=e.clientX-d.startX, dy=e.clientY-d.startY;
-    if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true;
-    if(!d.moved)return;
-    let nx=d.startPosX+dx, ny=d.startPosY+dy;
-    nx=Math.max(4,Math.min(window.innerWidth-btnSize-4,nx));
-    ny=Math.max(4,Math.min(window.innerHeight-btnSize-4,ny));
-    setPos({x:nx,y:ny});
-  };
-  const onPointerUp=()=>{
-    const d=dragInfo.current;
-    if(d.dragging&&d.moved) setPos(p=>{ if(p) saveHeartPos(p); return p; });
-    const wasMoved=d.moved;
-    dragInfo.current.dragging=false;
-    if(!wasMoved) setOpen(v=>!v); // 움직이지 않았으면(=드래그가 아니라 그냥 탭) 패널을 엽니다
-  };
+  const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
 
   useEffect(()=>{ setSheetDraft(char); },[char]);
 
+  // 화면 밖으로 나가지 않도록 위치를 다듬습니다.
+  const clamp=(x,y)=>{
+    const el=wrapRef.current;
+    const w=el?el.offsetWidth:52;
+    const h=el?el.offsetHeight:52;
+    return {
+      x:Math.max(4,Math.min(window.innerWidth-w-4,x)),
+      y:Math.max(4,Math.min(window.innerHeight-h-4,y)),
+    };
+  };
+
+  // 펼치거나 창 크기가 바뀌면, 화면 밖으로 삐져나가지 않게 다시 맞춰줍니다.
   useEffect(()=>{
-    if(!open)return;
-    const handler=e=>{if(panelRef.current&&!panelRef.current.contains(e.target)){setOpen(false);setTab("roll");}};
-    document.addEventListener("mousedown",handler);
-    return()=>document.removeEventListener("mousedown",handler);
-  },[open]);
+    if(!pos)return;
+    const fix=()=>setPos(p=>p?clamp(p.x,p.y):p);
+    const t=setTimeout(fix,0);
+    window.addEventListener("resize",fix);
+    return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
+  },[open,tab]); // eslint-disable-line
+
+  const onPointerDown=e=>{
+    const rect=wrapRef.current.getBoundingClientRect();
+    drag.current={on:true,moved:false,sx:e.clientX,sy:e.clientY,ox:rect.left,oy:rect.top};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove=e=>{
+    const d=drag.current;
+    if(!d.on)return;
+    const dx=e.clientX-d.sx, dy=e.clientY-d.sy;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true;
+    if(!d.moved)return;
+    setPos(clamp(d.ox+dx,d.oy+dy));
+  };
+  const onPointerUp=()=>{
+    const d=drag.current;
+    if(d.on&&d.moved) setPos(p=>{ if(p) saveHeartPos(p); return p; });
+    const wasMoved=d.moved;
+    drag.current.on=false;
+    return wasMoved;
+  };
+  // 접힌 하트: 끌면 이동, 그냥 누르면 펼치기
+  const onHeartUp=()=>{ if(!onPointerUp()) setOpen(true); };
+  const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
 
   const roll=(skillName,value)=>{
     const r=d100();
     const{label,color,bg}=calcDiceResult(r,value);
     onRollToChat(JSON.stringify({skillName,value,roll:r,label,color,bg}));
-    setOpen(false);
+    // 펼쳐 놓고 계속 굴릴 수 있도록 창을 닫지 않습니다.
   };
 
   const saveSheet=async()=>{
@@ -2256,112 +2270,130 @@ function DicePanel({char,onRollToChat,roomId}){
     setSaving(false);
   };
 
-  const buttonStyle=pos
-    ? {position:"fixed",left:pos.x,top:pos.y,touchAction:"none"}
-    : {position:"fixed",bottom:90,right:18,touchAction:"none"};
-  const panelStyle=pos
-    ? (pos.y>window.innerHeight/2
-        ? {position:"fixed",left:Math.max(4,Math.min(pos.x,window.innerWidth-364)),bottom:window.innerHeight-pos.y+10}
-        : {position:"fixed",left:Math.max(4,Math.min(pos.x,window.innerWidth-364)),top:pos.y+btnSize+10})
-    : {position:"fixed",bottom:150,right:18};
+  // 위치를 아직 한 번도 안 옮겼으면 오른쪽 아래에 붙어 있습니다.
+  const anchor=pos
+    ? {position:"fixed",left:pos.x,top:pos.y}
+    : {position:"fixed",right:18,bottom:90};
+
+  if(!open) return(
+    <button type="button" ref={wrapRef} {...dragProps} onPointerUp={onHeartUp}
+      title="눌러서 시트 열기 · 끌어서 위치 옮기기"
+      style={{...anchor,width:52,height:52,borderRadius:"50%",background:"var(--accent)",color:"#fff",
+        border:"none",boxShadow:"0 4px 16px rgba(0,0,0,0.25)",cursor:"grab",zIndex:30,fontSize:23,lineHeight:1,
+        touchAction:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      ♥
+    </button>
+  );
 
   return(
-    <>
-      <button type="button"
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-        style={{...buttonStyle,width:52,height:52,borderRadius:"50%",background:"var(--accent)",color:"#fff",
-          border:"none",boxShadow:"0 4px 16px rgba(0,0,0,0.25)",cursor:"grab",zIndex:30,fontSize:23,lineHeight:1,
-          display:"flex",alignItems:"center",justifyContent:"center"}}>
-        ♥
-      </button>
-      {open&&(
-        <div ref={panelRef} className="coc-scroll" style={{...panelStyle,width:"min(92vw, 360px)",maxHeight:"70vh",overflowY:"auto",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,boxShadow:"0 8px 32px rgba(0,0,0,0.18)",padding:"14px 14px 12px",zIndex:31}}>
-          {char?.madness?.type&&(
-            <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
-              <span style={{fontSize:11.5,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
-              {char.madness.note&&<div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{char.madness.note}</div>}
-            </div>
-          )}
-          <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
-            {[["roll","판정"],["sheet","시트 수정"]].map(([v,l])=>(
-              <button key={v} type="button" onClick={()=>setTab(v)}
-                style={{flex:1,padding:"7px 0",border:"none",background:tab===v?"var(--accent)":"var(--surface)",color:tab===v?"#fff":"var(--text-dim)",fontSize:12,fontWeight:tab===v?700:500,cursor:"pointer"}}>
-                {l}
-              </button>
-            ))}
+    <div ref={wrapRef}
+      style={{...anchor,width:"min(92vw, 370px)",maxHeight:"80vh",display:"flex",flexDirection:"column",
+        background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+
+      {/* 제목 줄 — 여기를 잡고 끌면 창이 움직입니다 */}
+      <div {...dragProps}
+        style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
+          background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
+        <span style={{color:"var(--accent)",fontSize:16,lineHeight:1}}>♥</span>
+        <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"var(--accent-deep)",
+          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {char?.name||"탐사자 시트"}
+        </span>
+        <button type="button" title="접기"
+          onPointerDown={e=>e.stopPropagation()}
+          onClick={()=>setOpen(false)}
+          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <Minus size={13}/>
+        </button>
+      </div>
+
+      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
+        {char?.madness?.type&&(
+          <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
+            <span style={{fontSize:11.5,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
+            {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:2}}>{char.madness.note}</div>}
           </div>
-          {tab==="roll"?(
-            <>
-              <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-                {CHAR_KEYS.map(k=>{
-                  const val=char?.characteristics?.[k]||0;
-                  return(
-                    <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
-                      style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                      <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
-                      <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="coc-label" style={{marginBottom:7}}>파생 능력치 판정</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-                {[["체력","HP"],["마력","MP"],["이성","SAN"],["행운","Luck"]].map(([label,key])=>{
-                  const val=char?.derived?.[key]||0;
-                  return(
-                    <button key={key} type="button" onClick={()=>roll(label,val)}
-                      style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                      <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{label}</div>
-                      <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-                {SKILL_LIST_SORTED.map(([name])=>{
-                  const val=char?.skills?.[name]??0;
-                  return(
-                    <button key={name} type="button" onClick={()=>roll(name,val)}
-                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                      <span style={{fontSize:12,color:"var(--text-dim)"}}>{name}</span>
-                      <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {char?.customSkills?.length>0&&(
-                <>
-                  <div className="coc-label" style={{margin:"10px 0 7px"}}>자유 기능치</div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-                    {char.customSkills.filter(c=>c.name).map(c=>(
-                      <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
-                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                        <span style={{fontSize:12,color:"var(--text-dim)"}}>{c.name}</span>
-                        <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
-          ):(
-            <>
-              <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true} compact/>
-              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
-                {saving?"저장 중...":"시트 저장"}
-              </button>
-            </>
-          )}
+        )}
+        <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
+          {[["roll","판정"],["sheet","시트 보기·수정"]].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>setTab(v)}
+              style={{flex:1,padding:"7px 0",border:"none",background:tab===v?"var(--accent)":"var(--surface)",color:tab===v?"#fff":"var(--text-dim)",fontSize:12,fontWeight:tab===v?700:500,cursor:"pointer"}}>
+              {l}
+            </button>
+          ))}
         </div>
-      )}
-    </>
+        {tab==="roll"?(
+          <>
+            <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
+              {CHAR_KEYS.map(k=>{
+                const val=char?.characteristics?.[k]||0;
+                return(
+                  <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
+                    style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
+                    <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
+                    <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="coc-label" style={{marginBottom:7}}>파생 능력치 판정</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
+              {[["체력","HP"],["마력","MP"],["이성","SAN"],["행운","Luck"]].map(([label,key])=>{
+                const val=char?.derived?.[key]||0;
+                return(
+                  <button key={key} type="button" onClick={()=>roll(label,val)}
+                    style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
+                    <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{label}</div>
+                    <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
+              {SKILL_LIST_SORTED.map(([name])=>{
+                const val=char?.skills?.[name]??0;
+                return(
+                  <button key={name} type="button" onClick={()=>roll(name,val)}
+                    style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                    <span style={{fontSize:12,color:"var(--text-dim)"}}>{name}</span>
+                    <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {char?.customSkills?.length>0&&(
+              <>
+                <div className="coc-label" style={{margin:"10px 0 7px"}}>자유 기능치</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
+                  {char.customSkills.filter(c=>c.name).map(c=>(
+                    <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
+                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                      <span style={{fontSize:12,color:"var(--text-dim)"}}>{c.name}</span>
+                      <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        ):(
+          <>
+            <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true} compact/>
+            <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
+              {saving?"저장 중...":"시트 저장"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
-
-function ChatScreen({room,userCode,profile,onBack}){
+function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const [tabs,setTabs]=useState([{id:"main",label:"메인"}]);
   const [activeTab,setActiveTab]=useState("main");
   const [newTabName,setNewTabName]=useState("");
@@ -2915,21 +2947,6 @@ function ChatScreen({room,userCode,profile,onBack}){
     if(ok){setJudgeTargets([]);setJudgeSkill("");}
   };
 
-  // 입력창에서 드래그로 선택한 부분을 테마색으로 감쌉니다. var(--accent-deep)를 쓰기 때문에
-  // 채팅에 뜰 때 보는 사람마다 "자기 자신의" 테마색으로 보여요 (선택지 강조 표시와 같은 원리).
-  const emphasizeSelection=()=>{
-    const el=inputRef.current;
-    if(!el)return;
-    const start=el.selectionStart,end=el.selectionEnd;
-    if(start===end)return; // 선택된 부분이 없으면 아무것도 안 함
-    const selected=text.slice(start,end);
-    const wrapped=`<span style="color:var(--accent-deep);font-weight:700">${selected}</span>`;
-    const next=text.slice(0,start)+wrapped+text.slice(end);
-    setText(next);
-    const newPos=start+wrapped.length;
-    setTimeout(()=>{ el.focus(); el.setSelectionRange(newPos,newPos); },10);
-  };
-
   // 이미지 메시지 전송 공통 로직 (파일 업로드든 외부 링크든 동일하게 처리)
   const postImageMsg=(dataUrlOrLink)=>{
     const tid=activeTab;
@@ -3059,6 +3076,12 @@ function ChatScreen({room,userCode,profile,onBack}){
           </>
         )}
 
+        {/* 게임 화면 안에서도 바로 밝게/어둡게 전환 */}
+        <button type="button" className={"chat-icon-btn"+(dark?" on":"")} onClick={()=>onToggleDark(!dark)}
+          title={dark?"밝은 화면으로 바꾸기":"어두운 화면으로 바꾸기"}>
+          {dark?<Sun size={18}/>:<Moon size={18}/>}
+        </button>
+
         <button type="button" className={"chat-icon-btn"+(soundEnabled?" on":"")} onClick={toggleNotif}
           title={notifPermission==="denied"?"브라우저에서 알림이 차단되어 있어요 (소리만 켜짐/꺼짐)":soundEnabled?"알림 켜짐":"알림 꺼짐"}>
           {soundEnabled?<Bell size={18}/>:<BellOff size={18}/>}
@@ -3162,12 +3185,6 @@ function ChatScreen({room,userCode,profile,onBack}){
           <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
         <div className="stage-scene">
-          {isGM&&(
-            <button type="button" className="coc-btn ghost small" onClick={()=>setShowDecorate(true)}
-              style={{position:"absolute",top:12,left:"50%",transform:"translateX(-50%)",zIndex:10,background:"var(--glass)",backdropFilter:"blur(4px)"}}>
-              🖌 꾸미기
-            </button>
-          )}
           {activeChoice&&(()=>{
             let data=null;try{data=JSON.parse(activeChoice.text);}catch{}
             if(!data)return null;
@@ -3392,11 +3409,11 @@ function ChatScreen({room,userCode,profile,onBack}){
                 onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}/>
             </div>
           )}
-          <button type="button" className="coc-btn ghost small" onClick={emphasizeSelection} title="입력창에서 텍스트를 드래그해 선택한 뒤 눌러주세요">
-            <span>
-              <span style={{color:"var(--accent-deep)",fontWeight:700}}>강조</span>하기
-            </span>
-          </button>
+          {isGM&&(
+            <button type="button" className="coc-btn ghost small" onClick={()=>setShowDecorate(true)} title="좌측 무대에 표시될 문구·이미지를 꾸며서 보냅니다">
+              <Brush size={12}/> 꾸미기
+            </button>
+          )}
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -3625,7 +3642,7 @@ function AppInner(){
 
   let body;
   if(activeRoom){
-    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}}/>;
+    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectPreset={handleThemePreset} onSelectCustom={handleThemeCustom}
       dark={dark} onToggleDark={handleDark} vnAlpha={vnAlpha} onChangeVnAlpha={handleVnAlpha}/>;
