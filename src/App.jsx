@@ -1373,16 +1373,6 @@ const GM_TABS=[
   {key:"handout",label:"핸드아웃",short:"H/O",placeholder:""},
 ];
 
-// 한글 단어 마지막 글자의 받침 유무로 을/를 조사를 고릅니다.
-function pickEulReul(word){
-  if(!word) return "를";
-  const last=word[word.length-1];
-  const code=last.charCodeAt(0);
-  if(code<0xAC00||code>0xD7A3) return "를";
-  const hasBatchim=(code-0xAC00)%28!==0;
-  return hasBatchim?"을":"를";
-}
-
 // 채팅에 [[1d10]], [[2d6+3]] 같은 표기를 적으면 전송 시점에 실제로 주사위를 굴려서
 // 그 결과값으로 바꿔치기합니다. (한 번 굴리고 나면 값이 고정되어 저장되므로,
 // 나중에 다시 봐도 같은 결과가 유지됩니다.) 결과 숫자는 테마 색상으로 강조됩니다.
@@ -2034,7 +2024,7 @@ function DicePanel({char,onRollToChat,roomId}){
 }
 
 
-function ChatScreen({room,userCode,profile,character,onBack}){
+function ChatScreen({room,userCode,profile,onBack}){
   const [tabs,setTabs]=useState([{id:"main",label:"메인"}]);
   const [activeTab,setActiveTab]=useState("main");
   const [newTabName,setNewTabName]=useState("");
@@ -2057,7 +2047,7 @@ function ChatScreen({room,userCode,profile,character,onBack}){
   const npcAvatarInputRef=useRef(null);
   const [judgeTargets,setJudgeTargets]=useState([]); // 판정 대상으로 고른 참가자 code 목록
   const [judgeSkill,setJudgeSkill]=useState("");
-  const [char,setChar]=useState(character||null);
+  const [char,setChar]=useState(null);
   const [showCharMenu,setShowCharMenu]=useState(false);
   const [creatingChar,setCreatingChar]=useState(false);
   const charMenuRef=useRef(null);
@@ -2283,10 +2273,16 @@ function ChatScreen({room,userCode,profile,character,onBack}){
   // 새 메시지 알림(브라우저 알림 + 소리)을 하나로 합친 토글. 이 기기에 켜짐/꺼짐 상태가 기억됩니다.
   const [soundEnabled,setSoundEnabled]=useState(loadSoundPref);
   const toggleNotif=async()=>{
-    const turningOn=!soundEnabled;
-    if(turningOn&&"Notification" in window&&notifPermission==="default"){
+    // 브라우저 알림 권한을 아직 한 번도 물어본 적이 없다면(default), soundEnabled가 이미
+    // true(기본값)라서 "끄기"로 취급되는 바람에 권한 요청 자체가 실행이 안 되던 문제가
+    // 있었어요. 그래서 권한이 아직 결정 안 된 상태라면, 무조건 지금 눌렀을 때 권한부터
+    // 물어보고 켜기로 확정합니다. 권한이 이미 허용/차단으로 정해진 뒤에만 단순 on/off로 동작해요.
+    if("Notification" in window&&notifPermission==="default"){
       const perm=await Notification.requestPermission();
       setNotifPermission(perm);
+      setSoundEnabled(true);
+      saveSoundPref(true);
+      return;
     }
     setSoundEnabled(v=>{ saveSoundPref(!v); return !v; });
   };
@@ -2462,17 +2458,16 @@ function ChatScreen({room,userCode,profile,character,onBack}){
     return()=>unsub();
   },[room.id]);
 
-  useEffect(()=>{setChar(character);},[character]);
 
   // 내 캐릭터 문서를 실시간으로 구독합니다. GM이 광기를 부여하는 등 외부에서
   // 캐릭터 정보가 바뀌면, 방을 나갔다 들어올 필요 없이 바로 반영됩니다.
   useEffect(()=>{
-    if(!character?.id)return;
-    const unsub=storeListenDoc(`char:${room.id}:${character.id}`,updated=>{
+    if(!char?.id)return;
+    const unsub=storeListenDoc(`char:${room.id}:${char.id}`,updated=>{
       if(updated) setChar(updated);
     });
     return()=>unsub();
-  },[room.id,character?.id]);
+  },[room.id,char?.id]);
 
   const handleSetBgm=async()=>{const url=bgmInput.trim();setBgmUrl(url);await storeSet(`bgm:${room.id}`,{url},true);setBgmInput("");};
   const handleStopBgm=async()=>{setBgmUrl("");await storeSet(`bgm:${room.id}`,{url:""},true);};
