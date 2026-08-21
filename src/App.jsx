@@ -227,11 +227,15 @@ input[type=number] { -moz-appearance: textfield; }
   .stage-panel {
     display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0;
     border-radius: 16px; border: 1px solid var(--border);
+    /* 배경 그림을 무대 전체(대사창 뒤까지)에 깔기 위해 배경을 여기서 직접 그립니다.
+       그림이 없을 때는 아래 그라데이션이 그대로 보입니다. */
     background: linear-gradient(160deg, var(--bg-panel) 0%, var(--surface) 60%);
-    position: relative;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    position: relative; overflow: hidden;
   }
 }
-.stage-scene { flex: 1; position: relative; border-radius: 16px 16px 0 0; overflow: hidden; }
+/* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
+.stage-scene { flex: 1; position: relative; min-height: 0; }
 
 /* 롤20 스타일 좌측 세로 아이콘 바. 모바일에서는 화면 맨 위에 가로로,
    PC(1024px~)에서는 무대 왼쪽에 세로로 길게 붙습니다. */
@@ -282,14 +286,18 @@ input[type=number] { -moz-appearance: textfield; }
 
 .vn-dock { padding: 18px; }
 .vn-portrait {
-  width: 145px; height: 145px; border-radius: 12px; overflow: hidden;
+  /* 대사창 높이에 맞춰 위(이름 줄)부터 아래까지 꽉 차게 늘어납니다. */
+  width: 190px; align-self: stretch; border-radius: 12px; overflow: hidden;
   border: 2px solid var(--accent); background: var(--bg-panel);
-  flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-  align-self: center;
+  flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.16);
+  display: flex; align-items: center; justify-content: center;
+}
+@media (max-width: 1320px) {
+  .vn-portrait { width: 150px; }
 }
 .vn-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .vn-textbox {
-  position: relative; display: flex; align-items: flex-start; gap: 30px;
+  position: relative; display: flex; align-items: stretch; gap: 24px;
   background: var(--vn-bg); color: var(--text); border-radius: 14px;
   padding: 20px 24px; height: 25vh; box-sizing: border-box; overflow-y: auto;
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
@@ -3144,7 +3152,7 @@ function ChatScreen({room,userCode,profile,onBack}){
         </div>
       </div>
 
-      <div className="stage-panel">
+      <div className="stage-panel" style={sceneUrl?{backgroundImage:`url(${sceneUrl})`}:undefined}>
         {/* PC에서는 헤더가 좌측 세로 아이콘 바로 옮겨가서, 방 제목/날짜는 무대 위 오버레이로 살짝만 표시합니다 */}
         <div className="stage-title-overlay">
           <div style={{display:"flex",alignItems:"center",gap:7}}>
@@ -3153,7 +3161,7 @@ function ChatScreen({room,userCode,profile,onBack}){
           </div>
           <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
-        <div className="stage-scene" style={sceneUrl?{backgroundImage:`url(${sceneUrl})`,backgroundSize:"cover",backgroundPosition:"center"}:undefined}>
+        <div className="stage-scene">
           {isGM&&(
             <button type="button" className="coc-btn ghost small" onClick={()=>setShowDecorate(true)}
               style={{position:"absolute",top:12,left:"50%",transform:"translateX(-50%)",zIndex:10,background:"var(--glass)",backdropFilter:"blur(4px)"}}>
@@ -3182,7 +3190,7 @@ function ChatScreen({room,userCode,profile,onBack}){
           <div className="vn-dock">
             <div className="vn-textbox">
               <div className="vn-portrait">
-                {latestDialogue.avatar?<img src={latestDialogue.avatar} alt=""/>:<Sparkles size={30} color="var(--accent-soft)" style={{margin:"57px 55px"}}/>}
+                {latestDialogue.avatar?<img src={latestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
               </div>
               <div className="vn-textcol">
                 <div className="vn-name" style={safeNameColor(latestDialogue.nameColor)?{color:safeNameColor(latestDialogue.nameColor)}:undefined}>{latestDialogue.characterName||"???"}</div>
