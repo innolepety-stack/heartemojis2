@@ -1883,23 +1883,20 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 
 /* ============================== 선택지(조사 스팟) ============================== */
 
-// "꾸미기" 도구: 좌측 무대에 표시될 서술 문구를 폰트 크기/색상/굵기/기울임/밑줄/취소선으로
-// 꾸며서 하나의 문장으로 이어붙이고, 이미지 링크도 바로 삽입할 수 있는 GM 전용 도구입니다.
-// 시트(♥ 버튼)처럼 떠 있는 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고,
-// 제목줄을 잡고 끌어서 원하는 자리로 옮길 수 있습니다.
-function DecoratePanel({onClose,onSendText,onSendImageUrl}){
-  const [text,setText]=useState("");
+// "꾸미기" 도구: 좌측 무대에 표시될 서술 문구를, 코드 칸에서 직접 타이핑하고 드래그로
+// 선택한 다음 서식 버튼을 눌러 그 부분만 꾸미는 GM 전용 도구입니다. 시트(♥ 버튼)처럼 떠 있는
+// 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고, 제목줄을 잡고 끌어서 원하는
+// 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
+function DecoratePanel({onClose,onSendText}){
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState("#c0392b");
-  const [bold,setBold]=useState(false);
-  const [italic,setItalic]=useState(false);
-  const [underline,setUnderline]=useState(false);
-  const [strike,setStrike]=useState(false);
-  const [code,setCode]=useState(""); // 누적된 서식 코드 (하나로 이어지는 문장)
-  const [imgUrl,setImgUrl]=useState("");
+  const [code,setCode]=useState("");
   const wrapRef=useRef(null);
+  const codeRef=useRef(null);
   const [pos,setPos]=useState(null);
+  const [size,setSize]=useState({w:460,h:520});
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
+  const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
 
   const clamp=(x,y)=>{
     const el=wrapRef.current;
@@ -1923,18 +1920,34 @@ function DecoratePanel({onClose,onSendText,onSendImageUrl}){
   const onPointerUp=()=>{ drag.current.on=false; };
   const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
 
-  const wrapWithFormatting=raw=>{
-    let v=raw;
-    if(bold) v=`**${v}**`;
-    if(italic) v=`*${v}*`;
-    if(underline) v=`__${v}__`;
-    if(strike) v=`~~${v}~~`;
-    return `<span style="color:${color};font-size:${fontSize}px">${v}</span>`;
+  // 우측 하단 손잡이로 창 크기 조절
+  const onResizePointerDown=e=>{
+    e.stopPropagation();
+    resizeDrag.current={on:true,sx:e.clientX,sy:e.clientY,ow:size.w,oh:size.h};
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
-  const addSegment=()=>{
-    if(!text.trim())return;
-    setCode(c=>c?`${c} ${wrapWithFormatting(text)}`:wrapWithFormatting(text));
-    setText("");
+  const onResizePointerMove=e=>{
+    const r=resizeDrag.current;
+    if(!r.on)return;
+    setSize({
+      w:Math.max(320,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
+      h:Math.max(300,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
+    });
+  };
+  const onResizePointerUp=()=>{ resizeDrag.current.on=false; };
+
+  // 코드 칸에서 드래그로 선택한 부분만 감싸서 서식을 적용합니다 (강조하기 버튼과 같은 원리).
+  const wrapSelection=(before,after)=>{
+    const el=codeRef.current;
+    if(!el)return;
+    const start=el.selectionStart,end=el.selectionEnd;
+    if(start===end)return; // 선택된 부분이 없으면 아무것도 안 함
+    const selected=code.slice(start,end);
+    const wrapped=`${before}${selected}${after}`;
+    const next=code.slice(0,start)+wrapped+code.slice(end);
+    setCode(next);
+    const newStart=start+before.length, newEnd=start+before.length+selected.length;
+    setTimeout(()=>{ el.focus(); el.setSelectionRange(newStart,newEnd); },10);
   };
   const sendCode=()=>{
     if(!code.trim())return;
@@ -1942,18 +1955,16 @@ function DecoratePanel({onClose,onSendText,onSendImageUrl}){
     setCode("");
   };
 
-  const toggleBtnStyle=active=>({
-    background:active?"var(--accent)":"var(--surface)",
-    color:active?"#fff":"var(--text-dim)",
-    border:"1px solid "+(active?"var(--accent)":"var(--border)"),
+  const btnStyle={
+    background:"var(--surface)",color:"var(--text-dim)",border:"1px solid var(--border)",
     borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12.5,fontWeight:700,
-  });
+  };
 
   const anchor=pos ? {position:"fixed",left:pos.x,top:pos.y} : {position:"fixed",right:18,bottom:90};
 
   return(
     <div ref={wrapRef}
-      style={{...anchor,width:"min(94vw, 460px)",maxHeight:"82vh",display:"flex",flexDirection:"column",
+      style={{...anchor,width:size.w,height:size.h,display:"flex",flexDirection:"column",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
         boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
 
@@ -1970,53 +1981,40 @@ function DecoratePanel({onClose,onSendText,onSendImageUrl}){
         </button>
       </div>
 
-      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"14px 16px",touchAction:"pan-y"}}>
-        <div className="coc-label" style={{marginBottom:6}}>서식들</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-          <button type="button" onClick={()=>setBold(v=>!v)} style={toggleBtnStyle(bold)}>B</button>
-          <button type="button" onClick={()=>setItalic(v=>!v)} style={{...toggleBtnStyle(italic),fontStyle:"italic"}}>I</button>
-          <button type="button" onClick={()=>setUnderline(v=>!v)} style={{...toggleBtnStyle(underline),textDecoration:"underline"}}>U</button>
-          <button type="button" onClick={()=>setStrike(v=>!v)} style={{...toggleBtnStyle(strike),textDecoration:"line-through"}}>S</button>
+      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"14px 16px",touchAction:"pan-y",display:"flex",flexDirection:"column"}}>
+        <div className="coc-label" style={{marginBottom:6}}>서식들 (코드 칸에서 드래그로 선택한 다음 눌러주세요)</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10,flexShrink:0}}>
+          <button type="button" onClick={()=>wrapSelection("**","**")} style={btnStyle}>B</button>
+          <button type="button" onClick={()=>wrapSelection("*","*")} style={{...btnStyle,fontStyle:"italic"}}>I</button>
+          <button type="button" onClick={()=>wrapSelection("__","__")} style={{...btnStyle,textDecoration:"underline"}}>U</button>
+          <button type="button" onClick={()=>wrapSelection("~~","~~")} style={{...btnStyle,textDecoration:"line-through"}}>S</button>
           <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:34,height:34,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
+          <button type="button" onClick={()=>wrapSelection(`<span style="color:${color}">`,"</span>")} style={btnStyle}>색 적용</button>
           <input type="number" value={fontSize} min={10} max={60} onChange={e=>setFontSize(Number(e.target.value)||16)}
-            style={{width:56,border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",fontSize:12.5}}/>
-          <span style={{fontSize:11,color:"var(--text-faint)",alignSelf:"center"}}>px</span>
-        </div>
-        <div style={{display:"flex",gap:7,marginBottom:14}}>
-          <input className="coc-input" value={text} onChange={e=>setText(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSegment();}}}
-            placeholder="여기에서 글자를 쓴 다음, 서식 버튼을 눌러 꾸미세요" style={{flex:1}}/>
-          <button type="button" className="coc-btn small" onClick={addSegment} disabled={!text.trim()}>꾸미기</button>
+            style={{width:52,border:"1px solid var(--border)",borderRadius:6,padding:"6px 8px",fontSize:12.5}}/>
+          <button type="button" onClick={()=>wrapSelection(`<span style="font-size:${fontSize}px">`,"</span>")} style={btnStyle}>크기 적용</button>
         </div>
 
-        <div className="coc-label" style={{marginBottom:6}}>코드</div>
-        <textarea className="coc-input" value={code} onChange={e=>setCode(e.target.value)} rows={2}
-          placeholder="위에서 꾸민 조각들이 여기에 하나의 문장으로 이어져요 (직접 수정도 가능해요)"
-          style={{width:"100%",fontFamily:"JetBrains Mono,monospace",fontSize:11,resize:"vertical",marginBottom:10,boxSizing:"border-box"}}/>
+        <div className="coc-label" style={{marginBottom:6,flexShrink:0}}>코드</div>
+        <textarea ref={codeRef} className="coc-input" value={code} onChange={e=>setCode(e.target.value)}
+          placeholder="여기에 직접 글자를 쓰고, 드래그로 선택한 다음 위 서식 버튼을 눌러 꾸미세요"
+          style={{width:"100%",flex:1,minHeight:70,fontFamily:"JetBrains Mono,monospace",fontSize:11.5,resize:"none",marginBottom:10,boxSizing:"border-box"}}/>
 
-        <div className="coc-label" style={{marginBottom:6}}>미리보기</div>
-        <div style={{minHeight:44,padding:"10px 12px",background:"var(--bg-panel)",borderRadius:8,marginBottom:14,fontSize:14,lineHeight:1.5,wordBreak:"break-word"}}>
+        <div className="coc-label" style={{marginBottom:6,flexShrink:0}}>미리보기</div>
+        <div style={{minHeight:44,padding:"10px 12px",background:"var(--bg-panel)",borderRadius:8,marginBottom:14,fontSize:14,lineHeight:1.5,wordBreak:"break-word",flexShrink:0}}>
           {code.trim()?<FormattedText text={code}/>:<span style={{color:"var(--text-faint)",fontSize:12.5}}>여기에 미리보기가 나와요</span>}
         </div>
 
-        <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:10,marginBottom:18}}
+        <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:10,flexShrink:0}}
           disabled={!code.trim()} onClick={sendCode}>
           서술로 보내기
         </button>
-
-        <div className="coc-divider" style={{margin:"0 0 14px"}}/>
-
-        <div className="coc-label" style={{marginBottom:6}}>이미지 링크로 보내기</div>
-        <div style={{display:"flex",gap:7}}>
-          <input className="coc-input" value={imgUrl} onChange={e=>setImgUrl(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();if(imgUrl.trim()){onSendImageUrl(imgUrl.trim());setImgUrl("");}}}}
-            placeholder="이미지 링크 (Imgur 등)" style={{flex:1}}/>
-          <button type="button" className="coc-btn small" disabled={!imgUrl.trim()}
-            onClick={()=>{onSendImageUrl(imgUrl.trim());setImgUrl("");}}>
-            전송
-          </button>
-        </div>
       </div>
+
+      {/* 우측 하단 손잡이 — 끌면 창 크기가 바뀝니다 */}
+      <div onPointerDown={onResizePointerDown} onPointerMove={onResizePointerMove} onPointerUp={onResizePointerUp} onPointerCancel={onResizePointerUp}
+        style={{position:"absolute",bottom:2,right:2,width:16,height:16,cursor:"nwse-resize",touchAction:"none",
+          background:"linear-gradient(135deg,transparent 50%,var(--border) 50%)",borderRadius:"0 0 4px 0"}}/>
     </div>
   );
 }
@@ -3811,8 +3809,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
-        onSendText={markup=>doSend("narrate",markup,"","")}
-        onSendImageUrl={url=>sendImageUrl(url)}/>}
+        onSendText={markup=>doSend("narrate",markup,"","")}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
