@@ -3,7 +3,7 @@ import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
-  Image as ImageIcon, Moon, Sun, Minus, Brush
+  Image as ImageIcon, Moon, Sun, Minus, Brush, Layers
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -298,7 +298,7 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .stage-title-overlay { display: none; }
 
-.vn-dock { padding: 18px; }
+.vn-dock { padding: 18px 42px; }
 .vn-portrait {
   /* 대사창 높이에 맞춰 위(이름 줄)부터 아래까지 꽉 차게 늘어납니다. */
   width: 190px; align-self: stretch; border-radius: 12px; overflow: hidden;
@@ -324,7 +324,7 @@ input[type=number] { -moz-appearance: textfield; }
 /* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게 */
 .vn-narration-box {
   background: var(--vn-bg); color: var(--text); border-radius: 12px;
-  padding: 16px 22px; margin: 0 18px 18px; backdrop-filter: blur(6px);
+  padding: 16px 22px; margin: 0 42px 18px; backdrop-filter: blur(6px);
   box-shadow: 0 8px 24px rgba(0,0,0,0.18); border: 1px solid var(--border-soft);
   font-size: 18px; line-height: 1.65; text-align: center;
   height: 25vh; box-sizing: border-box; overflow-y: auto;
@@ -1973,6 +1973,57 @@ function DecorateModal({onClose,onSendText,onSendImageUrl}){
   );
 }
 
+// 무대 위에 올려두는 사진/토큰 한 장. 드래그로 옮기고, 우측 하단 손잡이로 크기를 조절합니다.
+// 방에 있는 모든 사람에게 똑같이 보여요(GM만 옮기고/지울 수 있어요). 드래그·리사이즈 도중에는
+// 화면에서만 바로바로 움직이다가, 손을 뗀 순간에만 서버에 저장해서(=다른 사람 화면에 반영) 씁니다.
+function StageToken({layer,onUpdate,onRemove,onFocus,onCommit,onContextMenu,canEdit}){
+  const onDragMouseDown=e=>{
+    if(!canEdit||e.button!==0)return;
+    e.stopPropagation();e.preventDefault();
+    onFocus();
+    const startX=e.clientX,startY=e.clientY;
+    const origX=layer.x,origY=layer.y;
+    let last={x:origX,y:origY};
+    const onMove=ev=>{ last={x:origX+(ev.clientX-startX),y:origY+(ev.clientY-startY)}; onUpdate(last); };
+    const onUp=()=>{
+      document.removeEventListener("mousemove",onMove); document.removeEventListener("mouseup",onUp);
+      onCommit(last);
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  };
+  const onResizeMouseDown=e=>{
+    if(!canEdit)return;
+    e.stopPropagation();e.preventDefault();
+    onFocus();
+    const startX=e.clientX,startY=e.clientY;
+    const origW=layer.width,origH=layer.height;
+    let last={width:origW,height:origH};
+    const onMove=ev=>{
+      last={width:Math.max(30,origW+(ev.clientX-startX)),height:Math.max(30,origH+(ev.clientY-startY))};
+      onUpdate(last);
+    };
+    const onUp=()=>{
+      document.removeEventListener("mousemove",onMove); document.removeEventListener("mouseup",onUp);
+      onCommit(last);
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  };
+  return(
+    <div onMouseDown={onDragMouseDown}
+      onContextMenu={e=>{ if(!canEdit)return; e.preventDefault(); e.stopPropagation(); onFocus(); onContextMenu(e.clientX,e.clientY); }}
+      style={{position:"absolute",left:layer.x,top:layer.y,width:layer.width,height:layer.height,zIndex:layer.z||1,cursor:canEdit?"move":"default",touchAction:"none"}}>
+      <img src={layer.url} draggable={false} alt=""
+        style={{width:"100%",height:"100%",objectFit:"contain",userSelect:"none",pointerEvents:"none",filter:"drop-shadow(0 4px 10px rgba(0,0,0,0.25))"}}/>
+      {canEdit&&(
+        <div onMouseDown={onResizeMouseDown}
+          style={{position:"absolute",bottom:-5,right:-5,width:14,height:14,background:"var(--accent)",border:"1.5px solid #fff",borderRadius:4,cursor:"nwse-resize"}}/>
+      )}
+    </div>
+  );
+}
+
 function ChoiceCreatorModal({onClose,onCreate}){
   const [options,setOptions]=useState([]);
   const [input,setInput]=useState("");
@@ -2858,6 +2909,57 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
   // GM이 무대 위로 이미지 파일을 드래그&드롭하면 바로 배경으로 설정됩니다.
   const [stageDragOver,setStageDragOver]=useState(false);
+  // 무대 레이어(사진/토큰): 방에 있는 모든 사람에게 똑같이 보이도록 Firestore로 동기화합니다.
+  // GM만 추가/이동/크기조절/삭제할 수 있고, 드래그·리사이즈 도중에는 화면에서만 바로바로
+  // 움직이다가 손을 뗀 순간에만 저장해서(=다른 사람 화면 반영) 씁니다.
+  const [layers,setLayers]=useState([]);
+  const [showLayerPanel,setShowLayerPanel]=useState(false);
+  const [layerUrlInput,setLayerUrlInput]=useState("");
+  const [layerContextMenu,setLayerContextMenu]=useState(null); // {id,x,y}
+  const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
+  const layerFileInputRef=useRef(null);
+  const layerZRef=useRef(1);
+  useEffect(()=>{
+    const unsub=storeListenDoc(`layers:${room.id}`,d=>{
+      const ls=d?.layers||[];
+      setLayers(ls);
+      layerZRef.current=ls.reduce((m,l)=>Math.max(m,l.z||1),1);
+    });
+    return()=>unsub();
+  },[room.id]);
+  const syncLayers=next=>{ storeSet(`layers:${room.id}`,{layers:next},true); };
+  const addLayer=url=>{
+    layerZRef.current+=1;
+    setLayers(ls=>{
+      const next=[...ls,{id:newId(),url,x:60,y:60,width:140,height:140,z:layerZRef.current}];
+      syncLayers(next);
+      return next;
+    });
+  };
+  const addLayerFromFile=async file=>{
+    const url=await fileToResizedDataURL(file,700);
+    addLayer(url);
+  };
+  // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
+  const updateLayerLocal=(id,patch)=>setLayers(ls=>ls.map(l=>l.id===id?{...l,...patch}:l));
+  // 손을 뗀 순간에만 서버에 저장해서 다른 사람 화면에도 반영합니다.
+  const commitLayer=(id,patch)=>setLayers(ls=>{
+    const next=ls.map(l=>l.id===id?{...l,...patch}:l);
+    syncLayers(next);
+    return next;
+  });
+  const removeLayer=id=>setLayers(ls=>{
+    const next=ls.filter(l=>l.id!==id);
+    syncLayers(next);
+    return next;
+  });
+  const bringLayerToFront=id=>{ layerZRef.current+=1; updateLayerLocal(id,{z:layerZRef.current}); };
+  useEffect(()=>{
+    if(!layerContextMenu)return;
+    const close=()=>setLayerContextMenu(null);
+    document.addEventListener("click",close);
+    return()=>document.removeEventListener("click",close);
+  },[layerContextMenu]);
   const handleStageDrop=async e=>{
     e.preventDefault(); e.stopPropagation();
     setStageDragOver(false);
@@ -3079,6 +3181,24 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   // 비주얼노벨 스타일 대사창: 가장 최근의 "대사/서술"(캐릭터·NPC 대사거나 GM 서술·판정) 메시지를 찾습니다.
   // 대사는 초상화+대사창, 서술/판정은 초상화 없이 줄글로만 보여줍니다.
   const latestDialogue=[...currentMsgs].reverse().find(m=>["ic","npc","narrate","judge","system"].includes(m.speaker));
+
+  // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다.
+  // 원본 텍스트 안의 <span style="...">, **굵게** 같은 서식은 그대로 두고 앞에서부터
+  // 잘라내는 방식이라, 타이핑 도중에는 태그가 살짝 덜 닫힌 채로 보일 수 있지만
+  // 다 나타나면 정상적으로 서식이 적용됩니다.
+  const [typedText,setTypedText]=useState("");
+  useEffect(()=>{
+    const full=latestDialogue?.text||"";
+    setTypedText("");
+    if(!full)return;
+    let i=0;
+    const id=setInterval(()=>{
+      i+=2; // 한 번에 2글자씩, 너무 느리지 않게
+      setTypedText(full.slice(0,i));
+      if(i>=full.length) clearInterval(id);
+    },22);
+    return()=>clearInterval(id);
+  },[latestDialogue?.id,latestDialogue?.text]);
   // 선택지: 정말로 "지금 가장 최근"인 메시지가 선택지일 때만 화면 중앙에 세로로 띄웁니다.
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
   const latestOverallMsg=currentMsgs[currentMsgs.length-1];
@@ -3251,7 +3371,33 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           </div>
           <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
+        {isGM&&layers.length>0&&(
+          <button type="button" onClick={()=>setLayersLocked(v=>!v)}
+            title={layersLocked?"레이어 잠김 (눌러서 풀기)":"레이어 잠금 (실수로 옮기는 것 방지)"}
+            style={{position:"absolute",top:12,right:12,zIndex:11,width:30,height:30,borderRadius:"50%",
+              background:"var(--glass)",backdropFilter:"blur(4px)",border:"1px solid var(--border-soft)",
+              cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
+            {layersLocked?"🔒":"🔓"}
+          </button>
+        )}
         <div className="stage-scene">
+          {layers.map(l=>(
+            <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked}
+              onUpdate={patch=>updateLayerLocal(l.id,patch)}
+              onCommit={patch=>commitLayer(l.id,patch)}
+              onRemove={()=>removeLayer(l.id)}
+              onFocus={()=>bringLayerToFront(l.id)}
+              onContextMenu={(x,y)=>setLayerContextMenu({id:l.id,x,y})}/>
+          ))}
+          {layerContextMenu&&(
+            <div onClick={e=>e.stopPropagation()}
+              style={{position:"fixed",top:layerContextMenu.y,left:layerContextMenu.x,zIndex:100,background:"#fff",border:"1px solid var(--border)",borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.18)",padding:4}}>
+              <button type="button" onClick={()=>{removeLayer(layerContextMenu.id);setLayerContextMenu(null);}}
+                style={{display:"block",width:"100%",textAlign:"left",padding:"7px 16px",background:"none",border:"none",cursor:"pointer",fontSize:12.5,color:"#e0507a",whiteSpace:"nowrap"}}>
+                삭제
+              </button>
+            </div>
+          )}
           {activeChoice&&(()=>{
             let data=null;try{data=JSON.parse(activeChoice.text);}catch{}
             if(!data)return null;
@@ -3278,13 +3424,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
               </div>
               <div className="vn-textcol">
                 <div className="vn-name" style={safeNameColor(latestDialogue.nameColor)?{color:safeNameColor(latestDialogue.nameColor)}:undefined}>{latestDialogue.characterName||"???"}</div>
-                <div className="vn-line"><FormattedText text={latestDialogue.text}/></div>
+                <div className="vn-line"><FormattedText text={typedText}/></div>
               </div>
             </div>
           </div>
         )}
         {latestDialogue&&(latestDialogue.speaker==="narrate"||latestDialogue.speaker==="judge"||latestDialogue.speaker==="system")&&(
-          <div className="vn-narration-box"><FormattedText text={latestDialogue.text}/></div>
+          <div className="vn-narration-box"><FormattedText text={typedText}/></div>
         )}
       </div>
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
@@ -3482,6 +3628,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
               <Brush size={12}/> 꾸미기
             </button>
           )}
+          {isGM&&(
+            <button type="button" className="coc-btn ghost small" onClick={()=>setShowLayerPanel(v=>!v)} title="좌측 무대에 사진/토큰을 올려서 옮기고 크기를 조절합니다 (방에 있는 모두에게 보여요)">
+              <Layers size={12}/> 레이어
+            </button>
+          )}
         </div>
         {/* GM 전용: 서술·판정·대사·선택지·핸드아웃 다섯 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -3575,6 +3726,42 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
       </div>
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
+      {showLayerPanel&&(
+        <div className="coc-modal-backdrop" onClick={()=>setShowLayerPanel(false)}>
+          <div className="coc-modal" style={{maxWidth:360}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>레이어</div>
+                <button className="coc-btn ghost small" onClick={()=>setShowLayerPanel(false)} style={{padding:6}}><X size={13}/></button>
+              </div>
+              <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:14}}>
+                추가한 사진은 좌측 무대 위에서 드래그로 옮기고, 우측 하단 손잡이로 크기를 조절할 수 있어요.
+                방에 있는 모든 사람에게 똑같이 보여요. 삭제하려면 토큰을 우클릭하세요.
+              </div>
+              <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:10}}
+                onClick={()=>layerFileInputRef.current?.click()}>
+                <Camera size={13}/> 사진으로 토큰 추가
+              </button>
+              <input ref={layerFileInputRef} type="file" accept="image/*" style={{display:"none"}}
+                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await addLayerFromFile(f);e.target.value="";setShowLayerPanel(false);}}/>
+              <div style={{display:"flex",gap:7,marginBottom:14}}>
+                <input className="coc-input" value={layerUrlInput} onChange={e=>setLayerUrlInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&layerUrlInput.trim()){e.preventDefault();addLayer(layerUrlInput.trim());setLayerUrlInput("");setShowLayerPanel(false);}}}
+                  placeholder="이미지 링크 (Imgur 등)" style={{flex:1}}/>
+                <button type="button" className="coc-btn small" disabled={!layerUrlInput.trim()}
+                  onClick={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");setShowLayerPanel(false);}}>
+                  추가
+                </button>
+              </div>
+              {layers.length>0&&(
+                <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center"}} onClick={()=>setLayers([])}>
+                  전부 지우기 ({layers.length})
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {showDecorate&&<DecorateModal onClose={()=>setShowDecorate(false)}
         onSendText={markup=>doSend("narrate",markup,"","")}
         onSendImageUrl={url=>sendImageUrl(url)}/>}
