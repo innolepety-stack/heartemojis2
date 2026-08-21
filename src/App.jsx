@@ -1997,17 +1997,17 @@ function DecoratePanel({onClose,onSendText}){
 
         <div className="coc-label" style={{marginBottom:6,flexShrink:0}}>코드</div>
         <textarea ref={codeRef} className="coc-input" value={code} onChange={e=>setCode(e.target.value)}
-          placeholder="꾸밀 부분만 드래그"
+          placeholder="여기에 직접 글자를 쓰고, 드래그로 선택한 다음 위 서식 버튼을 눌러 꾸미세요"
           style={{width:"100%",flex:1,minHeight:70,fontFamily:"JetBrains Mono,monospace",fontSize:11.5,resize:"none",marginBottom:10,boxSizing:"border-box"}}/>
 
         <div className="coc-label" style={{marginBottom:6,flexShrink:0}}>미리보기</div>
         <div style={{minHeight:44,padding:"10px 12px",background:"var(--bg-panel)",borderRadius:8,marginBottom:14,fontSize:14,lineHeight:1.5,wordBreak:"break-word",flexShrink:0}}>
-          {code.trim()?<FormattedText text={code}/>:<span style={{color:"var(--text-faint)",fontSize:12.5}}>미리보기</span>}
+          {code.trim()?<FormattedText text={code}/>:<span style={{color:"var(--text-faint)",fontSize:12.5}}>여기에 미리보기가 나와요</span>}
         </div>
 
         <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:10,flexShrink:0}}
           disabled={!code.trim()} onClick={sendCode}>
-          전송
+          서술로 보내기
         </button>
       </div>
 
@@ -2987,7 +2987,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     });
   };
   const addLayerFromFile=async file=>{
-    const url=await fileToResizedDataURL(file,700);
+    const url=await fileToResizedPNG(file,700);
     addLayer(url);
   };
   // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
