@@ -1011,7 +1011,7 @@ function AuthScreen({onLogin}){
 
 /* ============================== SETTINGS TAB ============================== */
 
-function SettingsTab({currentTheme, customColor, onSelectPreset, onSelectCustom, dark, onToggleDark, vnAlpha, onChangeVnAlpha}){
+function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark, vnAlpha, onChangeVnAlpha}){
   const [hexInput, setHexInput] = useState(customColor);
   useEffect(()=>{ setHexInput(customColor); }, [customColor]);
 
@@ -1028,26 +1028,7 @@ function SettingsTab({currentTheme, customColor, onSelectPreset, onSelectCustom,
         <div className="coc-folder-tab">SETTINGS</div>
         <div className="coc-display" style={{fontSize:16.5,color:"var(--accent-deep)",marginBottom:18}}>설정</div>
 
-        <div className="coc-label" style={{marginBottom:12}}>테마 색상</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:12,marginBottom:20}}>
-          {Object.entries(THEMES).map(([key,t])=>(
-            <button key={key} type="button" onClick={()=>onSelectPreset(key)}
-              style={{
-                display:"flex",alignItems:"center",gap:9,padding:"10px 16px",
-                borderRadius:10,border:"2px solid "+(currentTheme===key?"var(--accent)":"var(--border)"),
-                background:currentTheme===key?"var(--bg-panel)":"var(--surface)",
-                cursor:"pointer",transition:"all 0.15s",
-              }}>
-              <div style={{width:20,height:20,borderRadius:"50%",background:t.accent,flexShrink:0,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}/>
-              <span style={{fontSize:14.5,fontWeight:currentTheme===key?700:400,color:currentTheme===key?"var(--accent-deep)":"var(--text-dim)"}}>{t.label}</span>
-              {currentTheme===key&&<span style={{fontSize:12,color:"var(--accent)"}}>✓</span>}
-            </button>
-          ))}
-        </div>
-
-        <div style={{height:1,background:"var(--border-soft)",margin:"4px 0 18px"}}/>
-
-        <div className="coc-label" style={{marginBottom:6}}>커스텀 색상</div>
+        <div className="coc-label" style={{marginBottom:6}}>테마 색상</div>
         <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:12}}>원하는 색을 직접 골라보세요. 나머지 배경·테두리 색은 자동으로 맞춰져요.</div>
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <label style={{position:"relative",width:46,height:46,borderRadius:10,overflow:"hidden",border:"2px solid "+(currentTheme==="custom"?"var(--accent)":"var(--border)"),cursor:"pointer",flexShrink:0}}>
@@ -1168,7 +1149,18 @@ function MyPage({userCode,profile,setProfile}){
       ):(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(148px,1fr))",gap:10}}>
           {myChars.map(c=>(
-            <div key={c.id} className="coc-card" style={{padding:14,cursor:"pointer",textAlign:"center"}} onClick={()=>setViewing(c)}>
+            <div key={c.id} className="coc-card" style={{padding:14,cursor:"pointer",textAlign:"center",position:"relative"}} onClick={()=>setViewing(c)}>
+              <button type="button" title="캐릭터 삭제"
+                onClick={async e=>{
+                  e.stopPropagation();
+                  if(!window.confirm(`"${c.name||"이름 없음"}" 캐릭터를 삭제할까요? 되돌릴 수 없어요.`))return;
+                  await storeDelete(`char:${c.roomId}:${c.id}`,true);
+                }}
+                style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:6,border:"1px solid var(--border)",
+                  background:"var(--surface)",color:"var(--text-faint)",cursor:"pointer",display:"flex",
+                  alignItems:"center",justifyContent:"center",padding:0}}>
+                <Trash2 size={12}/>
+              </button>
               <div style={{width:50,height:50,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",margin:"0 auto 8px",border:"1px solid var(--border)"}}>
                 {c.avatar?<img src={c.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={20} color="var(--accent-soft)" style={{margin:15}}/>}
               </div>
@@ -3941,10 +3933,6 @@ function AppInner(){
     })();
   },[user]);
 
-  const handleThemePreset=k=>{
-    setThemeKey(k);
-    if(user) storeSet(`theme:${user.code}`,{key:k},true);
-  };
   const handleThemeCustom=hex=>{
     if(!isValidHexColor(hex))return;
     setThemeKey("custom");
@@ -3975,7 +3963,7 @@ function AppInner(){
   if(activeRoom){
     body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark}/>;
   }else if(tab==="settings"){
-    body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectPreset={handleThemePreset} onSelectCustom={handleThemeCustom}
+    body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectCustom={handleThemeCustom}
       dark={dark} onToggleDark={handleDark} vnAlpha={vnAlpha} onChangeVnAlpha={handleVnAlpha}/>;
   }else if(tab==="profile"){
     body=profileLoaded&&<MyPage userCode={user.code} profile={profile} setProfile={setProfile}/>;
