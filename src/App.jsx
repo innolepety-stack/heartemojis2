@@ -1738,8 +1738,22 @@ function parseFormat(text){
   if(last<text.length) parts.push({t:"text",v:text.slice(last)});
   return parts;
 }
-function FormattedText({text,style={}}){
-  const parts=parseFormat(text);
+// 타이핑 효과처럼 "글자 수 기준으로 앞부분만" 보여줘야 할 때, 이미 서식이 적용된
+// parseFormat 결과를 잘라서 씁니다. 원본 코드를 통째로 자르면 태그가 그대로 노출되는
+// 문제가 있는데, 이 방식은 서식이 처음부터 항상 정확하게 적용된 채로 보여요.
+function truncateParts(parts,maxChars){
+  let remaining=maxChars;
+  const out=[];
+  for(const p of parts){
+    if(remaining<=0)break;
+    if(p.v.length<=remaining){ out.push(p); remaining-=p.v.length; }
+    else{ out.push({...p,v:p.v.slice(0,remaining)}); remaining=0; }
+  }
+  return out;
+}
+function FormattedText({text,style={},maxChars}){
+  let parts=parseFormat(text);
+  if(typeof maxChars==="number") parts=truncateParts(parts,maxChars);
   return(
     <span style={style}>
       {parts.map((p,i)=>{
@@ -2742,6 +2756,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     return Array.from(set).sort((a,b)=>(a===room.creatorCode?-1:b===room.creatorCode?1:0));
   })();
   const myHandouts=handouts.filter(h=>(h.visibleTo||[]).includes(userCode));
+  const onlineOthers=participantsList.filter(c=>c!==userCode&&isOnline(c));
 
   // 브라우저 알림: 탭이 백그라운드일 때 새 메시지가 오면 알려줍니다.
   // (iOS Safari는 일반 브라우저 탭에서는 이 기능을 지원하지 않아요 — 홈 화면에 추가한
@@ -2964,6 +2979,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
   const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
   const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
+  const [seenOnlineIds,setSeenOnlineIds]=useState([]); // 참가자 온라인 알림 점: 확인하면 사라지도록
   const layerFileInputRef=useRef(null);
   const layerPanelRef=useRef(null);
   useEffect(()=>{
@@ -3247,19 +3263,19 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","judge","system"].includes(m.speaker));
 
   // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다.
-  // 원본 텍스트 안의 <span style="...">, **굵게** 같은 서식은 그대로 두고 앞에서부터
-  // 잘라내는 방식이라, 타이핑 도중에는 태그가 살짝 덜 닫힌 채로 보일 수 있지만
-  // 다 나타나면 정상적으로 서식이 적용됩니다.
-  const [typedText,setTypedText]=useState("");
+  // 원본 코드를 그대로 잘라내는 대신, 이미 서식이 적용된 결과물의 "보이는 글자 수"만
+  // 세어서 자르기 때문에, 타이핑 도중에도 서식(색·굵기 등)이 처음부터 정확히 보여요.
+  const [typedCount,setTypedCount]=useState(0);
   useEffect(()=>{
     const full=latestDialogue?.text||"";
-    setTypedText("");
-    if(!full)return;
+    const totalVisible=parseFormat(full).reduce((s,p)=>s+p.v.length,0);
+    setTypedCount(0);
+    if(!totalVisible)return;
     let i=0;
     const id=setInterval(()=>{
       i+=1; // 한 번에 1글자씩, 조금 더 여유 있게
-      setTypedText(full.slice(0,i));
-      if(i>=full.length) clearInterval(id);
+      setTypedCount(i);
+      if(i>=totalVisible) clearInterval(id);
     },32);
     return()=>clearInterval(id);
   },[latestDialogue?.id,latestDialogue?.text]);
@@ -3380,10 +3396,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
         </button>
 
         <div style={{position:"relative",flexShrink:0}} ref={participantsRef}>
-          <button type="button" className={"chat-icon-btn"+(participantsList.some(c=>c!==userCode&&isOnline(c))?" on":"")}
-            onClick={()=>setShowParticipants(v=>!v)} title={`참가자 (${participantsList.length})`}>
+          <button type="button" className={"chat-icon-btn"+(onlineOthers.length>0?" on":"")}
+            onClick={()=>{setShowParticipants(v=>!v);setSeenOnlineIds(onlineOthers);}} title={`참가자 (${participantsList.length})`}>
             <Users size={18}/>
-            {participantsList.some(c=>c!==userCode&&isOnline(c))&&<span className="dot"/>}
+            {onlineOthers.some(c=>!seenOnlineIds.includes(c))&&<span className="dot"/>}
           </button>
           {showParticipants&&(
             <div className="rail-participants-flyout">
@@ -3500,13 +3516,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
               </div>
               <div className="vn-textcol">
                 <div className="vn-name" style={safeNameColor(latestDialogue.nameColor)?{color:safeNameColor(latestDialogue.nameColor)}:undefined}>{latestDialogue.characterName||"???"}</div>
-                <div className="vn-line"><FormattedText text={typedText}/></div>
+                <div className="vn-line"><FormattedText text={latestDialogue.text} maxChars={typedCount}/></div>
               </div>
             </div>
           </div>
         )}
         {latestDialogue&&(latestDialogue.speaker==="narrate"||latestDialogue.speaker==="judge"||latestDialogue.speaker==="system")&&(
-          <div className="vn-narration-box"><FormattedText text={typedText}/></div>
+          <div className="vn-narration-box"><FormattedText text={latestDialogue.text} maxChars={typedCount}/></div>
         )}
       </div>
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
