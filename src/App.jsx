@@ -3,7 +3,7 @@ import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
-  Image as ImageIcon, Moon, Sun, Minus, Brush, Layers
+  Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -298,7 +298,7 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .stage-title-overlay { display: none; }
 
-.vn-dock { padding: 18px 42px; }
+.vn-dock { padding: 18px 42px; position: relative; z-index: 5; }
 .vn-portrait {
   /* 대사창 높이에 맞춰 위(이름 줄)부터 아래까지 꽉 차게 늘어납니다. */
   width: 190px; align-self: stretch; border-radius: 12px; overflow: hidden;
@@ -311,7 +311,7 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .vn-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .vn-textbox {
-  position: relative; display: flex; align-items: stretch; gap: 24px;
+  position: relative; display: flex; align-items: stretch; gap: 42px;
   background: var(--vn-bg); color: var(--text); border-radius: 14px;
   padding: 20px 24px; height: 25vh; box-sizing: border-box; overflow-y: auto;
   box-shadow: 0 8px 24px rgba(0,0,0,0.18);
@@ -336,10 +336,10 @@ input[type=number] { -moz-appearance: textfield; }
   display: flex; flex-direction: column; gap: 10px; align-items: center; z-index: 5;
 }
 .vn-choice-pill {
-  border: 1.5px solid var(--accent); border-radius: 999px; padding: 9px 28px;
-  font-size: 13.5px; font-weight: 600; color: var(--accent);
+  border: 1.5px solid var(--accent); border-radius: 999px; padding: 12px 34px;
+  font-size: 16px; font-weight: 600; color: var(--accent);
   background: var(--glass); backdrop-filter: blur(4px);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.1); min-width: 170px; text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.1); min-width: 200px; text-align: center;
   cursor: pointer; transition: background .15s;
 }
 .vn-choice-pill:hover:not(.picked) { background: var(--accent); color: #fff; }
@@ -1648,7 +1648,7 @@ const GM_TABS=[
   {key:"judge",label:"판정",short:"판정",placeholder:"@@ 판정이라 입력하세요."},
   {key:"npc",label:"대사",short:"대사",placeholder:"......."},
   {key:"choice",label:"선택지",short:"선택",placeholder:""},
-  {key:"handout",label:"핸드아웃",short:"H/O",placeholder:""},
+  {key:"handout",label:"배부",short:"배부",placeholder:""},
 ];
 
 // 채팅에 [[1d10]], [[2d6+3]] 같은 표기를 적으면 전송 시점에 실제로 주사위를 굴려서
@@ -2026,10 +2026,11 @@ function DecoratePanel({onClose,onSendText}){
 // 방에 있는 모든 사람에게 똑같이 보여요(GM만 옮기고/크기 조절할 수 있어요). 삭제·순서 변경은
 // 좌측 아이콘 바의 "레이어" 패널에서 합니다(포토샵 레이어창처럼요). 드래그·리사이즈 도중에는
 // 화면에서만 바로바로 움직이다가, 손을 뗀 순간에만 서버에 저장해서(=다른 사람 화면에 반영) 씁니다.
-function StageToken({layer,zIndex,onUpdate,onCommit,canEdit}){
+function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
   const onDragMouseDown=e=>{
     if(!canEdit||e.button!==0)return;
     e.stopPropagation();e.preventDefault();
+    onSelect();
     const startX=e.clientX,startY=e.clientY;
     const origX=layer.x,origY=layer.y;
     let last={x:origX,y:origY};
@@ -2041,14 +2042,21 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit}){
     document.addEventListener("mousemove",onMove);
     document.addEventListener("mouseup",onUp);
   };
-  const onResizeMouseDown=e=>{
+  // 포토샵 컨트롤+T처럼, 선택하면 네 모서리에 손잡이가 생기고 어느 쪽을 잡아도 크기를 조절할 수 있습니다.
+  const onCornerMouseDown=(corner)=>e=>{
     if(!canEdit)return;
     e.stopPropagation();e.preventDefault();
     const startX=e.clientX,startY=e.clientY;
-    const origW=layer.width,origH=layer.height;
-    let last={width:origW,height:origH};
+    const origX=layer.x,origY=layer.y,origW=layer.width,origH=layer.height;
+    let last={x:origX,y:origY,width:origW,height:origH};
     const onMove=ev=>{
-      last={width:Math.max(30,origW+(ev.clientX-startX)),height:Math.max(30,origH+(ev.clientY-startY))};
+      const dx=ev.clientX-startX, dy=ev.clientY-startY;
+      let{x,y,width,height}={x:origX,y:origY,width:origW,height:origH};
+      if(corner.includes("e")) width=Math.max(24,origW+dx);
+      if(corner.includes("s")) height=Math.max(24,origH+dy);
+      if(corner.includes("w")){ width=Math.max(24,origW-dx); x=origX+origW-width; }
+      if(corner.includes("n")){ height=Math.max(24,origH-dy); y=origY+origH-height; }
+      last={x,y,width,height};
       onUpdate(last);
     };
     const onUp=()=>{
@@ -2058,14 +2066,21 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit}){
     document.addEventListener("mousemove",onMove);
     document.addEventListener("mouseup",onUp);
   };
+  const handleStyle={position:"absolute",width:12,height:12,background:"var(--accent)",border:"1.5px solid #fff",borderRadius:3,zIndex:2};
   return(
     <div onMouseDown={onDragMouseDown}
-      style={{position:"absolute",left:layer.x,top:layer.y,width:layer.width,height:layer.height,zIndex,cursor:canEdit?"move":"default",touchAction:"none"}}>
+      style={{position:"absolute",left:layer.x,top:layer.y,width:layer.width,height:layer.height,zIndex,
+        cursor:canEdit?"move":"default",touchAction:"none",
+        outline:selected&&canEdit?"1.5px dashed var(--accent)":"none",outlineOffset:2}}>
       <img src={layer.url} draggable={false} alt=""
         style={{width:"100%",height:"100%",objectFit:"contain",userSelect:"none",pointerEvents:"none",filter:"drop-shadow(0 4px 10px rgba(0,0,0,0.25))"}}/>
-      {canEdit&&(
-        <div onMouseDown={onResizeMouseDown}
-          style={{position:"absolute",bottom:-5,right:-5,width:14,height:14,background:"var(--accent)",border:"1.5px solid #fff",borderRadius:4,cursor:"nwse-resize"}}/>
+      {canEdit&&selected&&(
+        <>
+          <div onMouseDown={onCornerMouseDown("nw")} style={{...handleStyle,top:-6,left:-6,cursor:"nwse-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("ne")} style={{...handleStyle,top:-6,right:-6,cursor:"nesw-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("sw")} style={{...handleStyle,bottom:-6,left:-6,cursor:"nesw-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("se")} style={{...handleStyle,bottom:-6,right:-6,cursor:"nwse-resize"}}/>
+        </>
       )}
     </div>
   );
@@ -2258,7 +2273,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
   );
 }
 
-function HandoutViewerModal({handouts,madness,onClose}){
+function HandoutViewerModal({handouts,onClose}){
   const [viewing,setViewing]=useState(null);
   return(
     <div className="coc-modal-backdrop" onClick={onClose}>
@@ -2276,17 +2291,6 @@ function HandoutViewerModal({handouts,madness,onClose}){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>핸드아웃</div>
                 <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
-              </div>
-              <div style={{border:"1px solid "+(madness?.type?"#c05050":"var(--border-soft)"),background:madness?.type?"#fff5f5":"var(--bg-panel)",borderRadius:8,padding:"9px 12px",marginBottom:14}}>
-                <div className="coc-label" style={{marginBottom:madness?.type?4:0,color:madness?.type?"#c05050":undefined}}>광기</div>
-                {madness?.type?(
-                  <div style={{fontSize:12.5}}>
-                    <span style={{fontWeight:700,color:"#c05050"}}>{madness.type} 광기</span>
-                    {madness.note&&<div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{madness.note}</div>}
-                  </div>
-                ):(
-                  <div style={{fontSize:12,color:"var(--text-faint)"}}>없음</div>
-                )}
               </div>
               {handouts.length===0?(
                 <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
@@ -2422,12 +2426,6 @@ function DicePanel({char,onRollToChat,roomId}){
       </div>
 
       <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
-        {char?.madness?.type&&(
-          <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:10}}>
-            <span style={{fontSize:11.5,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
-            {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:2}}>{char.madness.note}</div>}
-          </div>
-        )}
         <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
           {[["roll","판정"],["sheet","시트 보기·수정"]].map(([v,l])=>(
             <button key={v} type="button" onClick={()=>setTab(v)}
@@ -2464,6 +2462,12 @@ function DicePanel({char,onRollToChat,roomId}){
                 );
               })}
             </div>
+            {char?.madness?.type&&(
+              <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
+                <span style={{fontSize:11.5,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
+                {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:2}}>{char.madness.note}</div>}
+              </div>
+            )}
             <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
               {SKILL_LIST_SORTED.map(([name])=>{
@@ -2773,6 +2777,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const [madnessTarget,setMadnessTarget]=useState(null);
   const [madnessType,setMadnessType]=useState("");
   const [madnessNote,setMadnessNote]=useState("");
+  const [showMadnessForm,setShowMadnessForm]=useState(false);
   const saveMadness=async(code)=>{
     const p=presenceMap[code];
     if(!p?.charId){ setMadnessTarget(null); return; }
@@ -2965,6 +2970,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const [layerUrlInput,setLayerUrlInput]=useState("");
   const [layerDragIndex,setLayerDragIndex]=useState(null); // 레이어 패널 목록에서 드래그 중인 항목의 인덱스
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
+  const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
+  const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
   const layerFileInputRef=useRef(null);
   const layerPanelRef=useRef(null);
   useEffect(()=>{
@@ -3228,10 +3235,24 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
   const currentMsgs=Array.from((tabMsgMaps[activeTab]||new Map()).values()).sort((a,b)=>a.timestamp-b.timestamp);
   const groups=groupMessages(currentMsgs);
-  // 비주얼노벨 스타일 대사창: 가장 최근의 "대사"(캐릭터/NPC가 말한 것) 메시지를 찾습니다.
+
+  // 좌측 무대(비주얼노벨 대사창)에는 지금 보고 있는 탭이 아니라 항상 "메인" 탭 대화만 보여줍니다.
+  // 메인 탭을 보고 있을 때는 이미 구독 중인 currentMsgs를 그대로 쓰고, 다른 탭을 보고 있을 때만
+  // 메인 탭용 구독을 별도로 하나 더 둡니다(불필요한 중복 구독 방지).
+  const [mainMsgsExtra,setMainMsgsExtra]=useState([]);
+  useEffect(()=>{
+    if(activeTab==="main")return;
+    const unsub=storeListenPrefix(`chat:${room.id}:`,list=>{
+      const filtered=list.filter(x=>!x.value.tabId||x.value.tabId==="main").map(x=>x.value);
+      setMainMsgsExtra(filtered);
+    });
+    return()=>unsub();
+  },[room.id,activeTab]);
+  const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].sort((a,b)=>a.timestamp-b.timestamp);
+
   // 비주얼노벨 스타일 대사창: 가장 최근의 "대사/서술"(캐릭터·NPC 대사거나 GM 서술·판정) 메시지를 찾습니다.
   // 대사는 초상화+대사창, 서술/판정은 초상화 없이 줄글로만 보여줍니다.
-  const latestDialogue=[...currentMsgs].reverse().find(m=>["ic","npc","narrate","judge","system"].includes(m.speaker));
+  const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","judge","system"].includes(m.speaker));
 
   // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다.
   // 원본 텍스트 안의 <span style="...">, **굵게** 같은 서식은 그대로 두고 앞에서부터
@@ -3244,15 +3265,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     if(!full)return;
     let i=0;
     const id=setInterval(()=>{
-      i+=2; // 한 번에 2글자씩, 너무 느리지 않게
+      i+=1; // 한 번에 1글자씩, 조금 더 여유 있게
       setTypedText(full.slice(0,i));
       if(i>=full.length) clearInterval(id);
-    },22);
+    },32);
     return()=>clearInterval(id);
   },[latestDialogue?.id,latestDialogue?.text]);
   // 선택지: 정말로 "지금 가장 최근"인 메시지가 선택지일 때만 화면 중앙에 세로로 띄웁니다.
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
-  const latestOverallMsg=currentMsgs[currentMsgs.length-1];
+  const latestOverallMsg=stageMsgs[stageMsgs.length-1];
   const activeChoice=latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null;
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
@@ -3284,10 +3305,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           <Music size={18}/>
         </button>
 
-        <button type="button" className={"chat-icon-btn"+(myHandouts.length>0?" on":"")} onClick={()=>setShowHandoutViewer(true)}
+        <button type="button" className={"chat-icon-btn"+(myHandouts.length>0?" on":"")}
+          onClick={()=>{setShowHandoutViewer(true);setSeenHandoutCount(myHandouts.length);}}
           title={`핸드아웃${myHandouts.length>0?` (${myHandouts.length})`:""}`}>
           <Folder size={18}/>
-          {myHandouts.length>0&&<span className="dot"/>}
+          {myHandouts.length>seenHandoutCount&&<span className="dot"/>}
         </button>
 
         {isGM&&(
@@ -3385,39 +3407,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
                         <span style={{fontSize:12.5,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
                         {code===room.creatorCode&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
                         {isGM&&code!==userCode&&(
-                          <button type="button" onClick={()=>{setMadnessTarget(madnessTarget===code?null:code);setMadnessType("");setMadnessNote("");setSanTarget(null);}}
-                            style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer",color:"var(--text-dim)"}}>
-                            광기
-                          </button>
-                        )}
-                        {isGM&&code!==userCode&&(
-                          <button type="button" onClick={()=>{setSanTarget(sanTarget===code?null:code);setSanAmount("");setMadnessTarget(null);}}
+                          <button type="button" onClick={()=>{setSanTarget(sanTarget===code?null:code);setSanAmount("");}}
                             style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer",color:"var(--text-dim)"}}>
                             이성-
                           </button>
                         )}
                       </div>
-                      {madnessTarget===code&&(
-                        <div style={{marginTop:6,marginLeft:15,padding:8,background:"var(--bg-panel)",borderRadius:8}}>
-                          <div style={{display:"flex",gap:4,marginBottom:6}}>
-                            {["없음","단기적","장기적"].map(t=>(
-                              <button key={t} type="button" onClick={()=>setMadnessType(t==="없음"?"":t)}
-                                style={{flex:1,fontSize:10.5,padding:"4px 0",borderRadius:5,cursor:"pointer",
-                                  background:(t==="없음"?madnessType==="":madnessType===t)?"var(--accent)":"var(--surface)",
-                                  color:(t==="없음"?madnessType==="":madnessType===t)?"#fff":"var(--text-dim)",
-                                  border:"1px solid "+((t==="없음"?madnessType==="":madnessType===t)?"var(--accent)":"var(--border)")}}>
-                                {t}
-                              </button>
-                            ))}
-                          </div>
-                          <input className="coc-input" value={madnessNote} onChange={e=>setMadnessNote(e.target.value)}
-                            placeholder="광기 내용 (선택)" style={{fontSize:11.5,padding:"5px 8px",marginBottom:6}}/>
-                          <div style={{display:"flex",gap:5}}>
-                            <button type="button" className="coc-btn small" style={{flex:1,justifyContent:"center"}} onClick={()=>saveMadness(code)}>저장</button>
-                            <button type="button" className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>setMadnessTarget(null)}>취소</button>
-                          </div>
-                        </div>
-                      )}
                       {sanTarget===code&&(
                         <div style={{marginTop:6,marginLeft:15,padding:8,background:"var(--bg-panel)",borderRadius:8}}>
                           <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:6}}>감소시킬 이성 수치를 입력하세요. 저장하면 시트에 바로 반영되고, 채팅에도 안내가 남아요.</div>
@@ -3475,13 +3470,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
             title={layersLocked?"레이어 잠김 (눌러서 풀기)":"레이어 잠금 (실수로 옮기는 것 방지)"}
             style={{position:"absolute",top:12,right:12,zIndex:11,width:30,height:30,borderRadius:"50%",
               background:"var(--glass)",backdropFilter:"blur(4px)",border:"1px solid var(--border-soft)",
-              cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
-            {layersLocked?"🔒":"🔓"}
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,color:"var(--accent-deep)"}}>
+            {layersLocked?<Lock size={15}/>:<Unlock size={15}/>}
           </button>
         )}
-        <div className="stage-scene">
+        <div className="stage-scene" onMouseDown={()=>setSelectedLayerId(null)}>
           {layers.map((l,i)=>(
             <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
+              selected={selectedLayerId===l.id}
+              onSelect={()=>setSelectedLayerId(l.id)}
               onUpdate={patch=>updateLayerLocal(l.id,patch)}
               onCommit={patch=>commitLayer(l.id,patch)}/>
           ))}
@@ -3724,7 +3721,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
                 onClick={()=>{
                   setGmTab(key);
                   if(key==="choice") setShowChoiceCreator(true);
-                  if(key==="handout") setShowHandoutManager(true);
                 }}
                 style={{
                   flex:1,padding:"9px 4px",border:"none",
@@ -3753,12 +3749,47 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
             <input ref={npcAvatarInputRef} type="file" accept="image/*" style={{display:"none"}}
               onChange={async e=>{const f=e.target.files?.[0];if(!f)return;setNpcAvatar(await fileToResizedDataURL(f,480));e.target.value="";}}/>
             <button type="button" className="coc-btn ghost small" onClick={()=>npcAvatarInputRef.current?.click()} style={{flexShrink:0}}><Camera size={12}/></button>
-            {npcAvatar&&<button type="button" className="coc-btn ghost small" onClick={()=>setNpcAvatar("")} style={{flexShrink:0}}><X size={12}/></button>}
+            {npcAvatar&&<button type="button" className="coc-btn ghost small" onClick={()=>{setNpcAvatar("");setNpcName("");}} style={{flexShrink:0}}><X size={12}/></button>}
           </div>
         )}
-        {isGM&&speaker==="gm"&&(gmTab==="choice"||gmTab==="handout")?(
+        {isGM&&speaker==="gm"&&gmTab==="choice"?(
           <div style={{fontSize:12,color:"var(--text-faint)",padding:"10px 2px"}}>
-            위 {gmTab==="choice"?"'선택'":"'H/O'"} 버튼을 눌러 {gmTab==="choice"?"선택지를 만들어보세요.":"핸드아웃을 관리해 보세요."}
+            위 '선택' 버튼을 눌러 선택지를 만들어보세요.
+          </div>
+        ):isGM&&speaker==="gm"&&gmTab==="handout"?(
+          <div style={{padding:"4px 2px"}}>
+            <div style={{display:"flex",gap:7,marginBottom:12}}>
+              <button type="button" className="coc-btn small" onClick={()=>{setShowHandoutManager(true);setShowMadnessForm(false);}}>핸드아웃</button>
+              <button type="button" className={showMadnessForm?"coc-btn small":"coc-btn ghost small"} onClick={()=>setShowMadnessForm(v=>!v)}>광기</button>
+            </div>
+            {showMadnessForm&&(
+              <div>
+                <div className="coc-label" style={{marginBottom:6}}>대상</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                  {participantsList.filter(c=>c!==userCode).map(code=>{
+                    const displayName=presenceMap[code]?.charName||code;
+                    const active=madnessTarget===code;
+                    return(
+                      <button key={code} type="button" onClick={()=>setMadnessTarget(code)}
+                        style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
+                          background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
+                          border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
+                        {displayName}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input className="coc-input" value={madnessType} onChange={e=>setMadnessType(e.target.value)}
+                  placeholder="광기 이름" style={{marginBottom:8}}/>
+                <input className="coc-input" value={madnessNote} onChange={e=>setMadnessNote(e.target.value)}
+                  placeholder="내용" style={{marginBottom:10}}/>
+                <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
+                  disabled={!madnessTarget||!madnessType.trim()}
+                  onClick={async()=>{await saveMadness(madnessTarget);setShowMadnessForm(false);}}>
+                  전송
+                </button>
+              </div>
+            )}
           </div>
         ):isGM&&speaker==="gm"&&gmTab==="judge"?(
           <div style={{padding:"4px 2px"}}>
@@ -3811,7 +3842,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
       {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
         onSendText={markup=>doSend("narrate",markup,"","")}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
-      {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} madness={char?.madness} onClose={()=>setShowHandoutViewer(false)}/>}
+      {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
         onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
       {char&&<DicePanel char={char} onRollToChat={sendDice} roomId={room.id}/>}
