@@ -586,7 +586,7 @@ function fmtTime(ts) {
 function emptyCharacteristics() { const o={}; CHAR_KEYS.forEach(k=>o[k]=50); return o; }
 function emptySkills() { const o={}; SKILL_LIST.forEach(([n,b])=>o[n]=b); return o; }
 function emptyDerived() { return {HP:10,maxHP:10,MP:10,maxMP:10,SAN:50,maxSAN:50,Luck:0}; }
-function blankCharSheet(name="") { return {name,avatar:"",nameColor:"",characteristics:emptyCharacteristics(),skills:emptySkills(),customSkills:[],derived:emptyDerived(),notes:"",madness:{type:"",note:""}}; }
+function blankCharSheet(name="") { return {name,avatar:"",nameColor:"",characteristics:emptyCharacteristics(),skills:emptySkills(),customSkills:[],derived:emptyDerived(),notes:"",madness:{name:"",term:"단기적",note:""}}; }
 function blankProfile(name="") { return {name,avatar:""}; }
 
 /* ============================== STORAGE (Firebase Firestore) ============================== */
@@ -2248,6 +2248,62 @@ function ChoiceCreatorModal({onClose,onCreate}){
 
 /* ============================== 핸드아웃 ============================== */
 
+// GM이 대상·종류(단기적/장기적)·이름·내용을 골라 광기를 부여하는 창. 핸드아웃 관리 창과
+// 똑같은 패턴(별도로 뜨는 모달)이라, "배부" 탭 안에 인라인으로 있던 예전 방식 대신 이걸 씁니다.
+function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSend}){
+  const [target,setTarget]=useState(null);
+  const [term,setTerm]=useState("단기적");
+  const [name,setName]=useState("");
+  const [note,setNote]=useState("");
+  return(
+    <div className="coc-modal-backdrop" onClick={onClose}>
+      <div className="coc-modal" onClick={e=>e.stopPropagation()}>
+        <div style={{padding:20}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>광기 부여</div>
+            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
+          </div>
+          <div className="coc-label" style={{marginBottom:6}}>대상</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+            {participantsList.filter(c=>c!==userCode).map(code=>{
+              const displayName=presenceMap[code]?.charName||code;
+              const active=target===code;
+              return(
+                <button key={code} type="button" onClick={()=>setTarget(code)}
+                  style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
+                    background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
+                    border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
+                  {displayName}
+                </button>
+              );
+            })}
+          </div>
+          <div className="coc-label" style={{marginBottom:6}}>종류</div>
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {["단기적","장기적"].map(t=>(
+              <button key={t} type="button" onClick={()=>setTerm(t)}
+                style={{flex:1,fontSize:12.5,padding:"7px 0",borderRadius:6,cursor:"pointer",
+                  background:term===t?"var(--accent)":"var(--surface)",color:term===t?"#fff":"var(--text-dim)",
+                  border:"1px solid "+(term===t?"var(--accent)":"var(--border)")}}>
+                {t} 광기
+              </button>
+            ))}
+          </div>
+          <div className="coc-label" style={{marginBottom:6}}>광기 이름</div>
+          <input className="coc-input" value={name} onChange={e=>setName(e.target.value)} placeholder="예: 실어증" style={{marginBottom:12}}/>
+          <div className="coc-label" style={{marginBottom:6}}>내용</div>
+          <textarea className="coc-input" value={note} onChange={e=>setNote(e.target.value)} placeholder="증상·행동 등을 적어주세요" rows={4} style={{marginBottom:16,resize:"vertical"}}/>
+          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center"}}
+            disabled={!target||!name.trim()}
+            onClick={()=>{onSend(target,{name:name.trim(),term,note});onClose();}}>
+            전송
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
   const [showCreate,setShowCreate]=useState(false);
   const [title,setTitle]=useState("");
@@ -2404,7 +2460,6 @@ function DicePanel({char,onRollToChat,roomId}){
   // 접으면 하트 버튼, 펼치면 시트/판정 창이 되는 떠 있는 패널입니다.
   // 펼친 채로 계속 볼 수 있고(바깥을 눌러도 닫히지 않음), 원하는 자리로 끌어다 놓을 수 있어요.
   const [open,setOpen]=useState(false);
-  const [tab,setTab]=useState("roll");
   const [sheetDraft,setSheetDraft]=useState(char);
   const [saving,setSaving]=useState(false);
   const wrapRef=useRef(null);
@@ -2433,7 +2488,7 @@ function DicePanel({char,onRollToChat,roomId}){
     const t=setTimeout(fix,0);
     window.addEventListener("resize",fix);
     return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
-  },[open,tab]); // eslint-disable-line
+  },[open]); // eslint-disable-line
 
   const onPointerDown=e=>{
     const rect=wrapRef.current.getBoundingClientRect();
@@ -2513,90 +2568,82 @@ function DicePanel({char,onRollToChat,roomId}){
       </div>
 
       <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
-        <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
-          {[["roll","판정"],["sheet","시트 보기·수정"]].map(([v,l])=>(
-            <button key={v} type="button" onClick={()=>setTab(v)}
-              style={{flex:1,padding:"7px 0",border:"none",background:tab===v?"var(--accent)":"var(--surface)",color:tab===v?"#fff":"var(--text-dim)",fontSize:12,fontWeight:tab===v?700:500,cursor:"pointer"}}>
-              {l}
-            </button>
-          ))}
+        <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
+          {CHAR_KEYS.map(k=>{
+            const val=char?.characteristics?.[k]||0;
+            return(
+              <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
+                style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
+                <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
+                <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+              </button>
+            );
+          })}
         </div>
-        {tab==="roll"?(
+        <div className="coc-label" style={{marginBottom:7}}>파생 능력치 판정</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
+          {[["체력","HP"],["마력","MP"],["이성","SAN"],["행운","Luck"]].map(([label,key])=>{
+            const val=char?.derived?.[key]||0;
+            return(
+              <button key={key} type="button" onClick={()=>roll(label,val)}
+                style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
+                <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{label}</div>
+                <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
+              </button>
+            );
+          })}
+        </div>
+        {char?.madness?.name&&(
+          <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+              <span style={{fontSize:12,fontWeight:700,color:"#c05050"}}>{char.madness.name}</span>
+              <span style={{fontSize:10.5,color:"#a86a6a",flexShrink:0}}>{char.madness.term||"단기적"} 광기</span>
+            </div>
+            {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:4,whiteSpace:"pre-wrap"}}>{char.madness.note}</div>}
+          </div>
+        )}
+        <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4,marginBottom:char?.customSkills?.length>0?10:0}}>
+          {SKILL_LIST_SORTED.map(([name])=>{
+            const val=char?.skills?.[name]??0;
+            return(
+              <button key={name} type="button" onClick={()=>roll(name,val)}
+                style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                <span style={{fontSize:12,color:"var(--text-dim)"}}>{name}</span>
+                <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
+              </button>
+            );
+          })}
+        </div>
+        {char?.customSkills?.length>0&&(
           <>
-            <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-              {CHAR_KEYS.map(k=>{
-                const val=char?.characteristics?.[k]||0;
-                return(
-                  <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
-                    style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                    <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
-                    <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="coc-label" style={{marginBottom:7}}>파생 능력치 판정</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-              {[["체력","HP"],["마력","MP"],["이성","SAN"],["행운","Luck"]].map(([label,key])=>{
-                const val=char?.derived?.[key]||0;
-                return(
-                  <button key={key} type="button" onClick={()=>roll(label,val)}
-                    style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                    <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{label}</div>
-                    <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-                  </button>
-                );
-              })}
-            </div>
-            {char?.madness?.type&&(
-              <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
-                <span style={{fontSize:11.5,fontWeight:700,color:"#c05050"}}>{char.madness.type} 광기</span>
-                {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:2}}>{char.madness.note}</div>}
-              </div>
-            )}
-            <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
+            <div className="coc-label" style={{marginBottom:7}}>자유 기능치</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-              {SKILL_LIST_SORTED.map(([name])=>{
-                const val=char?.skills?.[name]??0;
-                return(
-                  <button key={name} type="button" onClick={()=>roll(name,val)}
-                    style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                    <span style={{fontSize:12,color:"var(--text-dim)"}}>{name}</span>
-                    <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
-                  </button>
-                );
-              })}
+              {char.customSkills.filter(c=>c.name).map(c=>(
+                <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
+                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
+                  <span style={{fontSize:12,color:"var(--text-dim)"}}>{c.name}</span>
+                  <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
+                </button>
+              ))}
             </div>
-            {char?.customSkills?.length>0&&(
-              <>
-                <div className="coc-label" style={{margin:"10px 0 7px"}}>자유 기능치</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-                  {char.customSkills.filter(c=>c.name).map(c=>(
-                    <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
-                      style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                      <span style={{fontSize:12,color:"var(--text-dim)"}}>{c.name}</span>
-                      <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </>
-        ):(
-          <>
-            <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true} compact/>
-            <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
-              {saving?"저장 중...":"시트 저장"}
-            </button>
           </>
         )}
+
+        <div className="coc-divider" style={{margin:"16px 0 14px"}}/>
+
+        <div className="coc-label" style={{marginBottom:8}}>시트 수정</div>
+        <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true} compact/>
+        <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
+          {saving?"저장 중...":"시트 저장"}
+        </button>
       </div>
     </div>
   );
 }
 
-function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
+function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,onChangeThemeColor}){
   const [tabs,setTabs]=useState([{id:"main",label:"메인"}]);
   const [activeTab,setActiveTab]=useState("main");
   const [newTabName,setNewTabName]=useState("");
@@ -2604,6 +2651,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const [renameValue,setRenameValue]=useState("");
   const [showAddTab,setShowAddTab]=useState(false);
   const [inviteSelection,setInviteSelection]=useState({}); // {code:true} — 새 탭 생성 시 초대할 대상
+  const [editInviteSelection,setEditInviteSelection]=useState({}); // {code:true} — 기존 탭 수정 시 참가자 추가/제거용
   const [tabMsgMaps,setTabMsgMaps]=useState({"main":new Map()});
   // tabMsgMaps state는 React가 실제로 언제 갱신 함수를 실행하는지 보장이 안 되기 때문에,
   // "새 메시지가 있는지" 같은 걸 setState 콜백 밖에서 곧바로 읽으면 타이밍에 따라 값이
@@ -2839,6 +2887,31 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const myHandouts=handouts.filter(h=>(h.visibleTo||[]).includes(userCode));
   const onlineOthers=participantsList.filter(c=>c!==userCode&&isOnline(c));
 
+  // 핸드아웃·광기를 받으면 받은 사람 화면에 고정 크기 창으로 자동으로 떠요.
+  // "이미 본 적 있는지"를 기억해뒀다가, 새로 생긴 것만 팝업으로 띄웁니다.
+  const [seenHandoutIds,setSeenHandoutIds]=useState(null); // null=아직 초기화 전
+  const [popupHandout,setPopupHandout]=useState(null);
+  useEffect(()=>{
+    const ids=myHandouts.map(h=>h.id);
+    if(seenHandoutIds===null){ setSeenHandoutIds(ids); return; } // 첫 로드시엔 팝업 없이 조용히 "이미 본 것"으로
+    const newOnes=myHandouts.filter(h=>!seenHandoutIds.includes(h.id));
+    if(newOnes.length>0){
+      setPopupHandout(newOnes[newOnes.length-1]);
+      setSeenHandoutIds(ids);
+    }else if(ids.length!==seenHandoutIds.length){
+      setSeenHandoutIds(ids);
+    }
+  },[myHandouts]); // eslint-disable-line
+
+  const [seenMadnessKey,setSeenMadnessKey]=useState(undefined); // undefined=아직 초기화 전
+  const [popupMadness,setPopupMadness]=useState(null);
+  useEffect(()=>{
+    const key=char?.madness?.name?JSON.stringify(char.madness):null;
+    if(seenMadnessKey===undefined){ setSeenMadnessKey(key); return; }
+    if(key&&key!==seenMadnessKey){ setPopupMadness(char.madness); }
+    setSeenMadnessKey(key);
+  },[char?.madness]); // eslint-disable-line
+
   // 브라우저 알림: 탭이 백그라운드일 때 새 메시지가 오면 알려줍니다.
   // (iOS Safari는 일반 브라우저 탭에서는 이 기능을 지원하지 않아요 — 홈 화면에 추가한
   // 앱(PWA) 형태로 열었을 때만 iOS에서도 동작합니다. 안드로이드/PC는 바로 됩니다.)
@@ -2862,17 +2935,51 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   };
 
   // GM이 참가자에게 광기(장기적/단기적)를 부여하는 기능
-  const [madnessTarget,setMadnessTarget]=useState(null);
-  const [madnessType,setMadnessType]=useState("");
-  const [madnessNote,setMadnessNote]=useState("");
-  const [showMadnessForm,setShowMadnessForm]=useState(false);
-  const saveMadness=async(code)=>{
+  const [showMadnessModal,setShowMadnessModal]=useState(false);
+
+  // GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는 기능.
+  // 공개(채팅에 안내)/비공개(시트에만 반영, 안내 없음) 중 GM이 고를 수 있습니다.
+  const [showStatAdjustForm,setShowStatAdjustForm]=useState(false);
+  const [statAdjustTarget,setStatAdjustTarget]=useState(null);
+  const [statAdjustCategory,setStatAdjustCategory]=useState("characteristics"); // characteristics | derived | skills
+  const [statAdjustKey,setStatAdjustKey]=useState("");
+  const [statAdjustAmount,setStatAdjustAmount]=useState("");
+  const [statAdjustPublic,setStatAdjustPublic]=useState(true);
+  const DERIVED_LABEL={HP:"체력",MP:"마력",SAN:"이성",Luck:"행운"};
+  const applyStatAdjust=async()=>{
+    const code=statAdjustTarget;
+    const amount=Number(statAdjustAmount);
+    if(!code||!statAdjustKey||!Number.isFinite(amount)||amount===0)return;
     const p=presenceMap[code];
-    if(!p?.charId){ setMadnessTarget(null); return; }
+    if(!p?.charId)return;
     const key=`char:${room.id}:${p.charId}`;
     const charDoc=await storeGet(key,true);
-    if(charDoc) await storeSet(key,{...charDoc,madness:{type:madnessType,note:madnessNote}},true);
-    setMadnessTarget(null);
+    if(!charDoc)return;
+    const next={...charDoc};
+    let statLabel=statAdjustKey;
+    if(statAdjustCategory==="characteristics"){
+      next.characteristics={...next.characteristics,[statAdjustKey]:(next.characteristics?.[statAdjustKey]||0)+amount};
+      statLabel=CHAR_LABEL[statAdjustKey]||statAdjustKey;
+    }else if(statAdjustCategory==="derived"){
+      next.derived={...next.derived,[statAdjustKey]:(next.derived?.[statAdjustKey]||0)+amount};
+      statLabel=DERIVED_LABEL[statAdjustKey]||statAdjustKey;
+    }else{
+      next.skills={...next.skills,[statAdjustKey]:(next.skills?.[statAdjustKey]||0)+amount};
+    }
+    await storeSet(key,next,true);
+    if(statAdjustPublic){
+      const sign=amount>0?"+":"";
+      const displayName=p.charName||code;
+      await doSend("system",`${displayName}의 ${statLabel}이(가) ${sign}${amount} 조정되었습니다.`,"","");
+    }
+    setStatAdjustTarget(null);setStatAdjustAmount("");setStatAdjustKey("");setShowStatAdjustForm(false);
+  };
+  const saveMadness=async(code,data)=>{
+    const p=presenceMap[code];
+    if(!p?.charId)return;
+    const key=`char:${room.id}:${p.charId}`;
+    const charDoc=await storeGet(key,true);
+    if(charDoc) await storeSet(key,{...charDoc,madness:data},true);
   };
 
   // GM이 참가자의 이성(SAN)을 감소시키는 기능. 시트에 실제로 반영하고,
@@ -3043,7 +3150,18 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   },[room.id]);
   const uploadScene=async file=>{
     const url=await fileToBestQualityDataURL(file);
-    await storeSet(`scene:${room.id}`,{url},true);
+    // 글리치/노이즈가 많은 사진처럼 압축이 잘 안 먹히는 이미지는, 최대한 줄여도
+    // Firestore 문서 용량 한도(약 1MB)를 넘을 수 있습니다. 이 경우 저장이 조용히
+    // 실패하고(로컬엔 잠깐 반영됐다가 서버 값으로 되돌아가며) "깜빡이다 사라지는"
+    // 것처럼 보이므로, 미리 확인해서 바로 알려줍니다.
+    if(url.length*0.75>950000){
+      alert("이 이미지는 압축해도 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 단순한 이미지나 더 작은 파일로 다시 시도해주세요.");
+      return;
+    }
+    const res=await storeSet(`scene:${room.id}`,{url},true);
+    if(res&&res.ok===false){
+      alert("배경 저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+    }
   };
   const clearScene=async()=>{ await storeSet(`scene:${room.id}`,{url:""},true); };
 
@@ -3078,7 +3196,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     return()=>unsub();
   },[room.id]);
   const setDiceCutin=async(label,dataUrl)=>{
-    if(dataUrl.length>900000){
+    if(dataUrl.length>980000){
       alert("이미지 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 작은 파일로 다시 시도해주세요.");
       return;
     }
@@ -3233,9 +3351,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     await storeSet(`tabs:${room.id}`,next,true);
     if(activeTab===tabId)setActiveTab("main");
   };
-  const renameTab=async(tabId,label)=>{
+  const saveTabEdit=async(tabId,label,invited)=>{
     const trimmed=label.trim();if(!trimmed)return;
-    const next=tabs.map(t=>t.id===tabId?{...t,label:trimmed}:t);
+    const next=tabs.map(t=>t.id===tabId?{...t,label:trimmed,invited}:t);
     setTabs(next);
     await storeSet(`tabs:${room.id}`,next,true);
   };
@@ -3548,6 +3666,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           {dark?<Sun size={18}/>:<Moon size={18}/>}
         </button>
 
+        {/* 세션 안에서도 바로 테마 색상 변경 */}
+        <label className="chat-icon-btn" title="테마 색상 바꾸기" style={{position:"relative",padding:0,overflow:"hidden"}}>
+          <div style={{position:"absolute",inset:6,borderRadius:6,background:customColor,pointerEvents:"none"}}/>
+          <input type="color" value={customColor} onChange={e=>onChangeThemeColor(e.target.value)}
+            style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer"}}/>
+        </label>
+
         <button type="button" className={"chat-icon-btn"+(soundEnabled?" on":"")} onClick={toggleNotif}
           title={notifPermission==="denied"?"브라우저에서 알림이 차단되어 있어요 (소리만 켜짐/꺼짐)":soundEnabled?"알림 켜짐":"알림 꺼짐"}>
           {soundEnabled?<Bell size={18}/>:<BellOff size={18}/>}
@@ -3781,13 +3906,29 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
         {visibleTabs.map(t=>(
           <div key={t.id} style={{display:"flex",alignItems:"center"}}>
             {renamingTab===t.id?(
-              <input value={renameValue} onChange={e=>setRenameValue(e.target.value)} autoFocus
-                onKeyDown={e=>{
-                  if(e.key==="Enter"){e.preventDefault();renameTab(t.id,renameValue);setRenamingTab(null);}
-                  if(e.key==="Escape")setRenamingTab(null);
-                }}
-                onBlur={()=>{renameTab(t.id,renameValue);setRenamingTab(null);}}
-                style={{width:80,fontSize:12.5,padding:"4px 7px",border:"1px solid var(--accent)",borderRadius:5,outline:"none",color:"var(--text)",background:"var(--surface)"}}/>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",padding:"4px 6px",border:"1px solid var(--accent)",borderRadius:8}}>
+                <input value={renameValue} onChange={e=>setRenameValue(e.target.value)} autoFocus
+                  onKeyDown={e=>{ if(e.key==="Escape")setRenamingTab(null); }}
+                  style={{width:80,fontSize:12.5,padding:"4px 7px",border:"1px solid var(--border)",borderRadius:5,outline:"none",color:"var(--text)",background:"var(--surface)"}}/>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                  {roomParticipants.length===0&&<span style={{fontSize:11.5,color:"var(--text-faint)"}}>참가자가 아직 없어요</span>}
+                  {roomParticipants.map(code=>(
+                    <label key={code} style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:"var(--text-dim)",cursor:"pointer"}}>
+                      <input type="checkbox" checked={!!editInviteSelection[code]}
+                        onChange={e=>setEditInviteSelection(prev=>({...prev,[code]:e.target.checked}))}
+                        style={{width:13,height:13,cursor:"pointer"}}/>
+                      {code}
+                    </label>
+                  ))}
+                </div>
+                <button type="button" className="coc-btn small" style={{padding:"3px 8px",fontSize:11.5}}
+                  onClick={()=>{
+                    const invited=Object.entries(editInviteSelection).filter(([,v])=>v).map(([code])=>code);
+                    saveTabEdit(t.id,renameValue,invited);
+                    setRenamingTab(null);
+                  }}>저장</button>
+                <button type="button" className="coc-btn ghost small" style={{padding:"3px 6px"}} onClick={()=>setRenamingTab(null)}><X size={10}/></button>
+              </div>
             ):(
               <div className={"chat-tab"+(activeTab===t.id?" active":"")} onClick={()=>setActiveTab(t.id)} style={{position:"relative",display:"flex",alignItems:"center",gap:3}}>
                 {t.invited&&t.invited.length>0&&<Lock size={10} style={{opacity:0.6}}/>}
@@ -3796,7 +3937,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
               </div>
             )}
             {isGM&&renamingTab!==t.id&&(
-              <button type="button" onClick={()=>{setRenamingTab(t.id);setRenameValue(t.label);}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",display:"flex",opacity:0.5}}><Pencil size={10}/></button>
+              <button type="button" onClick={()=>{setRenamingTab(t.id);setRenameValue(t.label);setEditInviteSelection(Object.fromEntries((t.invited||[]).map(c=>[c,true])));}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 3px",display:"flex",opacity:0.5}}><Pencil size={10}/></button>
             )}
             {isGM&&t.id!=="main"&&renamingTab!==t.id&&(
               <button type="button" onClick={()=>removeTab(t.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"0 4px",fontSize:15,lineHeight:1,opacity:0.5}}>×</button>
@@ -3980,19 +4121,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           </div>
         ):isGM&&speaker==="gm"&&gmTab==="handout"?(
           <div style={{padding:"4px 2px"}}>
-            <div style={{display:"flex",gap:7,marginBottom:12}}>
-              <button type="button" className="coc-btn small" onClick={()=>{setShowHandoutManager(true);setShowMadnessForm(false);}}>핸드아웃</button>
-              <button type="button" className={showMadnessForm?"coc-btn small":"coc-btn ghost small"} onClick={()=>setShowMadnessForm(v=>!v)}>광기</button>
+            <div style={{display:"flex",gap:7,marginBottom:12,flexWrap:"wrap"}}>
+              <button type="button" className="coc-btn small" onClick={()=>{setShowHandoutManager(true);setShowStatAdjustForm(false);}}>핸드아웃</button>
+              <button type="button" className="coc-btn small" onClick={()=>{setShowMadnessModal(true);setShowStatAdjustForm(false);}}>광기</button>
+              <button type="button" className={showStatAdjustForm?"coc-btn small":"coc-btn ghost small"} onClick={()=>{setShowStatAdjustForm(v=>!v);setShowMadnessModal(false);}}>수치 조정</button>
             </div>
-            {showMadnessForm&&(
+            {showStatAdjustForm&&(
               <div>
                 <div className="coc-label" style={{marginBottom:6}}>대상</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
                   {participantsList.filter(c=>c!==userCode).map(code=>{
                     const displayName=presenceMap[code]?.charName||code;
-                    const active=madnessTarget===code;
+                    const active=statAdjustTarget===code;
                     return(
-                      <button key={code} type="button" onClick={()=>setMadnessTarget(code)}
+                      <button key={code} type="button" onClick={()=>setStatAdjustTarget(code)}
                         style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
                           background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
                           border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
@@ -4001,14 +4143,50 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
                     );
                   })}
                 </div>
-                <input className="coc-input" value={madnessType} onChange={e=>setMadnessType(e.target.value)}
-                  placeholder="광기 이름" style={{marginBottom:8}}/>
-                <input className="coc-input" value={madnessNote} onChange={e=>setMadnessNote(e.target.value)}
-                  placeholder="내용" style={{marginBottom:10}}/>
+                <div className="coc-label" style={{marginBottom:6}}>종류</div>
+                <div style={{display:"flex",gap:5,marginBottom:10}}>
+                  {[["characteristics","특성치"],["derived","파생 능력치"],["skills","기능치"]].map(([v,l])=>(
+                    <button key={v} type="button" onClick={()=>{setStatAdjustCategory(v);setStatAdjustKey("");}}
+                      style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
+                        background:statAdjustCategory===v?"var(--accent)":"var(--surface)",color:statAdjustCategory===v?"#fff":"var(--text-dim)",
+                        border:"1px solid "+(statAdjustCategory===v?"var(--accent)":"var(--border)")}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div className="coc-label" style={{marginBottom:6}}>항목</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10,maxHeight:120,overflowY:"auto"}}>
+                  {(statAdjustCategory==="characteristics"?CHAR_KEYS.map(k=>[k,CHAR_LABEL[k]]):
+                    statAdjustCategory==="derived"?Object.entries(DERIVED_LABEL):
+                    SKILL_LIST_SORTED.map(([name])=>[name,name])
+                  ).map(([key,label])=>(
+                    <button key={key} type="button" onClick={()=>setStatAdjustKey(key)}
+                      style={{fontSize:11,padding:"4px 10px",borderRadius:999,cursor:"pointer",
+                        background:statAdjustKey===key?"var(--accent)":"var(--surface)",color:statAdjustKey===key?"#fff":"var(--text-dim)",
+                        border:"1px solid "+(statAdjustKey===key?"var(--accent)":"var(--border)")}}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input className="coc-input" type="number" value={statAdjustAmount} onChange={e=>setStatAdjustAmount(e.target.value)}
+                  placeholder="증감량 (예: 5, -10)" style={{marginBottom:10}}/>
+                <div style={{display:"flex",gap:5,marginBottom:10}}>
+                  {[[true,"공개"],[false,"비공개"]].map(([v,l])=>(
+                    <button key={l} type="button" onClick={()=>setStatAdjustPublic(v)}
+                      style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
+                        background:statAdjustPublic===v?"var(--accent)":"var(--surface)",color:statAdjustPublic===v?"#fff":"var(--text-dim)",
+                        border:"1px solid "+(statAdjustPublic===v?"var(--accent)":"var(--border)")}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:10}}>
+                  {statAdjustPublic?"채팅에 '누구의 무엇이 얼마나 조정되었습니다'라고 안내가 남아요.":"시트에만 조용히 반영되고, 채팅엔 아무 안내도 남지 않아요."}
+                </div>
                 <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
-                  disabled={!madnessTarget||!madnessType.trim()}
-                  onClick={async()=>{await saveMadness(madnessTarget);setShowMadnessForm(false);}}>
-                  전송
+                  disabled={!statAdjustTarget||!statAdjustKey||!statAdjustAmount||Number(statAdjustAmount)===0}
+                  onClick={applyStatAdjust}>
+                  적용
                 </button>
               </div>
             )}
@@ -4065,6 +4243,44 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
         onSendText={markup=>doSend("narrate",markup,"","")}
         diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
+      {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
+        onClose={()=>setShowMadnessModal(false)} onSend={saveMadness}/>}
+      {popupHandout&&(
+        <div className="coc-modal-backdrop" onClick={()=>setPopupHandout(null)}>
+          <div className="coc-modal" style={{width:360,height:440,display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:20,display:"flex",flexDirection:"column",height:"100%",boxSizing:"border-box"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexShrink:0}}>
+                <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>📩 새 핸드아웃</div>
+                <button className="coc-btn ghost small" onClick={()=>setPopupHandout(null)} style={{padding:6}}><X size={13}/></button>
+              </div>
+              <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto"}}>
+                <div style={{fontWeight:700,fontSize:15,marginBottom:10}}>{popupHandout.title}</div>
+                {popupHandout.image&&<img src={popupHandout.image} style={{width:"100%",borderRadius:8,border:"1px solid var(--border)",marginBottom:10}}/>}
+                {popupHandout.text&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}>{popupHandout.text}</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {popupMadness&&(
+        <div className="coc-modal-backdrop" onClick={()=>setPopupMadness(null)}>
+          <div className="coc-modal" style={{width:360,height:440,display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+            <div style={{padding:20,display:"flex",flexDirection:"column",height:"100%",boxSizing:"border-box"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexShrink:0}}>
+                <div className="coc-display" style={{fontSize:15,color:"#c05050"}}>⚠ 광기</div>
+                <button className="coc-btn ghost small" onClick={()=>setPopupMadness(null)} style={{padding:6}}><X size={13}/></button>
+              </div>
+              <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:10}}>
+                  <span style={{fontWeight:700,fontSize:15,color:"#c05050"}}>{popupMadness.name}</span>
+                  <span style={{fontSize:12,color:"var(--text-faint)",flexShrink:0}}>{popupMadness.term||"단기적"} 광기</span>
+                </div>
+                {popupMadness.note&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}>{popupMadness.note}</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
         onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
@@ -4190,7 +4406,7 @@ function AppInner(){
 
   let body;
   if(activeRoom){
-    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark}/>;
+    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark} customColor={customColor} onChangeThemeColor={handleThemeCustom}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectCustom={handleThemeCustom}
       dark={dark} onToggleDark={handleDark}/>;
