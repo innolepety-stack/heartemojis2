@@ -752,19 +752,20 @@ function stripLeadingZero(e){
   return cleaned;
 }
 
-function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,compact=false}){
+function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,onRollCheck,compact=false}){
   return(
     <div style={{display:"grid",gridTemplateColumns:compact?"repeat(2,1fr)":"repeat(4,1fr)",gap:7}}>
       {CHAR_KEYS.map(k=>(
         <div key={k} className="coc-stat-box">
           <div className="coc-label" style={{marginBottom:3}}>{CHAR_LABEL[k]} ({k})</div>
           <div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"center"}}>
+            {onRollCheck&&<button type="button" className="coc-btn ghost small" title="판정 굴리기" style={{padding:5}} onClick={()=>onRollCheck(CHAR_LABEL[k]+" ("+k+")",characteristics[k])}><Dice5 size={11}/></button>}
             <input className="coc-input coc-mono" type="number" value={characteristics[k]}
               onChange={e=>setCharacteristics({...characteristics,[k]:parseInt(stripLeadingZero(e))||0})}
               onWheel={e=>e.currentTarget.blur()}
               onFocus={e=>e.target.select()}
               style={{textAlign:"center",padding:"5px 3px",fontSize:15,color:"var(--accent-deep)"}}/>
-            {allowRoll&&<button type="button" className="coc-btn ghost small" style={{padding:5}} onClick={()=>setCharacteristics({...characteristics,[k]:rollChar(k)})}><Dice5 size={11}/></button>}
+            {allowRoll&&<button type="button" className="coc-btn ghost small" title="새로 굴려서 정하기" style={{padding:5}} onClick={()=>setCharacteristics({...characteristics,[k]:rollChar(k)})}><Dice5 size={11}/></button>}
           </div>
         </div>
       ))}
@@ -772,7 +773,7 @@ function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,compa
   );
 }
 
-function DerivedStats({characteristics,derived,setDerived,allowRoll}){
+function DerivedStats({characteristics,derived,setDerived,allowRoll,onRollCheck}){
   const recompute=()=>{
     const maxHP=Math.floor((characteristics.CON+characteristics.SIZ)/10);
     const maxMP=Math.floor(characteristics.POW/5);
@@ -781,7 +782,7 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
     setDerived({HP:maxHP,maxHP,MP:maxMP,maxMP,SAN:maxSAN,maxSAN,Luck});
   };
   const rollLuck=()=>setDerived({...derived,Luck:rollN(3)*5});
-  const field=(key,maxKey,label)=>(
+  const field=(key,maxKey,label,rollLabel)=>(
     <div className="coc-stat-box">
       <div className="coc-label" style={{marginBottom:3,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
         {label}
@@ -793,6 +794,12 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
         )}
       </div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:2}}>
+        {onRollCheck&&(
+          <button type="button" title="판정 굴리기" onClick={()=>onRollCheck(rollLabel,derived[key])}
+            style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",padding:0,display:"flex",marginRight:2}}>
+            <Dice5 size={11}/>
+          </button>
+        )}
         <input className="coc-mono" type="number" value={derived[key]}
           onChange={e=>setDerived({...derived,[key]:parseInt(stripLeadingZero(e))||0})}
           onWheel={e=>e.currentTarget.blur()}
@@ -809,13 +816,13 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll}){
         {allowRoll&&<button type="button" className="coc-btn ghost small" onClick={recompute}><RotateCcw size={11}/> 재계산</button>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7}}>
-        {field("HP","maxHP","체력(HP)")}{field("MP","maxMP","정신(MP)")}{field("SAN","maxSAN","이성(SAN)")}{field("Luck",null,"행운")}
+        {field("HP","maxHP","체력(HP)","체력")}{field("MP","maxMP","정신(MP)","정신")}{field("SAN","maxSAN","이성(SAN)","이성")}{field("Luck",null,"행운","행운")}
       </div>
     </div>
   );
 }
 
-function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false}){
+function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false,onRollCheck}){
   const [open,setOpen]=useState(false);
 
   const addCustom=()=>{
@@ -839,13 +846,19 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
         <>
           <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,1fr)",gap:5,paddingRight:4,paddingBottom:8}}>
             {SKILL_LIST_SORTED.map(([name])=>(
-              <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
-                <span style={{fontSize:13.5,color:"var(--text-dim)"}}>{name}</span>
+              <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
+                {onRollCheck&&(
+                  <button type="button" title="판정 굴리기" onClick={()=>onRollCheck(name,skills[name]??0)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",padding:0,display:"flex",flexShrink:0}}>
+                    <Dice5 size={11}/>
+                  </button>
+                )}
+                <span style={{fontSize:13.5,color:"var(--text-dim)",flex:1}}>{name}</span>
                 <input className="coc-mono" type="number" step={5} min={0} max={99} value={skills[name]??0} readOnly={readOnly}
                   onChange={e=>setSkills({...skills,[name]:Math.max(0,Math.min(99,parseInt(stripLeadingZero(e))||0))})}
                   onWheel={e=>e.currentTarget.blur()}
                   onFocus={e=>e.target.select()}
-                  style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5}}/>
+                  style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
               </div>
             ))}
           </div>
@@ -858,6 +871,12 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
               <div style={{display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,1fr)",gap:5}}>
                 {customSkills.map(c=>(
                   <div key={c.id} style={{display:"flex",alignItems:"center",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
+                    {onRollCheck&&(
+                      <button type="button" title="판정 굴리기" onClick={()=>onRollCheck(c.name||"자유 기능치",c.value||0)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",padding:0,display:"flex",flexShrink:0}}>
+                        <Dice5 size={11}/>
+                      </button>
+                    )}
                     {readOnly?(
                       <span style={{fontSize:13.5,color:"var(--text-dim)",flex:1}}>{c.name||"(이름 없음)"}</span>
                     ):(
@@ -902,7 +921,7 @@ function calcSkillPoints(sheet){
   return {total,spent,remaining:total-spent};
 }
 
-function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false}){
+function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false,onRollCheck}){
   if(readOnly) return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
@@ -946,9 +965,9 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
       <div style={{marginBottom:16}}><div className="coc-label" style={{marginBottom:5}}>사진</div><AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})}/></div>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:7}}>능력치</div>
-      <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})} allowRoll={allowRoll} compact={compact}/>
+      <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})} allowRoll={allowRoll} onRollCheck={onRollCheck} compact={compact}/>
       <div className="coc-divider"/>
-      <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})} allowRoll={allowRoll}/>
+      <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})} allowRoll={allowRoll} onRollCheck={onRollCheck}/>
       <div className="coc-divider"/>
       {(()=>{
         const {total,spent,remaining}=calcSkillPoints(sheet);
@@ -961,7 +980,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
           </div>
         );
       })()}
-      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})} compact={compact}/>
+      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})} compact={compact} onRollCheck={onRollCheck}/>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:5}}>메모 / 배경</div>
       <textarea className="coc-textarea" rows={3} value={sheet.notes} onChange={e=>setSheet({...sheet,notes:e.target.value})} placeholder="직업, 배경, 소지품 등 자유롭게 기록하세요"/>
@@ -2580,32 +2599,6 @@ function DicePanel({char,onRollToChat,roomId}){
       </div>
 
       <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
-        <div className="coc-label" style={{marginBottom:8}}>능력치 판정</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-          {CHAR_KEYS.map(k=>{
-            const val=char?.characteristics?.[k]||0;
-            return(
-              <button key={k} type="button" onClick={()=>roll(CHAR_LABEL[k]+" ("+k+")",val)}
-                style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{CHAR_LABEL[k]}</div>
-                <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="coc-label" style={{marginBottom:7}}>파생 능력치 판정</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:12}}>
-          {[["체력","HP"],["마력","MP"],["이성","SAN"],["행운","Luck"]].map(([label,key])=>{
-            const val=char?.derived?.[key]||0;
-            return(
-              <button key={key} type="button" onClick={()=>roll(label,val)}
-                style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:7,padding:"6px 4px",cursor:"pointer",textAlign:"center"}}>
-                <div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>{label}</div>
-                <div className="coc-mono" style={{fontSize:14,color:"var(--accent-deep)",fontWeight:700}}>{val}</div>
-              </button>
-            );
-          })}
-        </div>
         {char?.madness?.name&&(
           <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
@@ -2615,38 +2608,10 @@ function DicePanel({char,onRollToChat,roomId}){
             {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:4,whiteSpace:"pre-wrap"}}>{char.madness.note}</div>}
           </div>
         )}
-        <div className="coc-label" style={{marginBottom:7}}>기능치 판정</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4,marginBottom:char?.customSkills?.length>0?10:0}}>
-          {SKILL_LIST_SORTED.map(([name])=>{
-            const val=char?.skills?.[name]??0;
-            return(
-              <button key={name} type="button" onClick={()=>roll(name,val)}
-                style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                <span style={{fontSize:12,color:"var(--text-dim)"}}>{name}</span>
-                <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{val}</span>
-              </button>
-            );
-          })}
-        </div>
-        {char?.customSkills?.length>0&&(
-          <>
-            <div className="coc-label" style={{marginBottom:7}}>자유 기능치</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:4}}>
-              {char.customSkills.filter(c=>c.name).map(c=>(
-                <button key={c.id} type="button" onClick={()=>roll(c.name,c.value||0)}
-                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px",cursor:"pointer"}}>
-                  <span style={{fontSize:12,color:"var(--text-dim)"}}>{c.name}</span>
-                  <span className="coc-mono" style={{fontSize:11.5,color:"var(--accent-deep)",fontWeight:700}}>{c.value||0}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
 
-        <div className="coc-divider" style={{margin:"16px 0 14px"}}/>
-
-        <div className="coc-label" style={{marginBottom:8}}>시트 수정</div>
-        <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={true} compact/>
+        {/* 롤20 스타일: 각 항목 옆 주사위 아이콘을 누르면 "지금 이 값"으로 바로 판정이 나가고,
+            값 자체는 그 자리에서 바로 수정할 수 있어요. 따로 "판정" 화면이 없어도 됩니다. */}
+        <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={false} compact onRollCheck={roll}/>
         <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
           {saving?"저장 중...":"시트 저장"}
         </button>
@@ -3192,35 +3157,71 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지가
   // 그 결과가 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다.
-  // ※ 등급마다 각각 다른 문서(cutin:방ID:등급)에 저장합니다. 예전엔 6개를 한 문서에 몰아
-  // 저장해서, Firestore 문서 하나의 용량 한도(약 1MB)를 넘기면 저장이 조용히 실패하고
-  // 방금 올린 사진이 그대로 있다가 서버 값으로 되돌아가며 "삭제됐다 등록됐다" 하는
-  // 것처럼 보였습니다. 이제는 등급별로 분리해서 한쪽이 커도 다른 쪽엔 영향이 없고,
-  // 저장에 실패하면 조용히 사라지는 대신 바로 알려줍니다.
+  // ※ Firestore 문서 하나는 약 1MB까지만 저장할 수 있어서, 그보다 큰 파일은 여러 조각으로
+  // 쪼개 각각 다른 문서(cutinchunk:방ID:등급:번호)에 저장하고, 작은 "완료 안내" 문서
+  // (cutin:방ID:등급, {chunks: 조각수})를 마지막에 남깁니다. 불러올 때는 이 안내 문서를
+  // 보고 조각들을 순서대로 가져와 이어붙입니다. (예전 버전은 조각 없이 {url: ...} 하나로
+  // 저장했었는데, 그 형식도 그대로 읽을 수 있게 남겨뒀습니다.)
+  const CUTIN_CHUNK_SIZE=700000;
   const [diceCutins,setDiceCutins]=useState({}); // {라벨: dataUrl}
   useEffect(()=>{
     const prefix=`cutin:${room.id}:`;
-    const unsub=storeListenPrefix(prefix,list=>{
+    const unsub=storeListenPrefix(prefix,async list=>{
+      const entries=await Promise.all(list.map(async item=>{
+        const label=item.key.slice(prefix.length);
+        const manifest=item.value;
+        if(!manifest)return null;
+        if(manifest.url) return [label,manifest.url]; // 예전 형식(조각 없이 통째로 저장)
+        const total=manifest.chunks||0;
+        if(total<=0)return null;
+        const parts=await Promise.all(
+          Array.from({length:total},(_,i)=>storeGet(`cutinchunk:${room.id}:${label}:${i}`,true))
+        );
+        if(parts.some(p=>!p||p.data===undefined))return null; // 아직 조각이 다 안 올라왔으면 건너뜀
+        return [label,parts.map(p=>p.data).join("")];
+      }));
       const map={};
-      list.forEach(item=>{ map[item.key.slice(prefix.length)]=item.value?.url; });
+      entries.forEach(e=>{ if(e) map[e[0]]=e[1]; });
       setDiceCutins(map);
     });
     return()=>unsub();
   },[room.id]);
   const setDiceCutin=async(label,dataUrl)=>{
-    if(dataUrl.length>980000){
-      alert("이미지 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 작은 파일로 다시 시도해주세요.");
+    if(dataUrl.length>8000000){
+      alert("이미지 용량이 너무 커서 저장할 수 없어요(최대 약 6MB 파일). 더 작은 파일로 다시 시도해주세요.");
       return;
     }
-    const res=await storeSet(`cutin:${room.id}:${label}`,{url:dataUrl},true);
+    const prevManifest=await storeGet(`cutin:${room.id}:${label}`,true);
+    const prevTotal=prevManifest?.chunks||0;
+    const total=Math.ceil(dataUrl.length/CUTIN_CHUNK_SIZE);
+    for(let i=0;i<total;i++){
+      const chunk=dataUrl.slice(i*CUTIN_CHUNK_SIZE,(i+1)*CUTIN_CHUNK_SIZE);
+      const res=await storeSet(`cutinchunk:${room.id}:${label}:${i}`,{data:chunk},true);
+      if(res&&res.ok===false){
+        alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+        return;
+      }
+    }
+    // 이전에 조각이 더 많았다면(더 큰 파일이었다면) 남는 조각들을 정리합니다.
+    for(let i=total;i<prevTotal;i++){
+      await storeDelete(`cutinchunk:${room.id}:${label}:${i}`,true);
+    }
+    // 조각을 다 저장한 뒤 마지막에 "완료" 안내 문서를 남겨서, 불러오는 쪽이 조각이
+    // 다 갖춰진 뒤에만 합치기 시작하도록 합니다.
+    const res=await storeSet(`cutin:${room.id}:${label}`,{chunks:total},true);
     if(res&&res.ok===false){
-      alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+      alert("저장에 실패했어요. 다시 시도해주세요.");
       return;
     }
     setDiceCutins(prev=>({...prev,[label]:dataUrl}));
   };
   const clearDiceCutin=async label=>{
+    const manifest=await storeGet(`cutin:${room.id}:${label}`,true);
+    const total=manifest?.chunks||0;
     await storeDelete(`cutin:${room.id}:${label}`,true);
+    for(let i=0;i<total;i++){
+      await storeDelete(`cutinchunk:${room.id}:${label}:${i}`,true);
+    }
     setDiceCutins(prev=>{ const next={...prev}; delete next[label]; return next; });
   };
   const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
