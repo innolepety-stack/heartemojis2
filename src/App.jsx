@@ -1060,7 +1060,7 @@ function AuthScreen({onLogin}){
 
 /* ============================== SETTINGS TAB ============================== */
 
-function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark}){
+function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark, onDeleteAccount}){
   const [hexInput, setHexInput] = useState(customColor);
   useEffect(()=>{ setHexInput(customColor); }, [customColor]);
 
@@ -1111,6 +1111,18 @@ function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleD
             </button>
           ))}
         </div>
+
+        <div style={{height:1,background:"var(--border-soft)",margin:"4px 0 18px"}}/>
+
+        <div className="coc-label" style={{marginBottom:6,color:"#c05050"}}>회원 탈퇴</div>
+        <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:12}}>
+          로그인 정보가 삭제되어 이 닉네임으로 다시 로그인할 수 없게 돼요. 그동안 만든 세션·캐릭터는
+          다른 사람과 공유되어 있을 수 있어 그대로 남아있어요.
+        </div>
+        <button type="button" className="coc-btn ghost small" onClick={onDeleteAccount}
+          style={{borderColor:"#c05050",color:"#c05050"}}>
+          회원 탈퇴
+        </button>
       </div>
     </div>
   );
@@ -4403,13 +4415,23 @@ function AppInner(){
   );
 
   const logout=()=>{clearRememberedAuth();setUser(null);setActiveRoom(null);setTab("rooms");};
+  // 회원 탈퇴: 로그인 정보(user:닉네임 문서)만 지웁니다. 그동안 만든 세션·캐릭터 같은
+  // 다른 데이터는(다른 사람과 공유된 방일 수도 있어서) 그대로 남겨두고, 로그인만 못 하게 됩니다.
+  const deleteAccount=async()=>{
+    if(!window.confirm(`정말 "${user.code}" 계정을 탈퇴할까요? 로그인 정보가 삭제되어 되돌릴 수 없어요.`))return;
+    const typed=window.prompt(`탈퇴하려면 닉네임(${user.code})을 정확히 입력해주세요.`);
+    if(typed!==user.code)return;
+    await storeDelete(`user:${user.code}`,true);
+    clearRememberedAuth();
+    setUser(null);setActiveRoom(null);setTab("rooms");
+  };
 
   let body;
   if(activeRoom){
     body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark} customColor={customColor} onChangeThemeColor={handleThemeCustom}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectCustom={handleThemeCustom}
-      dark={dark} onToggleDark={handleDark}/>;
+      dark={dark} onToggleDark={handleDark} onDeleteAccount={deleteAccount}/>;
   }else if(tab==="profile"){
     body=profileLoaded&&<MyPage userCode={user.code} profile={profile} setProfile={setProfile}/>;
   }else{
