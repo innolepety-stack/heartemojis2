@@ -199,9 +199,11 @@ html, body { margin: 0; padding: 0; }
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; }
-.coc-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
-.coc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-.coc-scroll::-webkit-scrollbar-track { background: transparent; }
+/* 채팅창에 쓰던 귀여운 스크롤바를 이 사이트 안의 스크롤 되는 곳 전부에 똑같이 적용합니다. */
+*::-webkit-scrollbar { width: 7px; height: 7px; }
+*::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 /* 모바일에서 세로 스크롤 중 화면이 좌우로 같이 흔들리는 현상 방지 */
 /* flex 자식이 내용 크기만큼 고집하지 않고 실제로 줄어들 수 있도록 함 (화면 해상도에 맞춰 채팅창 전체가 딱 맞게 들어가기 위해 필요) */
 .msg-list-area { overflow-x: hidden; touch-action: pan-y; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; min-height: 0; }
@@ -2947,7 +2949,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(statAdjustPublic){
       const sign=amount>0?"+":"";
       const displayName=p.charName||code;
-      await doSend("system",`${displayName}의 ${statLabel}이(가) ${sign}${amount} 조정되었습니다.`,"","");
+      await doSend("system",`${displayName}, ${statLabel} ${sign}${amount}.`,"","");
     }
     setStatAdjustTarget(null);setStatAdjustAmount("");setStatAdjustKey("");setShowStatAdjustForm(false);
   };
@@ -2959,26 +2961,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(charDoc) await storeSet(key,{...charDoc,madness:data},true);
   };
 
-  // GM이 참가자의 이성(SAN)을 감소시키는 기능. 시트에 실제로 반영하고,
-  // "OO의 이성이 N 감소했습니다." 안내를 채팅에도 함께 남깁니다.
-  const [sanTarget,setSanTarget]=useState(null);
-  const [sanAmount,setSanAmount]=useState("");
-  const applySanLoss=async(code)=>{
-    const p=presenceMap[code];
-    const amt=parseInt(sanAmount,10);
-    if(!p?.charId||!amt||amt<=0){ setSanTarget(null); setSanAmount(""); return; }
-    const key=`char:${room.id}:${p.charId}`;
-    const charDoc=await storeGet(key,true);
-    if(charDoc){
-      const curSAN=charDoc.derived?.SAN??0;
-      const nextSAN=Math.max(0,curSAN-amt);
-      await storeSet(key,{...charDoc,derived:{...charDoc.derived,SAN:nextSAN}},true);
-      const name=charDoc.name||p.charName||"캐릭터";
-      await doSend("system",`${name}의 이성이 ${amt} 감소했습니다.`,"","");
-    }
-    setSanTarget(null);
-    setSanAmount("");
-  };
   const [showHandoutManager,setShowHandoutManager]=useState(false);
   const [showHandoutViewer,setShowHandoutViewer]=useState(false);
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
@@ -3710,26 +3692,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                         <span style={{color:online?"#e0507a":"var(--border)",fontSize:12.5,lineHeight:1,flexShrink:0}}>♥</span>
                         <span style={{fontSize:12.5,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
                         {code===room.creatorCode&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
-                        {isGM&&code!==userCode&&(
-                          <button type="button" onClick={()=>{setSanTarget(sanTarget===code?null:code);setSanAmount("");}}
-                            style={{background:"none",border:"1px solid var(--border)",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer",color:"var(--text-dim)"}}>
-                            이성-
-                          </button>
-                        )}
                       </div>
-                      {sanTarget===code&&(
-                        <div style={{marginTop:6,marginLeft:15,padding:8,background:"var(--bg-panel)",borderRadius:8}}>
-                          <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:6}}>감소시킬 이성 수치를 입력하세요. 저장하면 시트에 바로 반영되고, 채팅에도 안내가 남아요.</div>
-                          <input className="coc-input" type="number" min="1" value={sanAmount}
-                            onChange={e=>setSanAmount(e.target.value)}
-                            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();applySanLoss(code);}}}
-                            placeholder="예: 5" style={{fontSize:11.5,padding:"5px 8px",marginBottom:6}}/>
-                          <div style={{display:"flex",gap:5}}>
-                            <button type="button" className="coc-btn small" style={{flex:1,justifyContent:"center"}} onClick={()=>applySanLoss(code)}>적용</button>
-                            <button type="button" className="coc-btn ghost small" style={{flex:1,justifyContent:"center"}} onClick={()=>{setSanTarget(null);setSanAmount("");}}>취소</button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
