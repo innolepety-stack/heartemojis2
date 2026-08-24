@@ -352,20 +352,13 @@ input[type=number] { -moz-appearance: textfield; }
   text-align: center; box-shadow: 0 10px 32px rgba(0,0,0,0.35); z-index: 6;
   max-width: 80%; letter-spacing: 0.02em;
 }
-/* 주사위: 크게 굴러 나온 숫자와 결과가 화면 중앙에 뜨는 팝업 */
-.vn-dice-popup {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  background: rgba(10,10,14,0.85); color: #fff; border-radius: 18px;
-  padding: 22px 36px; text-align: center; box-shadow: 0 10px 32px rgba(0,0,0,0.35);
-  z-index: 6; min-width: 220px;
-}
-.vn-dice-skill { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.75); margin-bottom: 8px; }
-.vn-dice-roll { font-size: 44px; font-weight: 800; line-height: 1; margin-bottom: 8px; }
-.vn-dice-label { font-size: 18px; font-weight: 700; }
-/* 주사위 컷인: 해당 등급용 이미지(APNG 등)가 있으면 팝업 뒤에 무대를 채우며 뜹니다 */
+/* 주사위 컷인: 해당 등급용 이미지(APNG 등)가 있으면 예전 다이스 팝업 정도 크기로 뜹니다.
+   주사위 값·결과 텍스트는 하단 대사창에 뜹니다. */
 .vn-dice-cutin {
-  position: absolute; inset: 0; width: 100%; height: 100%;
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  max-width: 300px; max-height: 300px; width: auto; height: auto;
   object-fit: contain; z-index: 5; pointer-events: none;
+  border-radius: 14px; box-shadow: 0 10px 32px rgba(0,0,0,0.35);
 }
 
 .coc-btn {
@@ -3324,7 +3317,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
   // 비주얼노벨 스타일 대사창: 가장 최근의 "대사/서술"(캐릭터·NPC 대사거나 GM 서술·판정) 메시지를 찾습니다.
   // 대사는 초상화+대사창, 서술/판정은 초상화 없이 줄글로만 보여줍니다.
-  const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","system"].includes(m.speaker));
+  const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","system","dice"].includes(m.speaker));
 
   // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다.
   // 원본 코드를 그대로 잘라내는 대신, 이미 서식이 적용된 결과물의 "보이는 글자 수"만
@@ -3347,10 +3340,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
   const latestOverallMsg=stageMsgs[stageMsgs.length-1];
   const activeChoice=latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null;
-  // 판정/주사위는 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
+  // 판정은 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
   // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
   const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
-  const activeDice=latestOverallMsg&&latestOverallMsg.speaker==="dice"?latestOverallMsg:null;
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
     background:active?"var(--accent)":"var(--surface)",
@@ -3578,20 +3570,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           {activeJudge&&(
             <div className="vn-judge-popup"><FormattedText text={activeJudge.text}/></div>
           )}
-          {activeDice&&(()=>{
-            let d=null;try{d=JSON.parse(activeDice.text);}catch{}
+          {latestDialogue&&latestDialogue.speaker==="dice"&&(()=>{
+            let d=null;try{d=JSON.parse(latestDialogue.text);}catch{}
             if(!d)return null;
             const cutin=diceCutins[d.label];
-            return(
-              <>
-                {cutin&&<img src={cutin} className="vn-dice-cutin" alt=""/>}
-                <div className="vn-dice-popup">
-                  <div className="vn-dice-skill">🎲 {d.skillName} <span style={{opacity:0.7}}>/{d.value}</span></div>
-                  <div className="vn-dice-roll" style={{color:d.color}}>{d.roll}</div>
-                  <div className="vn-dice-label" style={{color:d.color}}>{d.label}</div>
-                </div>
-              </>
-            );
+            return cutin?<img src={cutin} className="vn-dice-cutin" alt=""/>:null;
           })()}
         </div>
         {latestDialogue&&(latestDialogue.speaker==="ic"||latestDialogue.speaker==="npc")&&(
@@ -3610,6 +3593,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
         {latestDialogue&&(latestDialogue.speaker==="narrate"||latestDialogue.speaker==="system")&&(
           <div className="vn-narration-box"><FormattedText text={latestDialogue.text} maxChars={typedCount}/></div>
         )}
+        {latestDialogue&&latestDialogue.speaker==="dice"&&(()=>{
+          let d=null;try{d=JSON.parse(latestDialogue.text);}catch{}
+          if(!d)return null;
+          return(
+            <div className="vn-narration-box">
+              🎲 {d.skillName} <span style={{opacity:0.7}}>/{d.value}</span> → <b>{d.roll}</b> → <span style={{color:d.color}}>{d.label}</span>
+            </div>
+          );
+        })()}
       </div>
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
     <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 76px)"}}>
