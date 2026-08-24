@@ -76,9 +76,8 @@ function saveSoundPref(v) {
   try { localStorage.setItem(SOUND_PREF_KEY, v ? "1" : "0"); } catch {}
 }
 
-// 다크 모드 / 대사창 투명도 — 이 기기(브라우저)에 저장되는 화면 설정입니다.
+// 다크 모드 — 이 기기(브라우저)에 저장되는 화면 설정입니다.
 const DARK_PREF_KEY = "heartEmojiDarkMode";
-const VN_ALPHA_KEY = "heartEmojiVnAlpha";
 function loadDarkPref() {
   try {
     const raw = localStorage.getItem(DARK_PREF_KEY);
@@ -91,16 +90,6 @@ function loadDarkPref() {
 }
 function saveDarkPref(v) {
   try { localStorage.setItem(DARK_PREF_KEY, v ? "1" : "0"); } catch {}
-}
-function loadVnAlpha() {
-  try {
-    const raw = localStorage.getItem(VN_ALPHA_KEY);
-    const n = raw === null ? NaN : parseFloat(raw);
-    return Number.isFinite(n) ? Math.min(1, Math.max(0.15, n)) : 0.55;
-  } catch { return 0.55; }
-}
-function saveVnAlpha(v) {
-  try { localStorage.setItem(VN_ALPHA_KEY, String(v)); } catch {}
 }
 
 const SKILL_LIST = [
@@ -192,7 +181,6 @@ html, body { margin: 0; padding: 0; }
   --bg-card: #ffffff;
   --surface: #ffffff;
   --glass: rgba(255,255,255,0.85);
-  --vn-bg: rgba(255,255,255,0.55);
   --backdrop: rgba(30,60,80,0.28);
   --text: #223142;
   --text-dim: #647c8c;
@@ -300,14 +288,17 @@ input[type=number] { -moz-appearance: textfield; }
 
 .vn-dock { padding: 0; position: relative; z-index: 5; }
 .vn-portrait {
-  /* 대사창 높이에 맞춰 위(이름 줄)부터 아래까지 꽉 차게 늘어납니다. */
-  width: 190px; align-self: stretch; border-radius: 12px; overflow: hidden;
+  /* 정사각형을 유지하면서, 대사창 높이에 맞춰 통째로 작아지거나 커집니다.
+     (예전엔 너비만 고정이고 높이만 늘어나서, 창을 가로로 길고 세로로 좁게 두면
+     대사창이 낮아지면서 사진이 눌린 직사각형처럼 잘려 보였어요.) */
+  height: 100%; max-width: 190px; aspect-ratio: 1 / 1;
+  border-radius: 12px; overflow: hidden;
   border: 2px solid var(--accent); background: var(--bg-panel);
   flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.16);
   display: flex; align-items: center; justify-content: center;
 }
 @media (max-width: 1320px) {
-  .vn-portrait { width: 150px; }
+  .vn-portrait { max-width: 150px; }
 }
 .vn-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .vn-textbox {
@@ -457,7 +448,7 @@ input[type="color"]::-moz-color-swatch { border: none; border-radius: inherit; }
 // 테마 CSS 변수를 인라인 style 객체로 반환합니다.
 // dark(다크 모드 여부)와 vnAlpha(대사창 투명도, 0~1)까지 함께 받아서
 // 화면 전체 색을 이 한 곳에서 결정합니다.
-function themeVars(t, dark = false, vnAlpha = 0.55) {
+function themeVars(t, dark = false) {
   const surface = t.surface || (dark ? "#161a20" : "#ffffff");
   return {
     "--accent": t.accent,
@@ -473,7 +464,6 @@ function themeVars(t, dark = false, vnAlpha = 0.55) {
     "--text-dim": dark ? "#a6b7c5" : "#647c8c",
     "--text-faint": dark ? "#7b8d9c" : "#9db2c0",
     "--glass": dark ? "rgba(18,22,28,0.82)" : "rgba(255,255,255,0.85)",
-    "--vn-bg": dark ? `rgba(16,20,26,${vnAlpha})` : `rgba(255,255,255,${vnAlpha})`,
     "--backdrop": dark ? "rgba(0,0,0,0.55)" : "rgba(30,60,80,0.28)",
     background: surface,
     colorScheme: dark ? "dark" : "light",
