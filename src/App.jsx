@@ -303,7 +303,7 @@ input[type=number] { -moz-appearance: textfield; }
 .vn-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .vn-textbox {
   position: relative; display: flex; align-items: stretch; gap: 42px;
-  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%);
   color: #fff; border-radius: 0;
   padding: 20px 24px; height: 25vh; box-sizing: border-box; overflow-y: auto;
 }
@@ -313,7 +313,7 @@ input[type=number] { -moz-appearance: textfield; }
 
 /* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게 */
 .vn-narration-box {
-  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%);
   color: #fff; border-radius: 0;
   padding: 16px 22px; margin: 0;
   font-size: 18px; line-height: 1.65; text-align: center;
@@ -323,11 +323,11 @@ input[type=number] { -moz-appearance: textfield; }
 /* 무대 상단에 뜨는 "다른 사람(GM·상대방)" 대사창: 아래쪽 것과 똑같이 생겼지만
    그라데이션 방향만 위→아래로 뒤집어서 위쪽 가장자리에 자연스럽게 붙습니다. */
 .vn-textbox-top {
-  background: linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
+  background: linear-gradient(to bottom, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%);
   flex-direction: row-reverse;
 }
 .vn-textbox-top .vn-textcol { align-items: flex-end; text-align: right; }
-.vn-narration-box-top { background: linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%); margin: 0; }
+.vn-narration-box-top { background: linear-gradient(to bottom, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%); margin: 0; }
 /* 선택지: 화면 중앙에 테마색 알약이 세로로 쌓인 형태 */
 .vn-choice-center {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -3724,22 +3724,21 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
             </div>
           );
         })()}
-      </div>
 
-      {/* 다이스 컷인: 무대 전체(상단/하단 대사창 포함)를 덮도록, stage-scene이 아니라
-          stage-panel 바로 아래에 둡니다. */}
-      {activeDiceCutin&&playingCutinId===activeDiceCutin.id&&(()=>{
-        let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
-        if(!d)return null;
-        const cutin=diceCutins[d.label];
-        if(!cutin)return null;
-        return(
-          <>
-            <div className="vn-cutin-backdrop"/>
-            <img key={activeDiceCutin.id} src={cutin} className="vn-dice-cutin" alt=""/>
-          </>
-        );
-      })()}
+        {/* 다이스 컷인: 무대(stage-panel) 안에서만 어두워지도록, stage-panel의 닫는 태그 전에 둡니다. */}
+        {activeDiceCutin&&playingCutinId===activeDiceCutin.id&&(()=>{
+          let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
+          if(!d)return null;
+          const cutin=diceCutins[d.label];
+          if(!cutin)return null;
+          return(
+            <>
+              <div className="vn-cutin-backdrop"/>
+              <img key={activeDiceCutin.id} src={cutin} className="vn-dice-cutin" alt=""/>
+            </>
+          );
+        })()}
+      </div>
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
     <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 76px)"}}>
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
