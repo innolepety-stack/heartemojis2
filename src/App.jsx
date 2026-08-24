@@ -355,7 +355,7 @@ input[type=number] { -moz-appearance: textfield; }
    주사위 값·결과 텍스트는 하단 대사창에 뜹니다. 화면이 살짝 어두워지면서 한 번 슥 지나가듯
    나타났다가 사라지는 연출입니다. */
 .vn-cutin-backdrop {
-  position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 40; pointer-events: none;
+  position: absolute; inset: 0; background: rgba(0,0,0,0.35); z-index: 40; pointer-events: none;
   animation: vnCutinBackdrop 1.7s ease forwards;
 }
 @keyframes vnCutinBackdrop {
@@ -3696,18 +3696,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           {activeChoiceResult&&(
             <div className="vn-judge-popup"><FormattedText text={activeChoiceResult.text}/></div>
           )}
-          {activeDiceCutin&&playingCutinId===activeDiceCutin.id&&(()=>{
-            let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
-            if(!d)return null;
-            const cutin=diceCutins[d.label];
-            if(!cutin)return null;
-            return(
-              <>
-                <div className="vn-cutin-backdrop"/>
-                <img key={activeDiceCutin.id} src={cutin} className="vn-dice-cutin" alt=""/>
-              </>
-            );
-          })()}
         </div>
 
         {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 */}
@@ -3737,6 +3725,21 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           );
         })()}
       </div>
+
+      {/* 다이스 컷인: 무대 전체(상단/하단 대사창 포함)를 덮도록, stage-scene이 아니라
+          stage-panel 바로 아래에 둡니다. */}
+      {activeDiceCutin&&playingCutinId===activeDiceCutin.id&&(()=>{
+        let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
+        if(!d)return null;
+        const cutin=diceCutins[d.label];
+        if(!cutin)return null;
+        return(
+          <>
+            <div className="vn-cutin-backdrop"/>
+            <img key={activeDiceCutin.id} src={cutin} className="vn-dice-cutin" alt=""/>
+          </>
+        );
+      })()}
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
     <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 76px)"}}>
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
