@@ -312,20 +312,19 @@ input[type=number] { -moz-appearance: textfield; }
 .vn-portrait img { width: 100%; height: 100%; object-fit: cover; }
 .vn-textbox {
   position: relative; display: flex; align-items: stretch; gap: 42px;
-  background: var(--vn-bg); color: var(--text); border-radius: 14px;
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
+  color: #fff; border-radius: 0;
   padding: 20px 24px; height: 25vh; box-sizing: border-box; overflow-y: auto;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
-  border: 1px solid var(--border-soft); backdrop-filter: blur(7px);
 }
 .vn-textcol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.vn-name { font-size: 26px; font-weight: 700; color: var(--accent-deep); margin-bottom: 8px; text-shadow: 0 1px 2px var(--vn-bg); }
-.vn-line { font-size: 18px; line-height: 1.5; word-break: break-word; color: var(--text); }
+.vn-name { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.vn-line { font-size: 18px; line-height: 1.5; word-break: break-word; color: #fff; }
 
 /* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게 */
 .vn-narration-box {
-  background: var(--vn-bg); color: var(--text); border-radius: 12px;
-  padding: 16px 22px; margin: 0 42px 18px; backdrop-filter: blur(6px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18); border: 1px solid var(--border-soft);
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
+  color: #fff; border-radius: 0;
+  padding: 16px 22px; margin: 0 42px 18px;
   font-size: 18px; line-height: 1.65; text-align: center;
   height: 25vh; box-sizing: border-box; overflow-y: auto;
   display: flex; align-items: center; justify-content: center;
@@ -344,6 +343,30 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .vn-choice-pill:hover:not(.picked) { background: var(--accent); color: #fff; }
 .vn-choice-pill.picked { color: var(--text-faint); border-color: var(--border); text-decoration: line-through; opacity: 0.6; cursor: default; }
+
+/* 판정: 화면 중앙에 뜨는 짧은 팝업 (서술과 구분되는 느낌) */
+.vn-judge-popup {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(10,10,14,0.82); color: #fff; border: 2px solid var(--accent);
+  border-radius: 14px; padding: 16px 30px; font-size: 19px; font-weight: 700;
+  text-align: center; box-shadow: 0 10px 32px rgba(0,0,0,0.35); z-index: 6;
+  max-width: 80%; letter-spacing: 0.02em;
+}
+/* 주사위: 크게 굴러 나온 숫자와 결과가 화면 중앙에 뜨는 팝업 */
+.vn-dice-popup {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(10,10,14,0.85); color: #fff; border-radius: 18px;
+  padding: 22px 36px; text-align: center; box-shadow: 0 10px 32px rgba(0,0,0,0.35);
+  z-index: 6; min-width: 220px;
+}
+.vn-dice-skill { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.75); margin-bottom: 8px; }
+.vn-dice-roll { font-size: 44px; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+.vn-dice-label { font-size: 18px; font-weight: 700; }
+/* 주사위 컷인: 해당 등급용 이미지(APNG 등)가 있으면 팝업 뒤에 무대를 채우며 뜹니다 */
+.vn-dice-cutin {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; z-index: 5; pointer-events: none;
+}
 
 .coc-btn {
   font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 13.5px;
@@ -626,6 +649,16 @@ function storeListenDoc(key, onChange) {
   } catch { return () => {}; }
 }
 
+// 주사위 컷인용 APNG 등은 캔버스로 리사이즈하면 애니메이션이 깨지므로(정지 프레임 한 장만 남음),
+// 압축·리사이즈 없이 원본 그대로 data URL로 읽습니다.
+function fileToRawDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
 async function fileToResizedDataURL(file, maxSize=220, quality=0.9) {
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
@@ -1011,7 +1044,7 @@ function AuthScreen({onLogin}){
 
 /* ============================== SETTINGS TAB ============================== */
 
-function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark, vnAlpha, onChangeVnAlpha}){
+function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark}){
   const [hexInput, setHexInput] = useState(customColor);
   useEffect(()=>{ setHexInput(customColor); }, [customColor]);
 
@@ -1061,25 +1094,6 @@ function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleD
               {dark===o.v&&<span style={{fontSize:12,color:"var(--accent)"}}>✓</span>}
             </button>
           ))}
-        </div>
-
-        <div style={{height:1,background:"var(--border-soft)",margin:"4px 0 18px"}}/>
-
-        <div className="coc-label" style={{marginBottom:6}}>대사창 투명도</div>
-        <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:12}}>PC 화면의 대사창이 배경 그림을 얼마나 비칠지 정해요. 왼쪽으로 갈수록 더 투명해집니다.</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <input type="range" min="15" max="100" step="5"
-            value={Math.round(vnAlpha*100)}
-            onChange={e=>onChangeVnAlpha(Number(e.target.value)/100)}
-            style={{flex:1,accentColor:"var(--accent)",cursor:"pointer",maxWidth:320}}/>
-          <span className="coc-mono" style={{fontSize:12.5,color:"var(--accent-deep)",minWidth:44,textAlign:"right"}}>{Math.round(vnAlpha*100)}%</span>
-        </div>
-        <div style={{marginTop:12,borderRadius:12,padding:14,border:"1px solid var(--border)",
-          background:"linear-gradient(135deg, var(--accent-soft), var(--accent))"}}>
-          <div style={{background:"var(--vn-bg)",borderRadius:10,padding:"12px 14px",backdropFilter:"blur(6px)",border:"1px solid var(--border-soft)"}}>
-            <div style={{fontSize:15,fontWeight:700,color:"var(--accent-deep)",marginBottom:4}}>미리보기</div>
-            <div style={{fontSize:13.5,color:"var(--text)"}}>대사창이 이 정도로 비쳐 보입니다.</div>
-          </div>
         </div>
       </div>
     </div>
@@ -1391,19 +1405,23 @@ function buildHtmlExport(room,transcript,theme){
     choice:"display:inline-block;border:1.5px solid currentColor;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:0.87em;font-weight:600;color:inherit;font-family:'Noto Sans KR',sans-serif;",
     choicePicked:"display:inline-block;border:1.5px solid currentColor;border-radius:999px;padding:5px 13px;margin:2px 4px;font-size:0.87em;color:inherit;opacity:0.55;text-decoration:line-through;font-family:'Noto Sans KR',sans-serif;",
   };
-  const avatarHtml=m=>m.avatar
-    ? `<img src="${m.avatar}" style="${S.avatarImg}">`
+  const avatarHtml=g=>g.avatar
+    ? `<img src="${g.avatar}" style="${S.avatarImg}">`
     : `<div style="${S.avatarPlaceholder}"></div>`;
   const tabsHtml=transcript.map(tab=>{
-    const msgs=tab.messages.map(m=>{
-      if(m.speaker==="narrate"||m.speaker==="system"){
-        return `<div style="${S.anon}" data-role="narrate">${chatTextToHtml(m.text,theme)}</div>`;
+    // 같은 사람이 60초 안에 연달아 보낸 메시지는(선택지·판정 제외) 하나의 묶음으로 처리해서,
+    // 프로필 사진·이름을 매 줄마다 반복하지 않고 묶음당 한 번만 넣습니다.
+    // (예전에는 메시지 하나하나마다 사진 base64 코드가 통째로 반복돼서 파일이 쓸데없이 길었어요.)
+    const groups=groupMessages(tab.messages);
+    const msgs=groups.map(g=>{
+      if(g.speaker==="narrate"||g.speaker==="system"){
+        return g.lines.map(line=>`<div style="${S.anon}" data-role="narrate">${chatTextToHtml(line,theme)}</div>`).join("\n");
       }
-      if(m.speaker==="judge"){
-        return `<div style="${S.anon}" data-role="judge">${chatTextToHtml(m.text,theme)}</div>`;
+      if(g.speaker==="judge"){
+        return `<div style="${S.anon}" data-role="judge">${chatTextToHtml(g.lines[0],theme)}</div>`;
       }
-      if(m.speaker==="choice"){
-        let d=null;try{d=JSON.parse(m.text);}catch{}
+      if(g.speaker==="choice"){
+        let d=null;try{d=JSON.parse(g.lines[0]);}catch{}
         if(!d) return `<div style="${S.anon}">(선택지)</div>`;
         const opts=d.options.map(opt=>{
           const picked=d.picked?.[opt];
@@ -1413,19 +1431,21 @@ function buildHtmlExport(room,transcript,theme){
         }).join(" ");
         return `<div style="${S.anon}">${opts}</div>`;
       }
-      if(m.speaker==="dice"){
-        let d=null;try{d=JSON.parse(m.text);}catch{}
-        const body=d?`🎲 ${escapeHtmlExport(d.skillName)} <span style="${S.mono}">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span>`:escapeHtmlExport(m.text);
-        return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${S.name}${S.nameDim}" data-role="char-name">${escapeHtmlExport(m.characterName||"")}</span> <span data-role="dialogue">${body}</span></div></div>`;
+      if(g.speaker==="dice"){
+        const bodies=g.lines.map(line=>{
+          let d=null;try{d=JSON.parse(line);}catch{}
+          return d?`<div>🎲 ${escapeHtmlExport(d.skillName)} <span style="${S.mono}">/${d.value}</span> → <b>${d.roll}</b> → <span style="color:${d.color}">${escapeHtmlExport(d.label)}</span></div>`:`<div>${escapeHtmlExport(line)}</div>`;
+        }).join("");
+        return `<div style="${S.line}">${avatarHtml(g)}<div><span style="${S.name}" data-role="char-name">${escapeHtmlExport(g.characterName||"")}</span> <span data-role="dialogue">${bodies}</span></div></div>`;
       }
-      if(m.speaker==="image"){
-        // 서술처럼 이름·시간 없이 가운데 정렬로 표시
-        return `<div style="${S.anon}"><img src="${m.text}" style="${S.img}"></div>`;
+      if(g.speaker==="image"){
+        return g.lines.map(line=>`<div style="${S.anon}"><img src="${line}" style="${S.img}"></div>`).join("\n");
       }
-      const myNameColor=safeNameColor(m.nameColor);
-      const nameStyle=(m.speaker==="ooc"?S.nameDim:S.name)+(myNameColor?`color:${myNameColor};`:"");
-      const suffix=m.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
-      return `<div style="${S.line}">${avatarHtml(m)}<div><span style="${nameStyle}" data-role="char-name">${escapeHtmlExport(m.characterName||"")}</span>${suffix} <span data-role="dialogue">${chatTextToHtml(m.text,theme)}</span></div></div>`;
+      const myNameColor=safeNameColor(g.nameColor);
+      const nameStyle=(g.speaker==="ooc"?S.nameDim:S.name)+(myNameColor?`color:${myNameColor};`:"");
+      const suffix=g.speaker==="ooc"?` <span style="${S.ooc}">OOC</span>`:"";
+      const linesHtml=g.lines.map(line=>`<div data-role="dialogue">${chatTextToHtml(line,theme)}</div>`).join("");
+      return `<div style="${S.line}">${avatarHtml(g)}<div><span style="${nameStyle}" data-role="char-name">${escapeHtmlExport(g.characterName||"")}</span>${suffix}${linesHtml}</div></div>`;
     }).join("\n");
     return `<section>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
   }).join("\n");
@@ -1893,7 +1913,8 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 // 선택한 다음 서식 버튼을 눌러 그 부분만 꾸미는 GM 전용 도구입니다. 시트(♥ 버튼)처럼 떠 있는
 // 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고, 제목줄을 잡고 끌어서 원하는
 // 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
-function DecoratePanel({onClose,onSendText}){
+const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
+function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState("#c0392b");
   const [code,setCode]=useState("");
@@ -2015,6 +2036,31 @@ function DecoratePanel({onClose,onSendText}){
           disabled={!code.trim()} onClick={sendCode}>
           서술로 보내기
         </button>
+
+        <div className="coc-divider" style={{margin:"18px 0 14px"}}/>
+
+        <div className="coc-label" style={{marginBottom:6,flexShrink:0}}>주사위 컷인</div>
+        <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:10,flexShrink:0}}>
+          판정 등급별로 APNG 등 이미지를 미리 넣어두면, 그 등급이 나왔을 때 무대에 자동으로 떠요.
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:7,flexShrink:0}}>
+          {DICE_LABELS.map(label=>{
+            const url=diceCutins[label];
+            const inputId=`cutin-input-${label}`;
+            return(
+              <div key={label} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",background:"var(--bg-panel)",borderRadius:8}}>
+                <div style={{width:32,height:32,borderRadius:6,overflow:"hidden",flexShrink:0,background:"var(--surface)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {url?<img src={url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<span style={{fontSize:10,color:"var(--text-faint)"}}>없음</span>}
+                </div>
+                <span style={{fontSize:12,fontWeight:600,flex:1}}>{label}</span>
+                <label htmlFor={inputId} className="coc-btn ghost small" style={{cursor:"pointer"}}>{url?"교체":"추가"}</label>
+                <input id={inputId} type="file" accept="image/*" style={{display:"none"}}
+                  onChange={async e=>{const f=e.target.files?.[0];if(!f)return;onSetCutin(label,await fileToRawDataURL(f));e.target.value="";}}/>
+                {url&&<button type="button" className="coc-btn ghost small" onClick={()=>onClearCutin(label)}><X size={12}/></button>}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* 우측 하단 손잡이 — 끌면 창 크기가 바뀝니다 */}
@@ -2978,6 +3024,24 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   const [layerDragIndex,setLayerDragIndex]=useState(null); // 레이어 패널 목록에서 드래그 중인 항목의 인덱스
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
   const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
+
+  // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지가
+  // 그 결과가 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다.
+  const [diceCutins,setDiceCutins]=useState({}); // {라벨: dataUrl}
+  useEffect(()=>{
+    const unsub=storeListenDoc(`cutins:${room.id}`,d=>{ setDiceCutins(d?.map||{}); });
+    return()=>unsub();
+  },[room.id]);
+  const setDiceCutin=async(label,dataUrl)=>{
+    const next={...diceCutins,[label]:dataUrl};
+    setDiceCutins(next);
+    await storeSet(`cutins:${room.id}`,{map:next},true);
+  };
+  const clearDiceCutin=async label=>{
+    const next={...diceCutins}; delete next[label];
+    setDiceCutins(next);
+    await storeSet(`cutins:${room.id}`,{map:next},true);
+  };
   const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
   const [seenOnlineIds,setSeenOnlineIds]=useState([]); // 참가자 온라인 알림 점: 확인하면 사라지도록
   const layerFileInputRef=useRef(null);
@@ -3260,7 +3324,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
   // 비주얼노벨 스타일 대사창: 가장 최근의 "대사/서술"(캐릭터·NPC 대사거나 GM 서술·판정) 메시지를 찾습니다.
   // 대사는 초상화+대사창, 서술/판정은 초상화 없이 줄글로만 보여줍니다.
-  const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","judge","system"].includes(m.speaker));
+  const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","system"].includes(m.speaker));
 
   // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다.
   // 원본 코드를 그대로 잘라내는 대신, 이미 서식이 적용된 결과물의 "보이는 글자 수"만
@@ -3283,6 +3347,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
   const latestOverallMsg=stageMsgs[stageMsgs.length-1];
   const activeChoice=latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null;
+  // 판정/주사위는 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
+  // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
+  const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
+  const activeDice=latestOverallMsg&&latestOverallMsg.speaker==="dice"?latestOverallMsg:null;
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
     background:active?"var(--accent)":"var(--surface)",
@@ -3507,6 +3575,24 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
               </div>
             );
           })()}
+          {activeJudge&&(
+            <div className="vn-judge-popup"><FormattedText text={activeJudge.text}/></div>
+          )}
+          {activeDice&&(()=>{
+            let d=null;try{d=JSON.parse(activeDice.text);}catch{}
+            if(!d)return null;
+            const cutin=diceCutins[d.label];
+            return(
+              <>
+                {cutin&&<img src={cutin} className="vn-dice-cutin" alt=""/>}
+                <div className="vn-dice-popup">
+                  <div className="vn-dice-skill">🎲 {d.skillName} <span style={{opacity:0.7}}>/{d.value}</span></div>
+                  <div className="vn-dice-roll" style={{color:d.color}}>{d.roll}</div>
+                  <div className="vn-dice-label" style={{color:d.color}}>{d.label}</div>
+                </div>
+              </>
+            );
+          })()}
         </div>
         {latestDialogue&&(latestDialogue.speaker==="ic"||latestDialogue.speaker==="npc")&&(
           <div className="vn-dock">
@@ -3521,7 +3607,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
             </div>
           </div>
         )}
-        {latestDialogue&&(latestDialogue.speaker==="narrate"||latestDialogue.speaker==="judge"||latestDialogue.speaker==="system")&&(
+        {latestDialogue&&(latestDialogue.speaker==="narrate"||latestDialogue.speaker==="system")&&(
           <div className="vn-narration-box"><FormattedText text={latestDialogue.text} maxChars={typedCount}/></div>
         )}
       </div>
@@ -3848,7 +3934,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
       {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
-        onSendText={markup=>doSend("narrate",markup,"","")}/>}
+        onSendText={markup=>doSend("narrate",markup,"","")}
+        diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
@@ -3907,11 +3994,9 @@ function AppInner(){
   const [activeRoom,setActiveRoom]=useState(null);
   const [themeKey,setThemeKey]=useState("sky");
   const [customColor,setCustomColor]=useState("#2e9bdb");
-  // 다크 모드 / 대사창 투명도는 이 기기(브라우저)에 저장됩니다.
+  // 다크 모드는 이 기기(브라우저)에 저장됩니다.
   const [dark,setDark]=useState(()=>loadDarkPref());
-  const [vnAlpha,setVnAlpha]=useState(()=>loadVnAlpha());
   const handleDark=v=>{ setDark(v); saveDarkPref(v); };
-  const handleVnAlpha=v=>{ setVnAlpha(v); saveVnAlpha(v); };
 
   // 앱을 처음 열었을 때, 이 기기에 저장된 로그인 정보가 있으면 자동으로 다시 로그인합니다.
   useEffect(()=>{
@@ -3958,7 +4043,7 @@ function AppInner(){
 
   const baseTheme=themeKey==="custom"?deriveThemeFromColor(customColor):(THEMES[themeKey]||THEMES.sky);
   const theme=dark?toDarkTheme(baseTheme):baseTheme;
-  const rootStyle=themeVars(theme,dark,vnAlpha);
+  const rootStyle=themeVars(theme,dark);
 
   if(!authChecked) return(
     <div className="coc-root" style={rootStyle}>
@@ -3980,7 +4065,7 @@ function AppInner(){
     body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectCustom={handleThemeCustom}
-      dark={dark} onToggleDark={handleDark} vnAlpha={vnAlpha} onChangeVnAlpha={handleVnAlpha}/>;
+      dark={dark} onToggleDark={handleDark}/>;
   }else if(tab==="profile"){
     body=profileLoaded&&<MyPage userCode={user.code} profile={profile} setProfile={setProfile}/>;
   }else{
