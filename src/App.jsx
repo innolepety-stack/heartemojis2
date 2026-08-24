@@ -298,7 +298,7 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .stage-title-overlay { display: none; }
 
-.vn-dock { padding: 18px 42px; position: relative; z-index: 5; }
+.vn-dock { padding: 0; position: relative; z-index: 5; }
 .vn-portrait {
   /* 대사창 높이에 맞춰 위(이름 줄)부터 아래까지 꽉 차게 늘어납니다. */
   width: 190px; align-self: stretch; border-radius: 12px; overflow: hidden;
@@ -324,11 +324,19 @@ input[type=number] { -moz-appearance: textfield; }
 .vn-narration-box {
   background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
   color: #fff; border-radius: 0;
-  padding: 16px 22px; margin: 0 42px 18px;
+  padding: 16px 22px; margin: 0;
   font-size: 18px; line-height: 1.65; text-align: center;
   height: 25vh; box-sizing: border-box; overflow-y: auto;
   display: flex; align-items: center; justify-content: center;
 }
+/* 무대 상단에 뜨는 "다른 사람(GM·상대방)" 대사창: 아래쪽 것과 똑같이 생겼지만
+   그라데이션 방향만 위→아래로 뒤집어서 위쪽 가장자리에 자연스럽게 붙습니다. */
+.vn-textbox-top {
+  background: linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%);
+  flex-direction: row-reverse;
+}
+.vn-textbox-top .vn-textcol { align-items: flex-end; text-align: right; }
+.vn-narration-box-top { background: linear-gradient(to bottom, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 45%, rgba(0,0,0,0) 100%); margin: 0; }
 /* 선택지: 화면 중앙에 테마색 알약이 세로로 쌓인 형태 */
 .vn-choice-center {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -358,8 +366,14 @@ input[type=number] { -moz-appearance: textfield; }
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
   max-width: 300px; max-height: 300px; width: auto; height: auto;
   object-fit: contain; z-index: 5; pointer-events: none;
-  border-radius: 14px; box-shadow: 0 10px 32px rgba(0,0,0,0.35);
 }
+
+/* 색상 선택(input type=color) 네모 안쪽에 브라우저 기본 여백이 남아 왼쪽 위가 하얗게
+   비치던 문제를 고칩니다 — 스와치가 테두리 안쪽을 완전히 채우도록 만듭니다. */
+input[type="color"] { -webkit-appearance: none; appearance: none; padding: 0; border: none; }
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: none; border-radius: inherit; }
+input[type="color"]::-moz-color-swatch { border: none; border-radius: inherit; }
 
 .coc-btn {
   font-family: 'Noto Sans KR', sans-serif; font-weight: 600; font-size: 13.5px;
@@ -3020,20 +3034,36 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
 
   // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지가
   // 그 결과가 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다.
+  // ※ 등급마다 각각 다른 문서(cutin:방ID:등급)에 저장합니다. 예전엔 6개를 한 문서에 몰아
+  // 저장해서, Firestore 문서 하나의 용량 한도(약 1MB)를 넘기면 저장이 조용히 실패하고
+  // 방금 올린 사진이 그대로 있다가 서버 값으로 되돌아가며 "삭제됐다 등록됐다" 하는
+  // 것처럼 보였습니다. 이제는 등급별로 분리해서 한쪽이 커도 다른 쪽엔 영향이 없고,
+  // 저장에 실패하면 조용히 사라지는 대신 바로 알려줍니다.
   const [diceCutins,setDiceCutins]=useState({}); // {라벨: dataUrl}
   useEffect(()=>{
-    const unsub=storeListenDoc(`cutins:${room.id}`,d=>{ setDiceCutins(d?.map||{}); });
+    const prefix=`cutin:${room.id}:`;
+    const unsub=storeListenPrefix(prefix,list=>{
+      const map={};
+      list.forEach(item=>{ map[item.key.slice(prefix.length)]=item.value?.url; });
+      setDiceCutins(map);
+    });
     return()=>unsub();
   },[room.id]);
   const setDiceCutin=async(label,dataUrl)=>{
-    const next={...diceCutins,[label]:dataUrl};
-    setDiceCutins(next);
-    await storeSet(`cutins:${room.id}`,{map:next},true);
+    if(dataUrl.length>900000){
+      alert("이미지 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 작은 파일로 다시 시도해주세요.");
+      return;
+    }
+    const res=await storeSet(`cutin:${room.id}:${label}`,{url:dataUrl},true);
+    if(res&&res.ok===false){
+      alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+      return;
+    }
+    setDiceCutins(prev=>({...prev,[label]:dataUrl}));
   };
   const clearDiceCutin=async label=>{
-    const next={...diceCutins}; delete next[label];
-    setDiceCutins(next);
-    await storeSet(`cutins:${room.id}`,{map:next},true);
+    await storeDelete(`cutin:${room.id}:${label}`,true);
+    setDiceCutins(prev=>{ const next={...prev}; delete next[label]; return next; });
   };
   const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
   const [seenOnlineIds,setSeenOnlineIds]=useState([]); // 참가자 온라인 알림 점: 확인하면 사라지도록
@@ -3315,27 +3345,34 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   },[room.id,activeTab]);
   const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].sort((a,b)=>a.timestamp-b.timestamp);
 
-  // 비주얼노벨 스타일 대사창: 가장 최근의 "대사/서술"(캐릭터·NPC 대사거나 GM 서술·판정) 메시지를 찾습니다.
-  // 대사는 초상화+대사창, 서술/판정은 초상화 없이 줄글로만 보여줍니다.
-  const latestDialogue=[...stageMsgs].reverse().find(m=>["ic","npc","narrate","system","dice"].includes(m.speaker));
+  // 비주얼노벨 스타일 대사창: 내 대사는 하단에, GM·다른 사람 대사는 상단에 따로 뜨도록
+  // "내 것"과 "다른 사람 것"을 각각 가장 최근 것으로 나눠서 찾습니다.
+  const myLatestDialogue=[...stageMsgs].reverse().find(m=>m.userCode===userCode&&["ic","npc","narrate","system","dice"].includes(m.speaker));
+  const othersLatestDialogue=[...stageMsgs].reverse().find(m=>m.userCode!==userCode&&["ic","npc","narrate","system","dice"].includes(m.speaker));
 
-  // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다.
+  // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다. 상단(다른 사람)과
+  // 하단(나) 대사창이 서로 독립적으로 타이핑되도록 각각 따로 관리합니다.
   // 원본 코드를 그대로 잘라내는 대신, 이미 서식이 적용된 결과물의 "보이는 글자 수"만
   // 세어서 자르기 때문에, 타이핑 도중에도 서식(색·굵기 등)이 처음부터 정확히 보여요.
-  const [typedCount,setTypedCount]=useState(0);
-  useEffect(()=>{
-    const full=latestDialogue?.text||"";
-    const totalVisible=parseFormat(full).reduce((s,p)=>s+p.v.length,0);
-    setTypedCount(0);
-    if(!totalVisible)return;
-    let i=0;
-    const id=setInterval(()=>{
-      i+=1; // 한 번에 1글자씩, 조금 더 여유 있게
-      setTypedCount(i);
-      if(i>=totalVisible) clearInterval(id);
-    },32);
-    return()=>clearInterval(id);
-  },[latestDialogue?.id,latestDialogue?.text]);
+  const useTypedCount=dialogue=>{
+    const [typed,setTyped]=useState(0);
+    useEffect(()=>{
+      const full=dialogue?.text||"";
+      const totalVisible=parseFormat(full).reduce((s,p)=>s+p.v.length,0);
+      setTyped(0);
+      if(!totalVisible)return;
+      let i=0;
+      const id=setInterval(()=>{
+        i+=1;
+        setTyped(i);
+        if(i>=totalVisible) clearInterval(id);
+      },32);
+      return()=>clearInterval(id);
+    },[dialogue?.id,dialogue?.text]);
+    return typed;
+  };
+  const typedCountMine=useTypedCount(myLatestDialogue);
+  const typedCountOthers=useTypedCount(othersLatestDialogue);
   // 선택지: 정말로 "지금 가장 최근"인 메시지가 선택지일 때만 화면 중앙에 세로로 띄웁니다.
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
   const latestOverallMsg=stageMsgs[stageMsgs.length-1];
@@ -3343,6 +3380,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   // 판정은 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
   // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
   const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
+  // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는
+  // 공용 이펙트라, "지금 진짜로 가장 최근"인 주사위일 때만 뜨도록 별도로 둡니다.
+  const activeDiceCutin=latestOverallMsg&&latestOverallMsg.speaker==="dice"?latestOverallMsg:null;
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
     background:active?"var(--accent)":"var(--surface)",
@@ -3542,6 +3582,34 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
             {layersLocked?<Lock size={15}/>:<Unlock size={15}/>}
           </button>
         )}
+
+        {/* 무대 상단: GM·다른 사람의 대사/서술/주사위가 뜨는 대사창 (stage-scene보다 먼저 와야 위쪽에 보임) */}
+        {othersLatestDialogue&&(othersLatestDialogue.speaker==="ic"||othersLatestDialogue.speaker==="npc")&&(
+          <div className="vn-dock">
+            <div className="vn-textbox vn-textbox-top">
+              <div className="vn-portrait">
+                {othersLatestDialogue.avatar?<img src={othersLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
+              </div>
+              <div className="vn-textcol">
+                <div className="vn-name" style={safeNameColor(othersLatestDialogue.nameColor)?{color:safeNameColor(othersLatestDialogue.nameColor)}:undefined}>{othersLatestDialogue.characterName||"???"}</div>
+                <div className="vn-line"><FormattedText text={othersLatestDialogue.text} maxChars={typedCountOthers}/></div>
+              </div>
+            </div>
+          </div>
+        )}
+        {othersLatestDialogue&&(othersLatestDialogue.speaker==="narrate"||othersLatestDialogue.speaker==="system")&&(
+          <div className="vn-narration-box vn-narration-box-top"><FormattedText text={othersLatestDialogue.text} maxChars={typedCountOthers}/></div>
+        )}
+        {othersLatestDialogue&&othersLatestDialogue.speaker==="dice"&&(()=>{
+          let d=null;try{d=JSON.parse(othersLatestDialogue.text);}catch{}
+          if(!d)return null;
+          return(
+            <div className="vn-narration-box vn-narration-box-top">
+              🎲 {d.skillName} <span style={{opacity:0.7}}>/{d.value}</span> → <b>{d.roll}</b> → <span style={{color:d.color}}>{d.label}</span>
+            </div>
+          );
+        })()}
+
         <div className="stage-scene" onMouseDown={()=>setSelectedLayerId(null)}>
           {layers.map((l,i)=>(
             <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
@@ -3570,31 +3638,33 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           {activeJudge&&(
             <div className="vn-judge-popup"><FormattedText text={activeJudge.text}/></div>
           )}
-          {latestDialogue&&latestDialogue.speaker==="dice"&&(()=>{
-            let d=null;try{d=JSON.parse(latestDialogue.text);}catch{}
+          {activeDiceCutin&&(()=>{
+            let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
             if(!d)return null;
             const cutin=diceCutins[d.label];
             return cutin?<img src={cutin} className="vn-dice-cutin" alt=""/>:null;
           })()}
         </div>
-        {latestDialogue&&(latestDialogue.speaker==="ic"||latestDialogue.speaker==="npc")&&(
+
+        {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 */}
+        {myLatestDialogue&&(myLatestDialogue.speaker==="ic"||myLatestDialogue.speaker==="npc")&&(
           <div className="vn-dock">
             <div className="vn-textbox">
               <div className="vn-portrait">
-                {latestDialogue.avatar?<img src={latestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
+                {myLatestDialogue.avatar?<img src={myLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
               </div>
               <div className="vn-textcol">
-                <div className="vn-name" style={safeNameColor(latestDialogue.nameColor)?{color:safeNameColor(latestDialogue.nameColor)}:undefined}>{latestDialogue.characterName||"???"}</div>
-                <div className="vn-line"><FormattedText text={latestDialogue.text} maxChars={typedCount}/></div>
+                <div className="vn-name" style={safeNameColor(myLatestDialogue.nameColor)?{color:safeNameColor(myLatestDialogue.nameColor)}:undefined}>{myLatestDialogue.characterName||"???"}</div>
+                <div className="vn-line"><FormattedText text={myLatestDialogue.text} maxChars={typedCountMine}/></div>
               </div>
             </div>
           </div>
         )}
-        {latestDialogue&&(latestDialogue.speaker==="narrate"||latestDialogue.speaker==="system")&&(
-          <div className="vn-narration-box"><FormattedText text={latestDialogue.text} maxChars={typedCount}/></div>
+        {myLatestDialogue&&(myLatestDialogue.speaker==="narrate"||myLatestDialogue.speaker==="system")&&(
+          <div className="vn-narration-box"><FormattedText text={myLatestDialogue.text} maxChars={typedCountMine}/></div>
         )}
-        {latestDialogue&&latestDialogue.speaker==="dice"&&(()=>{
-          let d=null;try{d=JSON.parse(latestDialogue.text);}catch{}
+        {myLatestDialogue&&myLatestDialogue.speaker==="dice"&&(()=>{
+          let d=null;try{d=JSON.parse(myLatestDialogue.text);}catch{}
           if(!d)return null;
           return(
             <div className="vn-narration-box">
