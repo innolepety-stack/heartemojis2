@@ -352,11 +352,30 @@ input[type=number] { -moz-appearance: textfield; }
   max-width: 80%; letter-spacing: 0.02em;
 }
 /* 주사위 컷인: 해당 등급용 이미지(APNG 등)가 있으면 예전 다이스 팝업 정도 크기로 뜹니다.
-   주사위 값·결과 텍스트는 하단 대사창에 뜹니다. */
+   주사위 값·결과 텍스트는 하단 대사창에 뜹니다. 화면이 살짝 어두워지면서 한 번 슥 지나가듯
+   나타났다가 사라지는 연출입니다. */
+.vn-cutin-backdrop {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.55); z-index: 40; pointer-events: none;
+  animation: vnCutinBackdrop 1.7s ease forwards;
+}
+@keyframes vnCutinBackdrop {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
 .vn-dice-cutin {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  position: absolute; top: 50%; left: 50%;
   max-width: 300px; max-height: 300px; width: auto; height: auto;
-  object-fit: contain; z-index: 5; pointer-events: none;
+  object-fit: contain; z-index: 41; pointer-events: none;
+  animation: vnCutinPass 1.7s cubic-bezier(.2,.7,.3,1) forwards;
+}
+@keyframes vnCutinPass {
+  0% { opacity: 0; transform: translate(-50%,-50%) scale(0.6); }
+  14% { opacity: 1; transform: translate(-50%,-50%) scale(1.1); }
+  24% { transform: translate(-50%,-50%) scale(1); }
+  78% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1.06); }
 }
 
 /* 색상 선택(input type=color) 네모 안쪽에 브라우저 기본 여백이 남아 왼쪽 위가 하얗게
@@ -1107,6 +1126,8 @@ function MyPage({userCode,profile,setProfile}){
   const [roomMap,setRoomMap]=useState({});
   const [loadingChars,setLoadingChars]=useState(true);
   const [viewing,setViewing]=useState(null);
+  const [viewDraft,setViewDraft]=useState(null);
+  const [savingChar,setSavingChar]=useState(false);
 
   useEffect(()=>setLocal(profile),[profile]);
 
@@ -1136,6 +1157,19 @@ function MyPage({userCode,profile,setProfile}){
     else alert(`프로필 저장 실패: ${res.error}`);
   };
 
+  // 캐릭터 카드를 누르면 곧바로 수정 가능한 시트가 열립니다(별도 "수정" 버튼 없이,
+  // 사진 변경 포함 모든 항목을 바로 고칠 수 있어요). "저장"을 누르면 반영됩니다.
+  const openChar=c=>{ setViewing(c); setViewDraft(c); };
+  const closeChar=()=>{ setViewing(null); setViewDraft(null); };
+  const saveChar=async()=>{
+    if(!viewDraft?.id||!viewDraft?.roomId)return;
+    setSavingChar(true);
+    const res=await storeSet(`char:${viewDraft.roomId}:${viewDraft.id}`,viewDraft,true);
+    setSavingChar(false);
+    if(res.ok) closeChar();
+    else alert(`저장 실패: ${res.error}`);
+  };
+
   return(
     <div style={{maxWidth:680,margin:"0 auto"}}>
       <div className="coc-card" style={{padding:"20px",marginBottom:20}}>
@@ -1160,7 +1194,7 @@ function MyPage({userCode,profile,setProfile}){
       ):(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(148px,1fr))",gap:10}}>
           {myChars.map(c=>(
-            <div key={c.id} className="coc-card" style={{padding:14,cursor:"pointer",textAlign:"center",position:"relative"}} onClick={()=>setViewing(c)}>
+            <div key={c.id} className="coc-card" style={{padding:14,cursor:"pointer",textAlign:"center",position:"relative"}} onClick={()=>openChar(c)}>
               <button type="button" title="캐릭터 삭제"
                 onClick={async e=>{
                   e.stopPropagation();
@@ -1182,13 +1216,17 @@ function MyPage({userCode,profile,setProfile}){
         </div>
       )}
       {viewing&&(
-        <div className="coc-modal-backdrop" onClick={()=>setViewing(null)}>
+        <div className="coc-modal-backdrop" onClick={closeChar}>
           <div className="coc-modal" onClick={e=>e.stopPropagation()}>
             <div style={{padding:20}}>
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:4}}>
-                <button className="coc-btn ghost small" onClick={()=>setViewing(null)} style={{padding:6}}><X size={13}/></button>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>탐사자 시트</div>
+                <button className="coc-btn ghost small" onClick={closeChar} style={{padding:6}}><X size={13}/></button>
               </div>
-              <SheetEditor sheet={viewing} setSheet={()=>{}} readOnly/>
+              <SheetEditor sheet={viewDraft} setSheet={setViewDraft} allowRoll={true}/>
+              <button className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:14}} disabled={savingChar} onClick={saveChar}>
+                {savingChar?"저장 중...":"저장"}
+              </button>
             </div>
           </div>
         </div>
@@ -1411,7 +1449,7 @@ function buildHtmlExport(room,transcript,theme){
     // (예전에는 메시지 하나하나마다 사진 base64 코드가 통째로 반복돼서 파일이 쓸데없이 길었어요.)
     const groups=groupMessages(tab.messages);
     const msgs=groups.map(g=>{
-      if(g.speaker==="narrate"||g.speaker==="system"){
+      if(g.speaker==="narrate"||g.speaker==="system"||g.speaker==="choicepick"){
         return g.lines.map(line=>`<div style="${S.anon}" data-role="narrate">${chatTextToHtml(line,theme)}</div>`).join("\n");
       }
       if(g.speaker==="judge"){
@@ -1706,7 +1744,7 @@ function groupMessages(msgs){
   const groups=[];
   for(const m of msgs){
     const last=groups[groups.length-1];
-    const sameBlock=last&&m.speaker!=="choice"&&m.speaker!=="judge"&&last.speaker===m.speaker&&last.userCode===m.userCode&&last.characterName===m.characterName&&m.timestamp-last.lastTimestamp<60000;
+    const sameBlock=last&&m.speaker!=="choice"&&m.speaker!=="judge"&&m.speaker!=="choicepick"&&last.speaker===m.speaker&&last.userCode===m.userCode&&last.characterName===m.characterName&&m.timestamp-last.lastTimestamp<60000;
     if(sameBlock){last.lines.push(m.text);last.items.push(m);last.lastTimestamp=m.timestamp;}
     else groups.push({id:m.id,speaker:m.speaker,userCode:m.userCode,characterName:m.characterName,nameColor:m.nameColor,avatar:m.avatar,timestamp:m.timestamp,lastTimestamp:m.timestamp,lines:[m.text],items:[m]});
   }
@@ -1788,7 +1826,7 @@ function FormattedText({text,style={},maxChars}){
 function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   const{speaker,characterName,nameColor,avatar,timestamp,lines,items}=group;
   const nameCol=safeNameColor(nameColor)||"var(--accent-deep)";
-  const isAnon=speaker==="narrate"||speaker==="judge"||speaker==="system";
+  const isAnon=speaker==="narrate"||speaker==="judge"||speaker==="system"||speaker==="choicepick";
   const isDice=speaker==="dice";
   const isImg=speaker==="image";
   const isChoice=speaker==="choice";
@@ -3310,7 +3348,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
     const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
     await storeSet(key,{...msg,text:JSON.stringify(updatedData)},true);
     const optionStyled=`<span style="color:var(--accent-deep);font-weight:700">${option}</span>`;
-    await doSend("system",`${optionStyled}`,"","",tid);
+    // "system"이 아니라 별도의 speaker("choicepick")로 보내서, 대사창이 아니라
+    // 화면 중앙에 판정 결과처럼 짧게 뜨도록 합니다.
+    await doSend("choicepick",`${optionStyled}`,"","",tid);
   };
   const handleCreateChoice=async(options,multi)=>{
     const payload=JSON.stringify({options,picked:{},multi});
@@ -3335,10 +3375,22 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   },[room.id,activeTab]);
   const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].sort((a,b)=>a.timestamp-b.timestamp);
 
-  // 비주얼노벨 스타일 대사창: 내 대사는 하단에, GM·다른 사람 대사는 상단에 따로 뜨도록
-  // "내 것"과 "다른 사람 것"을 각각 가장 최근 것으로 나눠서 찾습니다.
-  const myLatestDialogue=[...stageMsgs].reverse().find(m=>m.userCode===userCode&&["ic","npc","narrate","system","dice"].includes(m.speaker));
-  const othersLatestDialogue=[...stageMsgs].reverse().find(m=>m.userCode!==userCode&&["ic","npc","narrate","system","dice"].includes(m.speaker));
+  // 비주얼노벨 스타일 대사창:
+  // - 서술(narrate/system)은 누가 보냈든(GM이든 나든) 항상 "하단" 대사창에 뜹니다.
+  // - "상대방"의 대사(ic/npc)·주사위는 "상단"에 뜹니다.
+  // - 서술이 새로 뜨면, 상단에 남아있던 상대방 대사창은 사라집니다. 다만 서술 없이
+  //   내 대사만 다시 나온 경우(예: 1→2→1)에는 상단의 2(상대방) 대사가 그대로 유지됩니다.
+  const myLatestDialogue=[...stageMsgs].reverse().find(m=>
+    m.speaker==="narrate"||m.speaker==="system"||
+    (m.userCode===userCode&&["ic","npc","dice"].includes(m.speaker))
+  );
+  let othersLatestDialogue=null;
+  for(let i=stageMsgs.length-1;i>=0;i--){
+    const m=stageMsgs[i];
+    if(m.speaker==="narrate"||m.speaker==="system") break; // 서술을 먼저 만나면 상단은 비운 채로 멈춤
+    if(m.userCode!==userCode&&["ic","npc","dice"].includes(m.speaker)){ othersLatestDialogue=m; break; }
+    // 그 외(선택지·판정·내 대사 등)는 건너뛰고 계속 거슬러 올라갑니다
+  }
 
   // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다. 상단(다른 사람)과
   // 하단(나) 대사창이 서로 독립적으로 타이핑되도록 각각 따로 관리합니다.
@@ -3370,9 +3422,25 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
   // 판정은 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
   // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
   const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
+  // 선택지를 고른 결과도 판정처럼 화면 중앙에 짧게 팝업으로 뜹니다 (대사창이 아니라).
+  const activeChoiceResult=latestOverallMsg&&latestOverallMsg.speaker==="choicepick"?latestOverallMsg:null;
   // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는
   // 공용 이펙트라, "지금 진짜로 가장 최근"인 주사위일 때만 뜨도록 별도로 둡니다.
   const activeDiceCutin=latestOverallMsg&&latestOverallMsg.speaker==="dice"?latestOverallMsg:null;
+  // 컷인은 계속 떠 있지 않고, 새로 뜬 그 순간에만 "한 번 슥" 재생되고 자동으로 사라집니다.
+  // (활성 상태로만 두면 다음 메시지가 올 때까지 계속 화면에 남아있게 됩니다.)
+  const [playingCutinId,setPlayingCutinId]=useState(null);
+  const seenCutinIdRef=useRef(null);
+  useEffect(()=>{
+    if(!activeDiceCutin){ seenCutinIdRef.current=null; return; }
+    if(seenCutinIdRef.current===activeDiceCutin.id) return; // 이미 재생한 건 다시 트리거하지 않음
+    seenCutinIdRef.current=activeDiceCutin.id;
+    let d=null; try{d=JSON.parse(activeDiceCutin.text);}catch{}
+    if(!d||!diceCutins[d.label]) return; // 그 등급용 컷인 이미지가 없으면 재생하지 않음
+    setPlayingCutinId(activeDiceCutin.id);
+    const t=setTimeout(()=>setPlayingCutinId(id=>id===activeDiceCutin.id?null:id),1700);
+    return()=>clearTimeout(t);
+  },[activeDiceCutin?.id,diceCutins]); // eslint-disable-line
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
     background:active?"var(--accent)":"var(--surface)",
@@ -3587,9 +3655,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
             </div>
           </div>
         )}
-        {othersLatestDialogue&&(othersLatestDialogue.speaker==="narrate"||othersLatestDialogue.speaker==="system")&&(
-          <div className="vn-narration-box vn-narration-box-top"><FormattedText text={othersLatestDialogue.text} maxChars={typedCountOthers}/></div>
-        )}
         {othersLatestDialogue&&othersLatestDialogue.speaker==="dice"&&(()=>{
           let d=null;try{d=JSON.parse(othersLatestDialogue.text);}catch{}
           if(!d)return null;
@@ -3628,11 +3693,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark}){
           {activeJudge&&(
             <div className="vn-judge-popup"><FormattedText text={activeJudge.text}/></div>
           )}
-          {activeDiceCutin&&(()=>{
+          {activeChoiceResult&&(
+            <div className="vn-judge-popup"><FormattedText text={activeChoiceResult.text}/></div>
+          )}
+          {activeDiceCutin&&playingCutinId===activeDiceCutin.id&&(()=>{
             let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
             if(!d)return null;
             const cutin=diceCutins[d.label];
-            return cutin?<img src={cutin} className="vn-dice-cutin" alt=""/>:null;
+            if(!cutin)return null;
+            return(
+              <>
+                <div className="vn-cutin-backdrop"/>
+                <img key={activeDiceCutin.id} src={cutin} className="vn-dice-cutin" alt=""/>
+              </>
+            );
           })()}
         </div>
 
