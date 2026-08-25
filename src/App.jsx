@@ -229,6 +229,13 @@ input[type=number] { -moz-appearance: textfield; }
     outline: 2px dashed transparent; outline-offset: -2px;
   }
   .stage-panel.drag-over { outline-color: var(--accent); background-color: var(--accent-soft); }
+  /* 배경 사진은 이 전용 레이어에만 블러를 줘서, 그 위에 있는 툴바·대사창·토큰은
+     선명하게 유지됩니다. 살짝 확대해서 블러 때문에 가장자리가 비치는 것도 가려요. */
+  .stage-bg-blur {
+    position: absolute; inset: -20px; z-index: 0;
+    background-size: cover; background-position: center; background-repeat: no-repeat;
+    filter: blur(16px); transform: scale(1.08);
+  }
 }
 /* 채팅창 폭 조절 핸들: 데스크톱 2단 레이아웃에서만 보입니다. */
 .chat-resize-handle { display: none; }
@@ -2148,14 +2155,27 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
 // 좌측 아이콘 바의 "레이어" 패널에서 합니다(포토샵 레이어창처럼요). 드래그·리사이즈 도중에는
 // 화면에서만 바로바로 움직이다가, 손을 뗀 순간에만 서버에 저장해서(=다른 사람 화면에 반영) 씁니다.
 function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
+  const editable=canEdit&&!layer.locked;
+  // 무대(.stage-scene) 크기를 기준으로 픽셀 이동량을 %로 바꿔줍니다. 이렇게 하면 위치·크기가
+  // "화면 몇 픽셀"이 아니라 "무대의 몇 %"로 저장되어서, 창 크기나 보는 사람 화면 크기가 달라도
+  // 항상 같은 상대적 자리에 보입니다.
+  const getContainerSize=el=>{
+    const container=el.closest(".stage-scene");
+    const rect=container?container.getBoundingClientRect():{width:1000,height:600};
+    return {w:rect.width||1000,h:rect.height||600};
+  };
   const onDragMouseDown=e=>{
-    if(!canEdit||e.button!==0)return;
+    if(!editable||e.button!==0)return;
     e.stopPropagation();e.preventDefault();
     onSelect();
+    const {w:cw,h:ch}=getContainerSize(e.currentTarget);
     const startX=e.clientX,startY=e.clientY;
     const origX=layer.x,origY=layer.y;
     let last={x:origX,y:origY};
-    const onMove=ev=>{ last={x:origX+(ev.clientX-startX),y:origY+(ev.clientY-startY)}; onUpdate(last); };
+    const onMove=ev=>{
+      last={x:origX+(ev.clientX-startX)/cw*100,y:origY+(ev.clientY-startY)/ch*100};
+      onUpdate(last);
+    };
     const onUp=()=>{
       document.removeEventListener("mousemove",onMove); document.removeEventListener("mouseup",onUp);
       onCommit(last);
@@ -2165,18 +2185,19 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
   };
   // 포토샵 컨트롤+T처럼, 선택하면 네 모서리에 손잡이가 생기고 어느 쪽을 잡아도 크기를 조절할 수 있습니다.
   const onCornerMouseDown=(corner)=>e=>{
-    if(!canEdit)return;
+    if(!editable)return;
     e.stopPropagation();e.preventDefault();
+    const {w:cw,h:ch}=getContainerSize(e.currentTarget);
     const startX=e.clientX,startY=e.clientY;
     const origX=layer.x,origY=layer.y,origW=layer.width,origH=layer.height;
     let last={x:origX,y:origY,width:origW,height:origH};
     const onMove=ev=>{
-      const dx=ev.clientX-startX, dy=ev.clientY-startY;
+      const dx=(ev.clientX-startX)/cw*100, dy=(ev.clientY-startY)/ch*100;
       let{x,y,width,height}={x:origX,y:origY,width:origW,height:origH};
-      if(corner.includes("e")) width=Math.max(24,origW+dx);
-      if(corner.includes("s")) height=Math.max(24,origH+dy);
-      if(corner.includes("w")){ width=Math.max(24,origW-dx); x=origX+origW-width; }
-      if(corner.includes("n")){ height=Math.max(24,origH-dy); y=origY+origH-height; }
+      if(corner.includes("e")) width=Math.max(3,origW+dx);
+      if(corner.includes("s")) height=Math.max(3,origH+dy);
+      if(corner.includes("w")){ width=Math.max(3,origW-dx); x=origX+origW-width; }
+      if(corner.includes("n")){ height=Math.max(3,origH-dy); y=origY+origH-height; }
       last={x,y,width,height};
       onUpdate(last);
     };
@@ -2187,20 +2208,49 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
     document.addEventListener("mousemove",onMove);
     document.addEventListener("mouseup",onUp);
   };
+  // 코코포리아처럼 회전도 됩니다 — 위쪽 손잡이를 잡고 돌리면 그 방향으로 각도가 정해져요.
+  const onRotateMouseDown=e=>{
+    if(!editable)return;
+    e.stopPropagation();e.preventDefault();
+    const el=e.currentTarget.parentElement;
+    const onMove=ev=>{
+      const rect=el.getBoundingClientRect();
+      const cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+      const rad=Math.atan2(ev.clientY-cy,ev.clientX-cx);
+      let deg=rad*(180/Math.PI)+90;
+      onUpdate({angle:Math.round(deg)});
+    };
+    const onUp=()=>{
+      document.removeEventListener("mousemove",onMove); document.removeEventListener("mouseup",onUp);
+      onCommit({angle:Math.round(layer.angle||0)});
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  };
   const handleStyle={position:"absolute",width:12,height:12,background:"var(--accent)",border:"1.5px solid #fff",borderRadius:3,zIndex:2};
   return(
     <div onMouseDown={onDragMouseDown}
-      style={{position:"absolute",left:layer.x,top:layer.y,width:layer.width,height:layer.height,zIndex,
-        cursor:canEdit?"move":"default",touchAction:"none",
+      style={{position:"absolute",left:`${layer.x}%`,top:`${layer.y}%`,width:`${layer.width}%`,height:`${layer.height}%`,zIndex,
+        transform:`rotate(${layer.angle||0}deg)`,
+        cursor:editable?"move":"default",touchAction:"none",
         outline:selected&&canEdit?"1.5px dashed var(--accent)":"none",outlineOffset:2}}>
       <img src={layer.url} draggable={false} alt=""
         style={{width:"100%",height:"100%",objectFit:"contain",userSelect:"none",pointerEvents:"none",filter:"drop-shadow(0 4px 10px rgba(0,0,0,0.25))"}}/>
-      {canEdit&&selected&&(
+      {layer.locked&&canEdit&&(
+        <div style={{position:"absolute",top:4,left:4,width:16,height:16,borderRadius:4,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Lock size={9} color="#fff"/>
+        </div>
+      )}
+      {editable&&selected&&(
         <>
           <div onMouseDown={onCornerMouseDown("nw")} style={{...handleStyle,top:-6,left:-6,cursor:"nwse-resize"}}/>
           <div onMouseDown={onCornerMouseDown("ne")} style={{...handleStyle,top:-6,right:-6,cursor:"nesw-resize"}}/>
           <div onMouseDown={onCornerMouseDown("sw")} style={{...handleStyle,bottom:-6,left:-6,cursor:"nesw-resize"}}/>
           <div onMouseDown={onCornerMouseDown("se")} style={{...handleStyle,bottom:-6,right:-6,cursor:"nwse-resize"}}/>
+          <div onMouseDown={onRotateMouseDown}
+            style={{position:"absolute",top:-28,left:"50%",transform:"translateX(-50%)",width:12,height:12,
+              background:"var(--accent)",border:"1.5px solid #fff",borderRadius:"50%",cursor:"grab",zIndex:2}}/>
+          <div style={{position:"absolute",top:-22,left:"50%",width:1,height:14,background:"var(--accent)",transform:"translateX(-50%)"}}/>
         </>
       )}
     </div>
@@ -2211,14 +2261,19 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
 // 자유롭게 옮길 수 있는 떠있는 바입니다. (시트·꾸미기 창이랑 같은 드래그 방식)
 function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFileChange,
   layers,showLayerPanel,setShowLayerPanel,layerPanelRef,layerFileInputRef,onLayerFileChange,
-  layerUrlInput,setLayerUrlInput,onAddLayerUrl,layerDragIndex,setLayerDragIndex,onReorderLayer,onRemoveLayer,
+  layerUrlInput,setLayerUrlInput,onAddLayerUrl,layerDragIndex,setLayerDragIndex,onReorderLayer,onRemoveLayer,onUpdateLayer,
   onOpenDistribute,onOpenDecorate,
   npcBookmarks,showBookmarkPanel,setShowBookmarkPanel,bookmarkPanelRef,
   npcName,npcAvatar,onSaveNpcBookmark,onApplyNpcBookmark,onRemoveNpcBookmark,
   showImgPopover,setShowImgPopover,imgPopoverRef,imgInputRef,onImgFileChange,
-  imgUrlInput,setImgUrlInput,onSendImageUrl}){
+  imgUrlInput,setImgUrlInput,onSendImageUrl,onImportCocofolia}){
   const wrapRef=useRef(null);
   const [pos,setPos]=useState(null);
+  const [showCocoSetup,setShowCocoSetup]=useState(false);
+  const [cocoJsonFile,setCocoJsonFile]=useState(null);
+  const [cocoImageFiles,setCocoImageFiles]=useState([]);
+  const [cocoReplace,setCocoReplace]=useState(true);
+  const [cocoImporting,setCocoImporting]=useState(false);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const clamp=(x,y)=>{
     const el=wrapRef.current;
@@ -2277,12 +2332,43 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
               <Camera size={13}/> 사진 추가
             </button>
             <input ref={layerFileInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={onLayerFileChange}/>
-            <div style={{display:"flex",gap:6,marginBottom:10}}>
+            <div style={{display:"flex",gap:6,marginBottom:8}}>
               <input className="coc-input" value={layerUrlInput} onChange={e=>setLayerUrlInput(e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter"&&layerUrlInput.trim()){e.preventDefault();onAddLayerUrl();}}}
                 placeholder="이미지 링크" style={{flex:1,fontSize:11.5}}/>
               <button type="button" className="coc-btn ghost small" disabled={!layerUrlInput.trim()} onClick={onAddLayerUrl}>추가</button>
             </div>
+            <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center",marginBottom:10}}
+              onClick={()=>setShowCocoSetup(v=>!v)}>
+              <Settings size={12}/> 세팅 (코코포리아 JSON으로 배치)
+            </button>
+            {showCocoSetup&&(
+              <div style={{border:"1px solid var(--border-soft)",borderRadius:8,padding:8,marginBottom:10,background:"var(--bg-panel)"}}>
+                <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:8}}>
+                  코코포리아에서 내보낸 JSON 파일과, 거기서 쓰인 이미지 파일들을 그대로(파일명 바꾸지 말고) 같이 넣으면 위치를 맞춰서 자동으로 배치해줘요.
+                </div>
+                <div className="coc-label" style={{marginBottom:4,fontSize:10.5}}>JSON 파일</div>
+                <input type="file" accept="application/json,.json" style={{fontSize:10.5,marginBottom:8,width:"100%"}}
+                  onChange={e=>setCocoJsonFile(e.target.files?.[0]||null)}/>
+                <div className="coc-label" style={{marginBottom:4,fontSize:10.5}}>이미지 파일들 (한꺼번에 여러 개 선택 가능)</div>
+                <input type="file" accept="image/*" multiple style={{fontSize:10.5,marginBottom:8,width:"100%"}}
+                  onChange={e=>setCocoImageFiles([...(e.target.files||[])])}/>
+                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,color:"var(--text-dim)",marginBottom:8,cursor:"pointer"}}>
+                  <input type="checkbox" checked={cocoReplace} onChange={e=>setCocoReplace(e.target.checked)} style={{cursor:"pointer"}}/>
+                  기존 레이어 지우고 새로 배치하기
+                </label>
+                <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
+                  disabled={!cocoJsonFile||cocoImageFiles.length===0||cocoImporting}
+                  onClick={async()=>{
+                    setCocoImporting(true);
+                    await onImportCocofolia(cocoJsonFile,cocoImageFiles,{replace:cocoReplace});
+                    setCocoImporting(false);
+                    setShowCocoSetup(false);setCocoJsonFile(null);setCocoImageFiles([]);
+                  }}>
+                  {cocoImporting?"배치하는 중...":"적용"}
+                </button>
+              </div>
+            )}
             {layers.length===0?(
               <div style={{fontSize:11.5,color:"var(--text-faint)",textAlign:"center",padding:"8px 0"}}>아직 올린 사진이 없어요</div>
             ):(
@@ -2300,6 +2386,13 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
                       <img src={l.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                     </div>
                     <span style={{fontSize:11.5,color:"var(--text-dim)",flex:1}}>레이어 {layers.length-i}</span>
+                    <input type="number" value={Math.round(l.angle||0)} title="회전 각도"
+                      onChange={e=>onUpdateLayer(l.id,{angle:Number(e.target.value)||0})}
+                      style={{width:38,fontSize:10.5,padding:"2px 3px",border:"1px solid var(--border)",borderRadius:4,textAlign:"center",background:"var(--surface)",color:"var(--text-dim)"}}/>
+                    <button type="button" onClick={()=>onUpdateLayer(l.id,{locked:!l.locked})} title={l.locked?"잠금 해제":"이 레이어만 잠그기"}
+                      style={{background:"none",border:"none",cursor:"pointer",color:l.locked?"var(--accent-deep)":"var(--text-faint)",padding:2,display:"flex"}}>
+                      {l.locked?<Lock size={12}/>:<Unlock size={12}/>}
+                    </button>
                     <button type="button" onClick={()=>onRemoveLayer(l.id)}
                       style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1}}>×</button>
                   </div>
@@ -3241,7 +3334,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는 기능.
   // 공개(채팅에 안내)/비공개(시트에만 반영, 안내 없음) 중 GM이 고를 수 있습니다.
-  const [showStatAdjustForm,setShowStatAdjustForm]=useState(false);
   const [statAdjustTarget,setStatAdjustTarget]=useState(null);
   const [statAdjustCategory,setStatAdjustCategory]=useState("characteristics"); // characteristics | derived | skills
   const [statAdjustKey,setStatAdjustKey]=useState("");
@@ -3422,30 +3514,75 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   },[room.id]);
 
   // 좌측 무대 배경/장면 이미지: GM이 올리면 방 전체(모든 참가자의 PC 화면)에 실시간 반영됩니다.
+  // ※ APNG(움직이는 PNG)나 GIF는 캔버스로 압축하면 애니메이션이 깨져버려서(정지 프레임 한 장만
+  // 남음), PNG·GIF 파일은 압축 없이 원본 그대로 여러 조각으로 나눠 저장합니다(다이스 컷인과
+  // 같은 방식). 그 외(JPEG 등, 애니메이션 걱정 없는) 사진은 기존처럼 압축해서 하나의 문서에
+  // 저장해 용량을 아낍니다.
+  const SCENE_CHUNK_SIZE=700000;
   const [sceneUrl,setSceneUrl]=useState("");
   const [showDecorate,setShowDecorate]=useState(false);
   const [showDistribute,setShowDistribute]=useState(false);
   const sceneInputRef=useRef(null);
   useEffect(()=>{
-    const unsub=storeListenDoc(`scene:${room.id}`,d=>{ setSceneUrl(d?.url||""); });
+    const unsub=storeListenDoc(`scene:${room.id}`,async manifest=>{
+      if(!manifest){ setSceneUrl(""); return; }
+      if(manifest.url!==undefined){ setSceneUrl(manifest.url); return; } // 압축 저장(정적 이미지)
+      const total=manifest.chunks||0;
+      if(total<=0){ setSceneUrl(""); return; }
+      const parts=await Promise.all(Array.from({length:total},(_,i)=>storeGet(`scenechunk:${room.id}:${i}`,true)));
+      if(parts.some(p=>!p||p.data===undefined))return; // 아직 조각이 다 안 올라왔으면 건너뜀
+      setSceneUrl(parts.map(p=>p.data).join(""));
+    });
     return()=>unsub();
   },[room.id]);
   const uploadScene=async file=>{
-    const url=await fileToBestQualityDataURL(file);
-    // 글리치/노이즈가 많은 사진처럼 압축이 잘 안 먹히는 이미지는, 최대한 줄여도
-    // Firestore 문서 용량 한도(약 1MB)를 넘을 수 있습니다. 이 경우 저장이 조용히
-    // 실패하고(로컬엔 잠깐 반영됐다가 서버 값으로 되돌아가며) "깜빡이다 사라지는"
-    // 것처럼 보이므로, 미리 확인해서 바로 알려줍니다.
-    if(url.length*0.75>950000){
-      alert("이 이미지는 압축해도 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 단순한 이미지나 더 작은 파일로 다시 시도해주세요.");
-      return;
-    }
-    const res=await storeSet(`scene:${room.id}`,{url},true);
-    if(res&&res.ok===false){
-      alert("배경 저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+    const prevManifest=await storeGet(`scene:${room.id}`,true);
+    const prevTotal=prevManifest?.chunks||0;
+    const animatable=file.type==="image/png"||file.type==="image/gif";
+    if(animatable){
+      const dataUrl=await fileToRawDataURL(file);
+      if(dataUrl.length>8000000){
+        alert("이미지 용량이 너무 커서 저장할 수 없어요(최대 약 6MB 파일). 더 작은 파일로 다시 시도해주세요.");
+        return;
+      }
+      const total=Math.ceil(dataUrl.length/SCENE_CHUNK_SIZE);
+      for(let i=0;i<total;i++){
+        const chunk=dataUrl.slice(i*SCENE_CHUNK_SIZE,(i+1)*SCENE_CHUNK_SIZE);
+        const res=await storeSet(`scenechunk:${room.id}:${i}`,{data:chunk},true);
+        if(res&&res.ok===false){
+          alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+          return;
+        }
+      }
+      for(let i=total;i<prevTotal;i++){ await storeDelete(`scenechunk:${room.id}:${i}`,true); }
+      const res=await storeSet(`scene:${room.id}`,{chunks:total},true);
+      if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return; }
+      setSceneUrl(dataUrl);
+    }else{
+      const url=await fileToBestQualityDataURL(file);
+      // 글리치/노이즈가 많은 사진처럼 압축이 잘 안 먹히는 이미지는, 최대한 줄여도
+      // Firestore 문서 용량 한도(약 1MB)를 넘을 수 있습니다. 이 경우 저장이 조용히
+      // 실패하고(로컬엔 잠깐 반영됐다가 서버 값으로 되돌아가며) "깜빡이다 사라지는"
+      // 것처럼 보이므로, 미리 확인해서 바로 알려줍니다.
+      if(url.length*0.75>950000){
+        alert("이 이미지는 압축해도 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 단순한 이미지나 더 작은 파일로 다시 시도해주세요.");
+        return;
+      }
+      for(let i=0;i<prevTotal;i++){ await storeDelete(`scenechunk:${room.id}:${i}`,true); } // 이전에 조각 저장된 배경 정리
+      const res=await storeSet(`scene:${room.id}`,{url},true);
+      if(res&&res.ok===false){
+        alert("배경 저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
+        return;
+      }
+      setSceneUrl(url);
     }
   };
-  const clearScene=async()=>{ await storeSet(`scene:${room.id}`,{url:""},true); };
+  const clearScene=async()=>{
+    const prevManifest=await storeGet(`scene:${room.id}`,true);
+    const prevTotal=prevManifest?.chunks||0;
+    for(let i=0;i<prevTotal;i++){ await storeDelete(`scenechunk:${room.id}:${i}`,true); }
+    await storeSet(`scene:${room.id}`,{url:""},true);
+  };
 
   // GM이 무대 위로 이미지 파일을 드래그&드롭하면 바로 배경으로 설정됩니다.
   const [stageDragOver,setStageDragOver]=useState(false);
@@ -3555,7 +3692,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
   const addLayer=url=>{
     setLayers(ls=>{
-      const next=[{id:newId(),url,x:60,y:60,width:140,height:140},...ls];
+      const next=[{id:newId(),url,x:10,y:10,width:20,height:20},...ls];
       syncLayers(next);
       return next;
     });
@@ -3563,6 +3700,53 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const addLayerFromFile=async file=>{
     const url=await fileToResizedPNG(file,700);
     addLayer(url);
+  };
+
+  // 코코포리아 방 내보내기(JSON) + 첨부 이미지들을 한꺼번에 넣으면, 배경/토큰 위치를
+  // 자동으로 배치해주는 "세팅" 기능. 코코포리아는 중앙이 원점인 격자 단위 좌표계를 쓰는데,
+  // 저희는 무대 크기 대비 %를 쓰기 때문에 좌표를 서로 변환해줍니다.
+  const importCocofoliaSetup=async(jsonFile,imageFiles,{replace})=>{
+    let data;
+    try{ data=JSON.parse(await jsonFile.text()); }
+    catch{ alert("JSON 파일을 읽을 수 없어요. 코코포리아에서 내보낸 파일이 맞는지 확인해주세요."); return; }
+    const room=data?.entities?.room;
+    const items=data?.entities?.items;
+    if(!room||!items){ alert("이 파일에서 방 정보를 찾을 수 없어요."); return; }
+    const fw=room.fieldWidth||100, fh=room.fieldHeight||100;
+    const fileByName={};
+    imageFiles.forEach(f=>{ fileByName[f.name]=f; });
+
+    // 배경(있고, 첨부한 이미지 중에 파일명이 일치하는 게 있으면)
+    if(room.backgroundUrl&&fileByName[room.backgroundUrl]){
+      await uploadScene(fileByName[room.backgroundUrl]);
+    }
+
+    // 항목들: order가 클수록 앞(우리 배열은 index 0이 맨 앞)이라 내림차순 정렬
+    const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
+    const newLayers=[];
+    let missing=0;
+    for(const it of sorted){
+      const file=fileByName[it.imageUrl];
+      if(!file){ missing++; continue; }
+      const url=await fileToResizedPNG(file,700);
+      newLayers.push({
+        id:newId(),
+        url,
+        x:((it.x||0)+fw/2)/fw*100,
+        y:((it.y||0)+fh/2)/fh*100,
+        width:(it.width||10)/fw*100,
+        height:(it.height||10)/fh*100,
+        angle:it.angle||0,
+        locked:!!it.locked,
+      });
+    }
+    if(newLayers.length===0){ alert("일치하는 이미지 파일을 하나도 못 찾았어요. 파일명을 바꾸지 않고 그대로 올려주세요."); return; }
+    setLayers(ls=>{
+      const next=replace?newLayers:[...newLayers,...ls];
+      syncLayers(next);
+      return next;
+    });
+    if(missing>0) alert(`레이어는 넣었는데, 이미지 ${missing}개는 첨부 파일 중에서 못 찾아서 건너뛰었어요.`);
   };
   // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
   const updateLayerLocal=(id,patch)=>setLayers(ls=>ls.map(l=>l.id===id?{...l,...patch}:l));
@@ -3987,8 +4171,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         </div>
       </div>
 
-      <div className={"stage-panel"+(stageDragOver?" drag-over":"")} style={sceneUrl?{backgroundImage:`url(${sceneUrl})`}:undefined}
+      <div className={"stage-panel"+(stageDragOver?" drag-over":"")}
         onDragOver={handleStageDragOver} onDragEnter={handleStageDragOver} onDragLeave={handleStageDragLeave} onDrop={handleStageDrop}>
+        {sceneUrl&&<div className="stage-bg-blur" style={{backgroundImage:`url(${sceneUrl})`}}/>}
         {isGM&&stageDragOver&&(
           <div style={{position:"absolute",inset:0,zIndex:9,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}>
             <div style={{background:"var(--glass)",backdropFilter:"blur(4px)",borderRadius:12,padding:"14px 20px",fontSize:14,fontWeight:600,color:"var(--accent-deep)"}}>
@@ -4395,13 +4580,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           layerUrlInput={layerUrlInput} setLayerUrlInput={setLayerUrlInput}
           onAddLayerUrl={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");}}
           layerDragIndex={layerDragIndex} setLayerDragIndex={setLayerDragIndex}
-          onReorderLayer={reorderLayer} onRemoveLayer={removeLayer}
+          onReorderLayer={reorderLayer} onRemoveLayer={removeLayer} onUpdateLayer={commitLayer}
           onOpenDistribute={()=>setShowDistribute(true)} onOpenDecorate={()=>setShowDecorate(true)}
           npcBookmarks={npcBookmarks} showBookmarkPanel={showBookmarkPanel} setShowBookmarkPanel={setShowBookmarkPanel} bookmarkPanelRef={bookmarkPanelRef}
           npcName={npcName} npcAvatar={npcAvatar} onSaveNpcBookmark={saveNpcBookmark} onApplyNpcBookmark={applyNpcBookmark} onRemoveNpcBookmark={removeNpcBookmark}
           showImgPopover={showImgPopover} setShowImgPopover={setShowImgPopover} imgPopoverRef={imgPopoverRef}
           imgInputRef={imgInputRef} onImgFileChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}
-          imgUrlInput={imgUrlInput} setImgUrlInput={setImgUrlInput} onSendImageUrl={sendImageUrl}/>
+          imgUrlInput={imgUrlInput} setImgUrlInput={setImgUrlInput} onSendImageUrl={sendImageUrl}
+          onImportCocofolia={importCocofoliaSetup}/>
       )}
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
@@ -4505,6 +4691,24 @@ class ErrorBoundary extends React.Component {
 /* ============================== APP ============================== */
 
 function AppInner(){
+  // 탭바 아이콘(파비콘)을 사이트 이름 그대로 하트(♡) 모양으로 설정합니다.
+  // 별도 이미지 파일 없이, 글자를 SVG로 그려서 데이터 URL로 바로 넣어요.
+  useEffect(()=>{
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">`+
+      `<rect width="64" height="64" rx="16" fill="#e0507a"/>`+
+      `<text x="32" y="46" font-size="38" text-anchor="middle" fill="#ffffff" `+
+      `font-family="Arial, sans-serif">♡</text></svg>`;
+    const href="data:image/svg+xml,"+encodeURIComponent(svg);
+    let link=document.querySelector("link[rel~='icon']");
+    if(!link){
+      link=document.createElement("link");
+      link.rel="icon";
+      document.head.appendChild(link);
+    }
+    link.type="image/svg+xml";
+    link.href=href;
+    if(!document.title||document.title==="React App") document.title="Heart Emoji (♡)";
+  },[]);
   const [user,setUser]=useState(null);
   const [authChecked,setAuthChecked]=useState(false);
   const [tab,setTab]=useState("rooms");
