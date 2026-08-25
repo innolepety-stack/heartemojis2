@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
   Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock,
-  Heart, Check, Mail, AlertTriangle
+  Heart, Check, Mail, AlertTriangle, Bookmark
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -2212,7 +2212,11 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
 function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFileChange,
   layers,showLayerPanel,setShowLayerPanel,layerPanelRef,layerFileInputRef,onLayerFileChange,
   layerUrlInput,setLayerUrlInput,onAddLayerUrl,layerDragIndex,setLayerDragIndex,onReorderLayer,onRemoveLayer,
-  onOpenDistribute,onOpenDecorate}){
+  onOpenDistribute,onOpenDecorate,
+  npcBookmarks,showBookmarkPanel,setShowBookmarkPanel,bookmarkPanelRef,
+  npcName,npcAvatar,onSaveNpcBookmark,onApplyNpcBookmark,onRemoveNpcBookmark,
+  showImgPopover,setShowImgPopover,imgPopoverRef,imgInputRef,onImgFileChange,
+  imgUrlInput,setImgUrlInput,onSendImageUrl}){
   const wrapRef=useRef(null);
   const [pos,setPos]=useState(null);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
@@ -2314,6 +2318,64 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
       <button type="button" onClick={onOpenDecorate} title="꾸미기" style={btnStyle}>
         <Brush size={16}/>
       </button>
+
+      <div style={{position:"relative"}} ref={imgPopoverRef}>
+        <button type="button" onClick={()=>setShowImgPopover(v=>!v)} title="이미지 전송" style={btnStyle}>
+          <Camera size={16}/>
+        </button>
+        {showImgPopover&&(
+          <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:31,width:230,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
+            <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>imgInputRef.current?.click()}>
+              파일에서 선택
+            </button>
+            <div style={{display:"flex",gap:6}}>
+              <input className="coc-input" value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();onSendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}}
+                placeholder="이미지 링크 (Imgur 등)" style={{flex:1,fontSize:12}}/>
+              <button type="button" className="coc-btn small" disabled={!imgUrlInput.trim()}
+                onClick={()=>{onSendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}>
+                삽입
+              </button>
+            </div>
+          </div>
+        )}
+        <input ref={imgInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={onImgFileChange}/>
+      </div>
+
+      <div style={{position:"relative"}} ref={bookmarkPanelRef}>
+        <button type="button" onClick={()=>setShowBookmarkPanel(v=>!v)} title="NPC 북마크"
+          style={{...btnStyle,color:npcBookmarks.length>0?"var(--accent-deep)":"var(--text-dim)",borderColor:npcBookmarks.length>0?"var(--accent)":"var(--border)"}}>
+          <Bookmark size={16}/>
+        </button>
+        {showBookmarkPanel&&(
+          <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:31,width:230,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
+            <div className="coc-label" style={{marginBottom:8}}>NPC 북마크</div>
+            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:10}}
+              disabled={!npcName.trim()} onClick={onSaveNpcBookmark}>
+              <Plus size={13}/> 지금 NPC 저장 {npcName.trim()?`(${npcName.trim()})`:""}
+            </button>
+            {npcBookmarks.length===0?(
+              <div style={{fontSize:11.5,color:"var(--text-faint)",textAlign:"center",padding:"8px 0"}}>저장된 NPC가 없어요</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:260,overflowY:"auto"}}>
+                {npcBookmarks.map(bm=>(
+                  <div key={bm.id} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 6px",borderRadius:6,background:"var(--bg-panel)"}}>
+                    <button type="button" onClick={()=>onApplyNpcBookmark(bm)}
+                      style={{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
+                      <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"#fff",border:"1px solid var(--border)"}}>
+                        {bm.avatar?<img src={bm.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:null}
+                      </div>
+                      <span style={{fontSize:12.5,color:bm.nameColor||"var(--text-dim)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bm.name}</span>
+                    </button>
+                    <button type="button" onClick={()=>onRemoveNpcBookmark(bm.id)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1,flexShrink:0}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -2880,6 +2942,32 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [npcAvatar,setNpcAvatar]=useState("");
   const [npcNameColor,setNpcNameColor]=useState(""); // NPC 이름 색깔 (비우면 기본 테마색)
   const npcAvatarInputRef=useRef(null);
+
+  // NPC 북마크: 자주 나오는 NPC의 이름·사진·이름색을 저장해뒀다가, 눌러서 바로
+  // 대사 탭에 불러올 수 있는 기능입니다. 방 전체에 동기화됩니다.
+  const [npcBookmarks,setNpcBookmarks]=useState([]); // [{id,name,avatar,nameColor}]
+  useEffect(()=>{
+    const unsub=storeListenDoc(`npcbookmarks:${room.id}`,d=>{ setNpcBookmarks(d?.list||[]); });
+    return()=>unsub();
+  },[room.id]);
+  const saveNpcBookmark=async()=>{
+    if(!npcName.trim())return;
+    const next=[...npcBookmarks,{id:newId(),name:npcName.trim(),avatar:npcAvatar,nameColor:npcNameColor}];
+    setNpcBookmarks(next);
+    await storeSet(`npcbookmarks:${room.id}`,{list:next},true);
+  };
+  const applyNpcBookmark=bm=>{
+    setSpeaker("npc");
+    setGmTab("npc");
+    setNpcName(bm.name);
+    setNpcAvatar(bm.avatar||"");
+    setNpcNameColor(bm.nameColor||"");
+  };
+  const removeNpcBookmark=async id=>{
+    const next=npcBookmarks.filter(b=>b.id!==id);
+    setNpcBookmarks(next);
+    await storeSet(`npcbookmarks:${room.id}`,{list:next},true);
+  };
   const [judgeTargets,setJudgeTargets]=useState([]); // 판정 대상으로 고른 참가자 code 목록
   const [judgeSkill,setJudgeSkill]=useState("");
   const [char,setChar]=useState(null);
@@ -3455,6 +3543,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     document.addEventListener("mousedown",onDocClick);
     return()=>document.removeEventListener("mousedown",onDocClick);
   },[showLayerPanel]);
+  const [showBookmarkPanel,setShowBookmarkPanel]=useState(false);
+  const bookmarkPanelRef=useRef(null);
+  useEffect(()=>{
+    if(!showBookmarkPanel)return;
+    const onDocClick=e=>{ if(bookmarkPanelRef.current&&!bookmarkPanelRef.current.contains(e.target)) setShowBookmarkPanel(false); };
+    document.addEventListener("mousedown",onDocClick);
+    return()=>document.removeEventListener("mousedown",onDocClick);
+  },[showBookmarkPanel]);
   const syncLayers=next=>{ storeSet(`layers:${room.id}`,{layers:next},true); };
   // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
   const addLayer=url=>{
@@ -3744,7 +3840,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 하단(나) 대사창이 서로 독립적으로 타이핑되도록 각각 따로 관리합니다.
   // 원본 코드를 그대로 잘라내는 대신, 이미 서식이 적용된 결과물의 "보이는 글자 수"만
   // 세어서 자르기 때문에, 타이핑 도중에도 서식(색·굵기 등)이 처음부터 정확히 보여요.
-  const useTypedCount=dialogue=>{
+  // 창이 좁아서 대사가 대사창 높이를 넘치면, 스크롤바를 직접 내릴 필요 없이 타이핑되는
+  // 대로 자동으로 맨 아래까지 스크롤됩니다.
+  const myBoxRef=useRef(null);
+  const othersBoxRef=useRef(null);
+  const useTypedCount=(dialogue,boxRef)=>{
     const [typed,setTyped]=useState(0);
     useEffect(()=>{
       const full=dialogue?.text||"";
@@ -3755,14 +3855,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       const id=setInterval(()=>{
         i+=1;
         setTyped(i);
+        if(boxRef?.current) boxRef.current.scrollTop=boxRef.current.scrollHeight;
         if(i>=totalVisible) clearInterval(id);
       },32);
       return()=>clearInterval(id);
     },[dialogue?.id,dialogue?.text]);
     return typed;
   };
-  const typedCountMine=useTypedCount(myLatestDialogue);
-  const typedCountOthers=useTypedCount(othersLatestDialogue);
+  const typedCountMine=useTypedCount(myLatestDialogue,myBoxRef);
+  const typedCountOthers=useTypedCount(othersLatestDialogue,othersBoxRef);
   // 선택지: 정말로 "지금 가장 최근"인 메시지가 선택지일 때만 화면 중앙에 세로로 띄웁니다.
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
   const latestOverallMsg=stageMsgs[stageMsgs.length-1];
@@ -3916,7 +4017,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         {/* 무대 상단: GM·다른 사람의 대사/서술/주사위가 뜨는 대사창 (stage-scene보다 먼저 와야 위쪽에 보임) */}
         {othersLatestDialogue&&(othersLatestDialogue.speaker==="ic"||othersLatestDialogue.speaker==="npc")&&(
           <div className="vn-dock">
-            <div className="vn-textbox vn-textbox-top">
+            <div className="vn-textbox vn-textbox-top" ref={othersBoxRef}>
               <div className="vn-portrait">
                 {othersLatestDialogue.avatar?<img src={othersLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
               </div>
@@ -3931,7 +4032,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           let d=null;try{d=JSON.parse(othersLatestDialogue.text);}catch{}
           if(!d)return null;
           return(
-            <div className="vn-narration-box vn-narration-box-top">
+            <div className="vn-narration-box vn-narration-box-top" ref={othersBoxRef}>
               <Dice5 size={15} style={{verticalAlign:-2,marginRight:4}}/>{d.skillName} <span style={{opacity:0.7}}>/{d.value}</span> → <b>{d.roll}</b> → <span style={{color:d.color}}>{d.label}</span>
             </div>
           );
@@ -3973,7 +4074,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 */}
         {myLatestDialogue&&(myLatestDialogue.speaker==="ic"||myLatestDialogue.speaker==="npc")&&(
           <div className="vn-dock">
-            <div className="vn-textbox">
+            <div className="vn-textbox" ref={myBoxRef}>
               <div className="vn-portrait">
                 {myLatestDialogue.avatar?<img src={myLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
               </div>
@@ -3985,13 +4086,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           </div>
         )}
         {myLatestDialogue&&(myLatestDialogue.speaker==="narrate"||myLatestDialogue.speaker==="system")&&(
-          <div className="vn-narration-box"><FormattedText text={myLatestDialogue.text} maxChars={typedCountMine}/></div>
+          <div className="vn-narration-box" ref={myBoxRef}><FormattedText text={myLatestDialogue.text} maxChars={typedCountMine}/></div>
         )}
         {myLatestDialogue&&myLatestDialogue.speaker==="dice"&&(()=>{
           let d=null;try{d=JSON.parse(myLatestDialogue.text);}catch{}
           if(!d)return null;
           return(
-            <div className="vn-narration-box">
+            <div className="vn-narration-box" ref={myBoxRef}>
               <Dice5 size={15} style={{verticalAlign:-2,marginRight:4}}/>{d.skillName} <span style={{opacity:0.7}}>/{d.value}</span> → <b>{d.roll}</b> → <span style={{color:d.color}}>{d.label}</span>
             </div>
           );
@@ -4194,29 +4295,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             )}
           </div>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
-          {isGM&&(
-            <div ref={imgPopoverRef} style={{position:"relative"}}>
-              <button type="button" className="coc-btn ghost small" onClick={()=>setShowImgPopover(v=>!v)}>이미지 전송</button>
-              {showImgPopover&&(
-                <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:20,width:230,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
-                  <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>imgInputRef.current?.click()}>
-                    파일에서 선택
-                  </button>
-                  <div style={{display:"flex",gap:6}}>
-                    <input className="coc-input" value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
-                      onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();sendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}}
-                      placeholder="이미지 링크 (Imgur 등)" style={{flex:1,fontSize:12}}/>
-                    <button type="button" className="coc-btn small" disabled={!imgUrlInput.trim()}
-                      onClick={()=>{sendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}>
-                      삽입
-                    </button>
-                  </div>
-                </div>
-              )}
-              <input ref={imgInputRef} type="file" accept="image/*" style={{display:"none"}}
-                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}/>
-            </div>
-          )}
         </div>
         {/* GM 전용: 서술·판정·대사·선택지 네 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -4318,7 +4396,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           onAddLayerUrl={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");}}
           layerDragIndex={layerDragIndex} setLayerDragIndex={setLayerDragIndex}
           onReorderLayer={reorderLayer} onRemoveLayer={removeLayer}
-          onOpenDistribute={()=>setShowDistribute(true)} onOpenDecorate={()=>setShowDecorate(true)}/>
+          onOpenDistribute={()=>setShowDistribute(true)} onOpenDecorate={()=>setShowDecorate(true)}
+          npcBookmarks={npcBookmarks} showBookmarkPanel={showBookmarkPanel} setShowBookmarkPanel={setShowBookmarkPanel} bookmarkPanelRef={bookmarkPanelRef}
+          npcName={npcName} npcAvatar={npcAvatar} onSaveNpcBookmark={saveNpcBookmark} onApplyNpcBookmark={applyNpcBookmark} onRemoveNpcBookmark={removeNpcBookmark}
+          showImgPopover={showImgPopover} setShowImgPopover={setShowImgPopover} imgPopoverRef={imgPopoverRef}
+          imgInputRef={imgInputRef} onImgFileChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}
+          imgUrlInput={imgUrlInput} setImgUrlInput={setImgUrlInput} onSendImageUrl={sendImageUrl}/>
       )}
 
       {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
