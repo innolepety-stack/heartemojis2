@@ -10,7 +10,7 @@ import { db } from "./firebase";
 import {
   doc, getDoc, setDoc, deleteDoc,
   collection, query, orderBy, startAt, endAt, getDocs, onSnapshot,
-  enableNetwork, disableNetwork,
+  enableNetwork, disableNetwork, limitToLast,
 } from "firebase/firestore";
 
 /* ============================== CONFIG ============================== */
@@ -108,6 +108,11 @@ const SKILL_LIST = [
 const SKILL_LIST_SORTED = [...SKILL_LIST].sort((a,b)=>a[0].localeCompare(b[0],"ko"));
 
 const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
+// 방에 채팅이 아무리 쌓여도 접속할 때마다 그 전부를 다시 내려받지 않도록, 서버에서
+// 가져오는 개수 자체를 최근 것들로만 제한합니다(로딩 속도 개선). 화면에는 그중에서도
+// 최근 몇 개의 "묶음"(같은 사람 연속 메시지는 하나로 묶임)만 보여줍니다.
+const CHAT_FETCH_LIMIT = 15;
+const CHAT_DISPLAY_LIMIT = 15;
 const CHAR_LABEL = {
   STR: "근력", CON: "건강", SIZ: "크기", DEX: "민첩",
   APP: "외모", INT: "지능", POW: "정신", EDU: "교육",
@@ -657,10 +662,15 @@ async function storeListKeys(prefix, _shared) {
 // Firestore 무료 요금제의 "하루 읽기 5만 건" 한도를 채팅이 길어질수록 빠르게 소모했습니다.
 // onSnapshot은 최초 1회만 전체를 읽고, 그 뒤로는 "바뀐 문서"만 전송받기 때문에
 // 폴링 대비 읽기 횟수가 크게 줄어듭니다. 반환값은 구독 해제 함수(unsubscribe)입니다.
-function storeListenPrefix(prefix, onChange) {
+// limit을 주면 "그 안에서 최신 N개"만 가져옵니다. 메시지 id(newId())가 타임스탬프로
+// 시작해서 사전순 정렬이 곧 시간순 정렬이라, limitToLast로 정확히 최근 것만 골라낼 수 있어요.
+// 방에 메시지가 아무리 쌓여도, 화면엔 최근 것만 불러오니 접속할 때 느려지지 않습니다.
+function storeListenPrefix(prefix, onChange, limit) {
   try {
     const col = collection(db, KV_COLLECTION);
-    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
+    const constraints = [orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff")];
+    if (limit) constraints.push(limitToLast(limit));
+    const q = query(col, ...constraints);
     return onSnapshot(q, snap => {
       const out = [];
       snap.forEach(d => out.push({ key: d.id, value: d.data().value }));
@@ -1543,6 +1553,13 @@ function downloadFile(filename,content,mime){
   a.href=url;a.download=filename;
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+// 파일로 저장하지 않고, 새 탭에서 바로 열어서 볼 수 있게 합니다.
+function openInNewTab(content,mime){
+  const blob=new Blob([content],{type:mime});
+  const url=URL.createObjectURL(blob);
+  window.open(url,"_blank");
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
 // GM뿐 아니라 참가자 누구나 자기 방 채팅 기록을 HTML로 내보낼 수 있는 간단한 모달
@@ -3094,6 +3111,26 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(smooth) el.scrollTo({top:el.scrollHeight,behavior:"smooth"});
     else el.scrollTop=el.scrollHeight;
   };
+  // 채팅창엔 최근 15개만 보여서, 맨 위로 스크롤을 올리면 "전문 보기" 버튼이 뜨도록 합니다.
+  // 누르면 다운로드 없이 새 탭에서 바로 전체 기록을 볼 수 있어요.
+  const [atMsgListTop,setAtMsgListTop]=useState(false);
+  const [loadingFullTranscript,setLoadingFullTranscript]=useState(false);
+  const onMsgListScroll=()=>{
+    const el=msgListRef.current;
+    if(!el)return;
+    setAtMsgListTop(el.scrollTop<24);
+  };
+  const viewFullTranscript=async()=>{
+    setLoadingFullTranscript(true);
+    try{
+      const transcript=await fetchRoomTranscript(room);
+      const themeForExport=dark?toDarkTheme(deriveThemeFromColor(customColor)):deriveThemeFromColor(customColor);
+      openInNewTab(buildHtmlExport(room,transcript,themeForExport),"text/html;charset=utf-8");
+    }catch(err){
+      alert("불러오기에 실패했습니다: "+(err?.message||String(err)));
+    }
+    setLoadingFullTranscript(false);
+  };
   const inputRef=useRef(null);
   const imgInputRef=useRef(null);
   const firstLoad=useRef({});
@@ -3504,7 +3541,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       if(!wasFirstLoad&&hasNewFromOthers&&soundEnabled){
         playNotifSound();
       }
-    });
+    },CHAT_FETCH_LIMIT);
     return()=>unsub();
   },[room.id,activeTab,userCode,soundEnabled]);
 
@@ -3590,7 +3627,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 포토샵 레이어창처럼, 목록 맨 위(=배열 0번)가 가장 앞에 나옵니다. GM만 좌측 아이콘 바의
   // "레이어" 패널에서 추가/삭제/순서변경(드래그)을 할 수 있고, 드래그 이동은 무대 위에서
   // 손을 뗀 순간에만 저장해서(=다른 사람 화면 반영) 씁니다.
-  const [layers,setLayers]=useState([]);
+  // ※ 예전엔 레이어 전체(이미지 데이터 포함)를 문서 하나에 몰아 저장했는데, 코코포리아
+  // 세팅처럼 한 번에 여러 장을 넣으면 합친 용량이 Firestore 문서 용량 한도(약 1MB)를 넘겨서
+  // 저장이 조용히 실패하고 "깜빡이다 사라지는" 문제가 있었습니다. 이제는 순서만 담은 작은
+  // 목록 문서(layerorder)와, 레이어마다 각각 따로 저장되는 데이터 문서(layerdata)로 나눠서
+  // 저장합니다 — 다이스 컷인과 같은 방식입니다.
+  const [layerOrder,setLayerOrder]=useState([]); // [id, id, ...] — 순서 = 쌓임 순서
+  const [layerDataMap,setLayerDataMap]=useState({}); // {id: {url,x,y,width,height,angle,locked}}
+  const layers=layerOrder.map(id=>layerDataMap[id]?{id,...layerDataMap[id]}:null).filter(Boolean);
   const [showLayerPanel,setShowLayerPanel]=useState(false);
   const [layerUrlInput,setLayerUrlInput]=useState("");
   const [layerDragIndex,setLayerDragIndex]=useState(null); // 레이어 패널 목록에서 드래그 중인 항목의 인덱스
@@ -3671,8 +3715,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const layerFileInputRef=useRef(null);
   const layerPanelRef=useRef(null);
   useEffect(()=>{
-    const unsub=storeListenDoc(`layers:${room.id}`,d=>{ setLayers(d?.layers||[]); });
-    return()=>unsub();
+    const unsubOrder=storeListenDoc(`layerorder:${room.id}`,d=>{ setLayerOrder(d?.order||[]); });
+    const prefix=`layerdata:${room.id}:`;
+    const unsubData=storeListenPrefix(prefix,list=>{
+      const map={};
+      list.forEach(item=>{ map[item.key.slice(prefix.length)]=item.value; });
+      setLayerDataMap(map);
+    });
+    return()=>{unsubOrder();unsubData();};
   },[room.id]);
   useEffect(()=>{
     if(!showLayerPanel)return;
@@ -3688,18 +3738,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     document.addEventListener("mousedown",onDocClick);
     return()=>document.removeEventListener("mousedown",onDocClick);
   },[showBookmarkPanel]);
-  const syncLayers=next=>{ storeSet(`layers:${room.id}`,{layers:next},true); };
   // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
-  const addLayer=url=>{
-    setLayers(ls=>{
-      const next=[{id:newId(),url,x:10,y:10,width:20,height:20},...ls];
-      syncLayers(next);
-      return next;
-    });
+  const addLayer=async url=>{
+    const id=newId();
+    await storeSet(`layerdata:${room.id}:${id}`,{url,x:10,y:10,width:20,height:20},true);
+    const nextOrder=[id,...layerOrder];
+    setLayerOrder(nextOrder);
+    await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
   };
   const addLayerFromFile=async file=>{
     const url=await fileToResizedPNG(file,700);
-    addLayer(url);
+    await addLayer(url);
   };
 
   // 코코포리아 방 내보내기(JSON) + 첨부 이미지들을 한꺼번에 넣으면, 배경/토큰 위치를
@@ -3723,14 +3772,16 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
     // 항목들: order가 클수록 앞(우리 배열은 index 0이 맨 앞)이라 내림차순 정렬
     const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
-    const newLayers=[];
+    const newIds=[];
     let missing=0;
     for(const it of sorted){
       const file=fileByName[it.imageUrl];
       if(!file){ missing++; continue; }
       const url=await fileToResizedPNG(file,700);
-      newLayers.push({
-        id:newId(),
+      const id=newId();
+      // 레이어마다 각각 따로 저장 — 한꺼번에 몰아 저장하면 합친 용량이 문서 용량 한도를
+      // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요.
+      await storeSet(`layerdata:${room.id}:${id}`,{
         url,
         x:((it.x||0)+fw/2)/fw*100,
         y:((it.y||0)+fh/2)/fh*100,
@@ -3738,37 +3789,43 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         height:(it.height||10)/fh*100,
         angle:it.angle||0,
         locked:!!it.locked,
-      });
+      },true);
+      newIds.push(id);
     }
-    if(newLayers.length===0){ alert("일치하는 이미지 파일을 하나도 못 찾았어요. 파일명을 바꾸지 않고 그대로 올려주세요."); return; }
-    setLayers(ls=>{
-      const next=replace?newLayers:[...newLayers,...ls];
-      syncLayers(next);
-      return next;
-    });
+    if(newIds.length===0){ alert("일치하는 이미지 파일을 하나도 못 찾았어요. 파일명을 바꾸지 않고 그대로 올려주세요."); return; }
+    let nextOrder;
+    if(replace){
+      for(const oldId of layerOrder){ await storeDelete(`layerdata:${room.id}:${oldId}`,true); }
+      nextOrder=newIds;
+    }else{
+      nextOrder=[...newIds,...layerOrder];
+    }
+    setLayerOrder(nextOrder);
+    await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
     if(missing>0) alert(`레이어는 넣었는데, 이미지 ${missing}개는 첨부 파일 중에서 못 찾아서 건너뛰었어요.`);
   };
   // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
-  const updateLayerLocal=(id,patch)=>setLayers(ls=>ls.map(l=>l.id===id?{...l,...patch}:l));
-  // 손을 뗀 순간에만 서버에 저장해서 다른 사람 화면에도 반영합니다.
-  const commitLayer=(id,patch)=>setLayers(ls=>{
-    const next=ls.map(l=>l.id===id?{...l,...patch}:l);
-    syncLayers(next);
-    return next;
-  });
-  const removeLayer=id=>setLayers(ls=>{
-    const next=ls.filter(l=>l.id!==id);
-    syncLayers(next);
-    return next;
-  });
+  const updateLayerLocal=(id,patch)=>setLayerDataMap(m=>({...m,[id]:{...m[id],...patch}}));
+  // 손을 뗀 순간에만 서버에 저장해서 다른 사람 화면에도 반영합니다. (그 레이어 하나만 씁니다)
+  const commitLayer=async(id,patch)=>{
+    const merged={...layerDataMap[id],...patch};
+    setLayerDataMap(m=>({...m,[id]:merged}));
+    await storeSet(`layerdata:${room.id}:${id}`,merged,true);
+  };
+  const removeLayer=async id=>{
+    const nextOrder=layerOrder.filter(x=>x!==id);
+    setLayerOrder(nextOrder);
+    await storeDelete(`layerdata:${room.id}:${id}`,true);
+    await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
+  };
   // 레이어 패널 목록에서 드래그로 순서 바꾸기 (포토샵 레이어창처럼, 목록 순서가 곧 쌓임 순서입니다)
-  const reorderLayer=(fromIdx,toIdx)=>setLayers(ls=>{
-    const next=[...ls];
+  const reorderLayer=async(fromIdx,toIdx)=>{
+    const next=[...layerOrder];
     const [moved]=next.splice(fromIdx,1);
     next.splice(toIdx,0,moved);
-    syncLayers(next);
-    return next;
-  });
+    setLayerOrder(next);
+    await storeSet(`layerorder:${room.id}`,{order:next},true);
+  };
   const handleStageDrop=async e=>{
     e.preventDefault(); e.stopPropagation();
     setStageDragOver(false);
@@ -3988,6 +4045,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   const currentMsgs=Array.from((tabMsgMaps[activeTab]||new Map()).values()).sort((a,b)=>a.timestamp-b.timestamp);
   const groups=groupMessages(currentMsgs);
+  // 채팅창엔 최근 것들(묶음 기준) 몇 개만 보여줘서, 대화가 많이 쌓여도 화면이 무거워지지 않게 합니다.
+  const visibleGroups=groups.slice(-CHAT_DISPLAY_LIMIT);
 
   // 좌측 무대(비주얼노벨 대사창)에는 지금 보고 있는 탭이 아니라 항상 "메인" 탭 대화만 보여줍니다.
   // 메인 탭을 보고 있을 때는 이미 구독 중인 currentMsgs를 그대로 쓰고, 다른 탭을 보고 있을 때만
@@ -3998,27 +4057,38 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const unsub=storeListenPrefix(`chat:${room.id}:`,list=>{
       const filtered=list.filter(x=>!x.value.tabId||x.value.tabId==="main").map(x=>x.value);
       setMainMsgsExtra(filtered);
-    });
+    },CHAT_FETCH_LIMIT);
     return()=>unsub();
   },[room.id,activeTab]);
   const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].sort((a,b)=>a.timestamp-b.timestamp);
+  const myLatestDialogueRef=useRef(null);
+  const othersLatestDialogueRef=useRef(null);
 
   // 비주얼노벨 스타일 대사창:
   // - 서술(narrate/system)은 누가 보냈든(GM이든 나든) 항상 "하단" 대사창에 뜹니다.
   // - "상대방"의 대사(ic/npc)·주사위는 "상단"에 뜹니다.
   // - 서술이 새로 뜨면, 상단에 남아있던 상대방 대사창은 사라집니다. 다만 서술 없이
   //   내 대사만 다시 나온 경우(예: 1→2→1)에는 상단의 2(상대방) 대사가 그대로 유지됩니다.
-  const myLatestDialogue=[...stageMsgs].reverse().find(m=>
+  // ※ 채팅을 최근 몇 개만 가져오도록 제한한 뒤로, "가장 최근 서술"이 그 범위보다 더
+  //   오래돼서 밀려나 있으면 판단할 근거가 아예 안 보여서 대사창이 사라지는 문제가
+  //   있었습니다. 마지막으로 확인된 값을 ref에 기억해뒀다가, 지금 가져온 범위 안에서
+  //   새로 판단할 근거가 없을 때는 그 기억해둔 값을 그대로 씁니다.
+  const foundMy=[...stageMsgs].reverse().find(m=>
     m.speaker==="narrate"||m.speaker==="system"||
     (m.userCode===userCode&&["ic","npc","dice"].includes(m.speaker))
   );
-  let othersLatestDialogue=null;
+  if(foundMy) myLatestDialogueRef.current=foundMy;
+  const myLatestDialogue=foundMy||myLatestDialogueRef.current;
+
+  let othersLatestDialogue=null, othersDecided=false;
   for(let i=stageMsgs.length-1;i>=0;i--){
     const m=stageMsgs[i];
-    if(m.speaker==="narrate"||m.speaker==="system") break; // 서술을 먼저 만나면 상단은 비운 채로 멈춤
-    if(m.userCode!==userCode&&["ic","npc","dice"].includes(m.speaker)){ othersLatestDialogue=m; break; }
+    if(m.speaker==="narrate"||m.speaker==="system"){ othersDecided=true; break; } // 서술을 먼저 만나면 상단은 비운 채로 멈춤
+    if(m.userCode!==userCode&&["ic","npc","dice"].includes(m.speaker)){ othersLatestDialogue=m; othersDecided=true; break; }
     // 그 외(선택지·판정·내 대사 등)는 건너뛰고 계속 거슬러 올라갑니다
   }
+  if(othersDecided) othersLatestDialogueRef.current=othersLatestDialogue;
+  else othersLatestDialogue=othersLatestDialogueRef.current;
 
   // 대사창 타이핑 효과: 새 대사/서술이 뜨면 한 글자씩 순서대로 나타나도록 합니다. 상단(다른 사람)과
   // 하단(나) 대사창이 서로 독립적으로 타이핑되도록 각각 따로 관리합니다.
@@ -4409,13 +4479,19 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
       <div style={{position:"relative",flex:"1 1 auto",minHeight:150,display:"flex",flexDirection:"column"}}>
-        <div ref={msgListRef} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5}}>
+        <div ref={msgListRef} onScroll={onMsgListScroll} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5}}>
           {groups.length===0&&(
             <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
               <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
             </div>
           )}
-          {groups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice}/>)}
+          {atMsgListTop&&groups.length>0&&(
+            <button type="button" className="coc-btn ghost small" disabled={loadingFullTranscript} onClick={viewFullTranscript}
+              style={{alignSelf:"center",justifyContent:"center",marginBottom:4}}>
+              {loadingFullTranscript?"불러오는 중...":"전문 보기 (새 탭)"}
+            </button>
+          )}
+          {visibleGroups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice}/>)}
         </div>
         {/* "OO님이 입력 중..." 표시 전용 자리. 항상 이 자리가 고정으로 있고 텍스트만 나타났다 사라져서,
             떴다 안 떴다 할 때 채팅창이나 아래 탭이 밀리지 않습니다. */}
