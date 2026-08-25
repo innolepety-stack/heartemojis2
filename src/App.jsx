@@ -3838,7 +3838,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const newIds=[];
     let missing=0;
     // 코코포리아 전체 배치를 무대의 80% 크기로 축소해서, 가장자리에 여백이 좀 남도록 합니다.
-    const IMPORT_SCALE=0.8, IMPORT_OFFSET=(1-IMPORT_SCALE)/2*100; // = 10
+    const IMPORT_SCALE=0.55, IMPORT_OFFSET=(1-IMPORT_SCALE)/2*100; // 화면 중앙에 작게 모여있도록
     for(const it of sorted){
       const file=fileByName[it.imageUrl];
       if(!file){ missing++; continue; }
