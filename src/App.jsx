@@ -3837,8 +3837,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
     const newIds=[];
     let missing=0;
-    // 코코포리아 전체 배치를 무대의 80% 크기로 축소해서, 가장자리에 여백이 좀 남도록 합니다.
-    const IMPORT_SCALE=0.55, IMPORT_OFFSET=(1-IMPORT_SCALE)/2*100; // 화면 중앙에 작게 모여있도록
+    // 코코포리아 필드(가로세로 비율이 파일마다 다름)를 우리 무대 안에 "원본 비율 그대로"
+    // 가장 크게 들어가도록 맞춥니다. 가로·세로를 따로 계산하면 그림이 찌그러지기 때문에,
+    // 한쪽을 기준으로 같은 배율을 쓰고 남는 쪽은 여백(레터박스)으로 둡니다.
+    const stageEl=document.querySelector(".stage-scene");
+    const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
+    const stageRatio=(sr.width||16)/(sr.height||9);
+    const fieldRatio=fw/fh;
+    // 무대 대비 필드가 차지할 비율(0~1). 넓은 쪽이 100%가 되고 좁은 쪽만 줄어듭니다.
+    const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
+    const fitH=fieldRatio>=stageRatio?stageRatio/fieldRatio:1;
+    const padX=(1-fitW)/2*100, padY=(1-fitH)/2*100;
     for(const it of sorted){
       const file=fileByName[it.imageUrl];
       if(!file){ missing++; continue; }
@@ -3848,10 +3857,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요.
       await storeSet(`layerdata:${room.id}:${id}`,{
         url,
-        x:IMPORT_OFFSET+((it.x||0)+fw/2)/fw*100*IMPORT_SCALE,
-        y:IMPORT_OFFSET+((it.y||0)+fh/2)/fh*100*IMPORT_SCALE,
-        width:(it.width||10)/fw*100*IMPORT_SCALE,
-        height:(it.height||10)/fh*100*IMPORT_SCALE,
+        x:padX+((it.x||0)+fw/2)/fw*100*fitW,
+        y:padY+((it.y||0)+fh/2)/fh*100*fitH,
+        width:(it.width||10)/fw*100*fitW,
+        height:(it.height||10)/fh*100*fitH,
         angle:it.angle||0,
         locked:!!it.locked,
       },true);
