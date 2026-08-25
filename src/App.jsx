@@ -254,11 +254,11 @@ input[type=number] { -moz-appearance: textfield; }
 /* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
 .stage-scene { flex: 1; position: relative; min-height: 0; }
 /* 작은 무대: 맵 세팅(레이어)과 선명한 배경이 실제로 놓이는 곳입니다.
-   16:9 같은 특정 비율을 강제하는 게 아니라, 그냥 큰 무대의 가로·세로 각각 65% 크기로
+   16:9 같은 특정 비율을 강제하는 게 아니라, 그냥 큰 무대의 가로·세로 각각 80% 크기로
    가운데 놓입니다. 그래서 큰 무대가 어떤 모양이든 항상 사방에 여백(블러 영역)이 남아요. */
 .stage-inner {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  width: 65%; height: 65%;
+  width: 80%; height: 80%;
   z-index: 1;
 }
 .stage-inner-bg {
@@ -1916,12 +1916,14 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
     else lastTapRef.current=now;
   };
 
-  // GM이 보낸 이미지: 서술처럼 아바타·이름 없이 가운데 정렬로 표시
+  // GM이 보낸 이미지: 서술처럼 아바타·이름 없이 가운데 정렬로 표시.
+  // 서술·대사 글줄이 채팅창 폭에 맞춰 넓게 나오는 것과 똑같이, 이미지도 채팅창
+  // 폭에 맞춰 커지도록 고정 420px 제한을 없앴습니다 (너무 세로로 긴 사진만 높이로 제한).
   if(isImg){
     return(
       <div className="anon-msg" style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px",gap:5}}>
         {lines.map((line,i)=>(
-          <img key={i} src={line} alt="전송된 이미지" style={{width:"68%",maxWidth:420,minWidth:120,maxHeight:340,borderRadius:8,objectFit:"contain",cursor:isMine?"pointer":"default"}}
+          <img key={i} src={line} alt="전송된 이미지" style={{width:"100%",maxWidth:"100%",minWidth:120,maxHeight:460,borderRadius:8,objectFit:"contain",cursor:isMine?"pointer":"default"}}
             onClick={withDoubleTap(()=>isMine&&onEdit(items[i]))}/>
         ))}
       </div>
@@ -3879,7 +3881,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     // 코코포리아 배치(가로세로 비율이 파일마다 다름)를 "작은 무대" 안에 "원본 비율 그대로"
     // 가장 크게 들어가도록 맞춥니다. 가로·세로를 따로 계산하면 그림이 찌그러지기 때문에,
     // 한쪽을 기준으로 같은 배율을 쓰고 남는 쪽은 여백(레터박스)으로 둡니다.
-    // 작은 무대는 큰 무대를 그대로 65% 축소한 모양이라(비율은 큰 무대와 같음), 큰 무대의
+    // 작은 무대는 큰 무대를 그대로 80% 축소한 모양이라(비율은 큰 무대와 같음), 큰 무대의
     // 실제 화면 비율을 그대로 기준으로 씁니다.
     const stageEl=document.querySelector(".stage-scene");
     const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
