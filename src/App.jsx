@@ -3844,7 +3844,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const cocoRoom=data?.entities?.room;
     const items=data?.entities?.items;
     if(!cocoRoom||!items){ alert("이 파일에서 방 정보를 찾을 수 없어요."); return; }
-    const fw=cocoRoom.fieldWidth||100, fh=cocoRoom.fieldHeight||100;
     const fileByName={};
     imageFiles.forEach(f=>{ fileByName[f.name]=f; });
 
@@ -3857,7 +3856,27 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
     const newIds=[];
     let missing=0;
-    // 코코포리아 필드(가로세로 비율이 파일마다 다름)를 "작은 무대" 안에 "원본 비율 그대로"
+    // ※ fieldWidth/fieldHeight(코코포리아가 적어둔 "필드" 크기) 대신, 실제 아이템들이
+    // 차지하는 전체 범위(바운딩 박스)를 기준으로 계산합니다. 파일에 따라 그림이 필드보다
+    // 훨씬 넓게 걸쳐 있는 경우가 있어서, 필드 기준으로 계산하면 화면 밖으로 튕겨나갔어요.
+    // 바운딩 박스를 기준으로 하면 어떤 파일이든 항상 화면 안에 맞게 들어옵니다.
+    //
+    // ⚠️ 45도처럼 축에 딱 맞지 않게 회전된 오브젝트(예: 비스듬한 표지판·소품)는, 회전 전
+    // 가로세로만 보고 범위를 재면 실제 화면에서 대각선으로 삐져나온 만큼을 놓치게 됩니다.
+    // 그래서 회전 후 축 정렬 바운딩 박스(각 오브젝트를 감싸는, 화면에 수평/수직인 사각형)를
+    // 각도까지 반영해서 계산해야, 회전된 오브젝트도 무대 밖으로 튀어나가지 않습니다.
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const it of Object.values(items)){
+      const w=it.width||10,h=it.height||10;
+      const cx=(it.x||0)+w/2, cy=(it.y||0)+h/2; // 회전은 중심을 기준으로 돕니다 (렌더링과 동일)
+      const rad=(it.angle||0)*Math.PI/180;
+      const cos=Math.abs(Math.cos(rad)), sin=Math.abs(Math.sin(rad));
+      const halfW=(w*cos+h*sin)/2, halfH=(w*sin+h*cos)/2; // 회전 후 실제로 차지하는 절반 크기
+      minX=Math.min(minX,cx-halfW);maxX=Math.max(maxX,cx+halfW);
+      minY=Math.min(minY,cy-halfH);maxY=Math.max(maxY,cy+halfH);
+    }
+    const boundW=Math.max(1,maxX-minX), boundH=Math.max(1,maxY-minY);
+    // 코코포리아 배치(가로세로 비율이 파일마다 다름)를 "작은 무대" 안에 "원본 비율 그대로"
     // 가장 크게 들어가도록 맞춥니다. 가로·세로를 따로 계산하면 그림이 찌그러지기 때문에,
     // 한쪽을 기준으로 같은 배율을 쓰고 남는 쪽은 여백(레터박스)으로 둡니다.
     // 작은 무대는 큰 무대를 그대로 65% 축소한 모양이라(비율은 큰 무대와 같음), 큰 무대의
@@ -3865,7 +3884,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const stageEl=document.querySelector(".stage-scene");
     const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
     const stageRatio=(sr.width||16)/(sr.height||9);
-    const fieldRatio=fw/fh;
+    const fieldRatio=boundW/boundH;
     // 무대 대비 필드가 차지할 비율(0~1). 넓은 쪽이 100%가 되고 좁은 쪽만 줄어듭니다.
     const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
     const fitH=fieldRatio>=stageRatio?stageRatio/fieldRatio:1;
@@ -3879,10 +3898,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요.
       await storeSet(`layerdata:${room.id}:${id}`,{
         url,
-        x:padX+((it.x||0)+fw/2)/fw*100*fitW,
-        y:padY+((it.y||0)+fh/2)/fh*100*fitH,
-        width:(it.width||10)/fw*100*fitW,
-        height:(it.height||10)/fh*100*fitH,
+        x:padX+((it.x||0)-minX)/boundW*100*fitW,
+        y:padY+((it.y||0)-minY)/boundH*100*fitH,
+        width:(it.width||10)/boundW*100*fitW,
+        height:(it.height||10)/boundH*100*fitH,
         angle:it.angle||0,
         locked:!!it.locked,
       },true);
