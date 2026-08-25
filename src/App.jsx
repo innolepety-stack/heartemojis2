@@ -742,8 +742,38 @@ async function fileToBestQualityDataURL(file, maxBytes=900000) {
   }
   return fileToResizedDataURL(file,700,0.75);
 }
+// 파일이 "움직이는" PNG(APNG)인지 확인합니다. PNG 안의 청크(조각)들을 순서대로 훑어서,
+// 실제 그림 데이터(IDAT)가 나오기 전에 애니메이션 정보 청크(acTL)가 있으면 APNG입니다.
+// (일반 PNG는 이 청크가 아예 없어요.)
+async function isApngFile(file){
+  if(!/png$/i.test(file.type)&&!/\.a?png$/i.test(file.name)) return false;
+  try{
+    const buf=new Uint8Array(await file.slice(0,300000).arrayBuffer()); // acTL은 항상 파일 앞쪽에 있어서 이 정도면 충분해요
+    let offset=8; // 앞 8바이트는 PNG 시그니처
+    while(offset+8<=buf.length){
+      const len=(buf[offset]<<24)|(buf[offset+1]<<16)|(buf[offset+2]<<8)|buf[offset+3];
+      const type=String.fromCharCode(buf[offset+4],buf[offset+5],buf[offset+6],buf[offset+7]);
+      if(type==="acTL") return true;
+      if(type==="IDAT") return false; // 그림 데이터가 먼저 나오면 APNG가 아닙니다
+      offset+=8+len+4; // 길이(4) + 타입(4) + 데이터(len) + CRC(4)
+    }
+  }catch{}
+  return false;
+}
 // 채팅으로 보내는 이미지는 PNG로 저장해 투명 배경(알파 채널)을 유지합니다.
+// ⚠️ 캔버스(canvas)에 그려서 크기를 줄이는 방식은 애니메이션의 "첫 프레임만" 남기 때문에,
+// 움직이는 GIF·APNG는 리사이즈를 건너뛰고 원본을 그대로 데이터 URL로 바꿔서 애니메이션을
+// 그대로 보존합니다. (용량은 조금 커질 수 있지만, 정적 이미지로 굳어버리는 것보다 낫습니다.)
 async function fileToResizedPNG(file, maxSize=480) {
+  const isGif=/gif$/i.test(file.type)||/\.gif$/i.test(file.name);
+  if(isGif||await isApngFile(file)){
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(reader.result);
+      reader.onerror=reject;
+      reader.readAsDataURL(file);
+    });
+  }
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
     reader.onload=()=>{
@@ -2414,7 +2444,7 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
             {layers.length===0?(
               <div style={{fontSize:11.5,color:"var(--text-faint)",textAlign:"center",padding:"8px 0"}}>아직 올린 사진이 없어요</div>
             ):(
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <div className="coc-scroll" style={{display:"flex",flexDirection:"column",gap:4,maxHeight:260,overflowY:"auto",paddingRight:2}}>
                 {layers.map((l,i)=>(
                   <div key={l.id} draggable
                     onDragStart={()=>setLayerDragIndex(i)}
@@ -3713,6 +3743,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 저장이 조용히 실패하고 "깜빡이다 사라지는" 문제가 있었습니다. 이제는 순서만 담은 작은
   // 목록 문서(layerorder)와, 레이어마다 각각 따로 저장되는 데이터 문서(layerdata)로 나눠서
   // 저장합니다 — 다이스 컷인과 같은 방식입니다.
+  // ※ 그런데 움직이는 APNG/GIF 토큰은 (배경·컷인과 마찬가지로) 압축하면 애니메이션이 첫
+  // 프레임 한 장으로 굳어버려서 원본을 그대로 저장해야 하는데, 그 원본이 1MB를 넘으면
+  // 위의 "레이어 하나당 문서 하나" 방식으로도 여전히 용량 한도를 넘어 저장이 실패했습니다.
+  // 그래서 배경·컷인과 동일하게, 이미지가 크면 이미지 데이터만 다시 여러 조각
+  // (layerchunk:방ID:레이어ID:번호)으로 쪼개 저장하고, layerdata 문서에는 조각 수(chunks)와
+  // 위치/크기 등 작은 정보만 남깁니다. 작은 이미지는 예전처럼 url을 그대로 한 문서에 담습니다.
+  const LAYER_CHUNK_SIZE=700000;
   const [layerOrder,setLayerOrder]=useState([]); // [id, id, ...] — 순서 = 쌓임 순서
   const [layerDataMap,setLayerDataMap]=useState({}); // {id: {url,x,y,width,height,angle,locked}}
   const layers=layerOrder.map(id=>layerDataMap[id]?{id,...layerDataMap[id]}:null).filter(Boolean);
@@ -3721,6 +3758,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [layerDragIndex,setLayerDragIndex]=useState(null); // 레이어 패널 목록에서 드래그 중인 항목의 인덱스
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
   const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
+
 
   // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지가
   // 그 결과가 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다.
@@ -3798,9 +3836,22 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   useEffect(()=>{
     const unsubOrder=storeListenDoc(`layerorder:${room.id}`,d=>{ setLayerOrder(d?.order||[]); });
     const prefix=`layerdata:${room.id}:`;
-    const unsubData=storeListenPrefix(prefix,list=>{
+    const unsubData=storeListenPrefix(prefix,async list=>{
+      const entries=await Promise.all(list.map(async item=>{
+        const id=item.key.slice(prefix.length);
+        const manifest=item.value;
+        if(!manifest)return null;
+        if(manifest.url!==undefined) return [id,manifest]; // 작은 이미지: url을 그대로 담고 있음
+        const total=manifest.chunks||0;
+        if(total<=0) return null;
+        const parts=await Promise.all(
+          Array.from({length:total},(_,i)=>storeGet(`layerchunk:${room.id}:${id}:${i}`,true))
+        );
+        if(parts.some(p=>!p||p.data===undefined))return null; // 조각이 아직 다 안 올라왔으면 이번 갱신은 건너뜀
+        return [id,{...manifest,url:parts.map(p=>p.data).join("")}];
+      }));
       const map={};
-      list.forEach(item=>{ map[item.key.slice(prefix.length)]=item.value; });
+      entries.forEach(e=>{ if(e) map[e[0]]=e[1]; });
       setLayerDataMap(map);
     });
     return()=>{unsubOrder();unsubData();};
@@ -3820,15 +3871,69 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>document.removeEventListener("mousedown",onDocClick);
   },[showBookmarkPanel]);
   // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
+  // 레이어 이미지 데이터를 저장합니다. 압축해도(또는 애니메이션 보존을 위해 압축을 건너뛰어도)
+  // 문서 용량 한도(약 1MB)를 넘는 경우, 자동으로 여러 조각(layerchunk)으로 쪼개 저장합니다.
+  // 실패하면 false를 반환합니다(호출한 쪽에서 이후 처리를 건너뛸 수 있도록).
+  const saveLayerData=async(id,{url,...meta})=>{
+    const prevManifest=await storeGet(`layerdata:${room.id}:${id}`,true);
+    const prevTotal=prevManifest?.chunks||0;
+    const needsChunk=(url||"").length*0.75>900000;
+    if(needsChunk){
+      const total=Math.ceil(url.length/LAYER_CHUNK_SIZE);
+      for(let i=0;i<total;i++){
+        const chunk=url.slice(i*LAYER_CHUNK_SIZE,(i+1)*LAYER_CHUNK_SIZE);
+        const res=await storeSet(`layerchunk:${room.id}:${id}:${i}`,{data:chunk},true);
+        if(res&&res.ok===false){ alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요."); return false; }
+      }
+      for(let i=total;i<prevTotal;i++){ await storeDelete(`layerchunk:${room.id}:${id}:${i}`,true); }
+      const res=await storeSet(`layerdata:${room.id}:${id}`,{chunks:total,...meta},true);
+      if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return false; }
+    }else{
+      for(let i=0;i<prevTotal;i++){ await storeDelete(`layerchunk:${room.id}:${id}:${i}`,true); } // 예전에 조각 저장돼 있었다면 정리
+      const res=await storeSet(`layerdata:${room.id}:${id}`,{url,...meta},true);
+      if(res&&res.ok===false){ alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요."); return false; }
+    }
+    return true;
+  };
+  // 레이어(+조각들)를 완전히 지웁니다.
+  const deleteLayerData=async id=>{
+    const manifest=await storeGet(`layerdata:${room.id}:${id}`,true);
+    const total=manifest?.chunks||0;
+    await storeDelete(`layerdata:${room.id}:${id}`,true);
+    for(let i=0;i<total;i++){ await storeDelete(`layerchunk:${room.id}:${id}:${i}`,true); }
+  };
   const addLayer=async url=>{
     const id=newId();
-    await storeSet(`layerdata:${room.id}:${id}`,{url,x:10,y:10,width:20,height:20},true);
+    const ok=await saveLayerData(id,{url,x:10,y:10,width:20,height:20});
+    if(!ok) return;
     const nextOrder=[id,...layerOrder];
     setLayerOrder(nextOrder);
     await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
   };
+  // 맵시트(레이어) 이미지를 데이터 URL로 바꿉니다.
+  // ※ 예전엔 정지 이미지도 무조건 캔버스로 700px까지 줄여서 저장했는데, 그러다 보니 원본이
+  // 더 크면 그만큼 화질이 흐려져 보였습니다. 지금은 큰 이미지도 조각(chunk)으로 나눠 저장할
+  // 수 있게 됐으니, 굳이 그렇게 줄일 필요가 없어졌습니다. 그래서 애니메이션(APNG/GIF)뿐
+  // 아니라 웬만한 크기의 정지 PNG도 리사이즈 없이 원본 그대로 저장하고, 지나치게 큰
+  // 파일(용량 관리가 꼭 필요한 경우)만 예전보다 훨씬 높은 해상도로 줄입니다.
+  const layerFileToUrl=async file=>{
+    const isGif=/gif$/i.test(file.type)||/\.gif$/i.test(file.name);
+    const isPng=/png$/i.test(file.type)||/\.png$/i.test(file.name);
+    const animatable=isGif||(isPng&&await isApngFile(file));
+    if(animatable||(isPng&&file.size<=4000000)){
+      const url=await fileToRawDataURL(file);
+      if(url.length>8000000){
+        alert("이미지 용량이 너무 커서 저장할 수 없어요(최대 약 6MB 파일). 더 작은 파일로 다시 시도해주세요.");
+        return null;
+      }
+      return url;
+    }
+    // JPEG 등 그 외 형식이거나, 4MB가 넘는 아주 큰 PNG만 화질을 최대한 살려서 줄입니다.
+    return fileToResizedPNG(file,1400);
+  };
   const addLayerFromFile=async file=>{
-    const url=await fileToResizedPNG(file,700);
+    const url=await layerFileToUrl(file);
+    if(!url) return;
     await addLayer(url);
   };
 
@@ -3894,11 +3999,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     for(const it of sorted){
       const file=fileByName[it.imageUrl];
       if(!file){ missing++; continue; }
-      const url=await fileToResizedPNG(file,700);
+      const url=await layerFileToUrl(file);
+      if(!url){ missing++; continue; }
       const id=newId();
       // 레이어마다 각각 따로 저장 — 한꺼번에 몰아 저장하면 합친 용량이 문서 용량 한도를
-      // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요.
-      await storeSet(`layerdata:${room.id}:${id}`,{
+      // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요. (움직이는
+      // APNG/GIF라 압축이 안 된 경우도 saveLayerData가 알아서 조각으로 쪼개 저장합니다.)
+      const ok=await saveLayerData(id,{
         url,
         x:padX+((it.x||0)-minX)/boundW*100*fitW,
         y:padY+((it.y||0)-minY)/boundH*100*fitH,
@@ -3906,13 +4013,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         height:(it.height||10)/boundH*100*fitH,
         angle:it.angle||0,
         locked:!!it.locked,
-      },true);
+      });
+      if(!ok){ missing++; continue; }
       newIds.push(id);
     }
     if(newIds.length===0){ alert("일치하는 이미지 파일을 하나도 못 찾았어요. 파일명을 바꾸지 않고 그대로 올려주세요."); return; }
     let nextOrder;
     if(replace){
-      for(const oldId of layerOrder){ await storeDelete(`layerdata:${room.id}:${oldId}`,true); }
+      for(const oldId of layerOrder){ await deleteLayerData(oldId); }
       nextOrder=newIds;
     }else{
       nextOrder=[...newIds,...layerOrder];
@@ -3924,15 +4032,23 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
   const updateLayerLocal=(id,patch)=>setLayerDataMap(m=>({...m,[id]:{...m[id],...patch}}));
   // 손을 뗀 순간에만 서버에 저장해서 다른 사람 화면에도 반영합니다. (그 레이어 하나만 씁니다)
+  // 드래그·리사이즈는 이미지 자체(url)를 바꾸지 않으므로, 그럴 땐 굳이 이미지를 다시
+  // 조각내지 않고 위치/크기 등 작은 정보만 저장합니다 — 클수록 매번 다시 쪼개 올리면 느려집니다.
   const commitLayer=async(id,patch)=>{
     const merged={...layerDataMap[id],...patch};
     setLayerDataMap(m=>({...m,[id]:merged}));
-    await storeSet(`layerdata:${room.id}:${id}`,merged,true);
+    if(patch.url!==undefined){
+      await saveLayerData(id,merged); // 이미지 자체가 바뀐 경우: 용량에 따라 다시 조각/단일 저장을 판단
+    }else{
+      const{url,chunks,...meta}=merged;
+      const doc=chunks!==undefined?{chunks,...meta}:{url,...meta};
+      await storeSet(`layerdata:${room.id}:${id}`,doc,true);
+    }
   };
   const removeLayer=async id=>{
     const nextOrder=layerOrder.filter(x=>x!==id);
     setLayerOrder(nextOrder);
-    await storeDelete(`layerdata:${room.id}:${id}`,true);
+    await deleteLayerData(id);
     await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
   };
   // 레이어 패널 목록에서 드래그로 순서 바꾸기 (포토샵 레이어창처럼, 목록 순서가 곧 쌓임 순서입니다)
