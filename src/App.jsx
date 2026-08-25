@@ -254,11 +254,11 @@ input[type=number] { -moz-appearance: textfield; }
 /* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
 .stage-scene { flex: 1; position: relative; min-height: 0; }
 /* 작은 무대: 맵 세팅(레이어)과 선명한 배경이 실제로 놓이는 곳입니다.
-   항상 16:9 비율을 유지한 채, 큰 무대 안에 들어갈 수 있는 가장 큰 크기로 가운데 놓입니다.
-   그래서 창 크기가 바뀌어도 배치가 그대로 유지돼요. */
+   16:9 같은 특정 비율을 강제하는 게 아니라, 그냥 큰 무대의 가로·세로 각각 65% 크기로
+   가운데 놓입니다. 그래서 큰 무대가 어떤 모양이든 항상 사방에 여백(블러 영역)이 남아요. */
 .stage-inner {
-  position: absolute; inset: 0; margin: auto;
-  aspect-ratio: 16 / 9; max-width: 100%; max-height: 100%;
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 65%; height: 65%;
   z-index: 1;
 }
 .stage-inner-bg {
@@ -313,7 +313,9 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .stage-title-overlay { display: none; }
 
-.vn-dock { padding: 0; position: relative; z-index: 5; }
+.vn-dock { padding: 0; position: absolute; left: 0; right: 0; z-index: 5; }
+.vn-dock-top { top: 0; }
+.vn-dock-bottom { bottom: 0; }
 .vn-portrait {
   /* 정사각형을 유지하면서, 대사창 높이에 맞춰 통째로 작아지거나 커집니다.
      (예전엔 너비만 고정이고 높이만 늘어나서, 창을 가로로 길고 세로로 좁게 두면
@@ -338,9 +340,10 @@ input[type=number] { -moz-appearance: textfield; }
 .vn-name { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 8px; }
 .vn-line { font-size: 18px; line-height: 1.5; word-break: break-word; color: #fff; }
 
-/* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게 */
+/* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게. 절대 위치라 나타나거나
+   사라져도 무대 크기·위치는 그대로예요. */
 .vn-narration-box {
-  position: relative; z-index: 5;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
   background: linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%);
   color: #fff; border-radius: 0;
   padding: 16px 22px; margin: 0;
@@ -355,7 +358,10 @@ input[type=number] { -moz-appearance: textfield; }
   flex-direction: row-reverse;
 }
 .vn-textbox-top .vn-textcol { align-items: flex-end; text-align: right; }
-.vn-narration-box-top { background: linear-gradient(to bottom, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%); margin: 0; }
+.vn-narration-box-top {
+  background: linear-gradient(to bottom, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%);
+  margin: 0; top: 0; bottom: auto;
+}
 /* 선택지: 화면 중앙에 테마색 알약이 세로로 쌓인 형태 */
 .vn-choice-center {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -3851,12 +3857,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
     const newIds=[];
     let missing=0;
-    // 코코포리아 필드(가로세로 비율이 파일마다 다름)를 우리 무대 안에 "원본 비율 그대로"
+    // 코코포리아 필드(가로세로 비율이 파일마다 다름)를 "작은 무대" 안에 "원본 비율 그대로"
     // 가장 크게 들어가도록 맞춥니다. 가로·세로를 따로 계산하면 그림이 찌그러지기 때문에,
     // 한쪽을 기준으로 같은 배율을 쓰고 남는 쪽은 여백(레터박스)으로 둡니다.
-    // 맵 세팅은 "작은 무대" 안에 놓입니다. 작은 무대는 항상 16:9로 고정돼 있어서,
-    // 코코포리아 필드 비율이 파일마다 달라도 원본 비율 그대로(찌그러지지 않게) 맞춰 넣습니다.
-    const stageRatio=16/9;
+    // 작은 무대는 큰 무대를 그대로 65% 축소한 모양이라(비율은 큰 무대와 같음), 큰 무대의
+    // 실제 화면 비율을 그대로 기준으로 씁니다.
+    const stageEl=document.querySelector(".stage-scene");
+    const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
+    const stageRatio=(sr.width||16)/(sr.height||9);
     const fieldRatio=fw/fh;
     // 무대 대비 필드가 차지할 비율(0~1). 넓은 쪽이 100%가 되고 좁은 쪽만 줄어듭니다.
     const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
@@ -4357,9 +4365,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           </button>
         )}
 
-        {/* 무대 상단: GM·다른 사람의 대사/서술/주사위가 뜨는 대사창 (stage-scene보다 먼저 와야 위쪽에 보임) */}
+        {/* 무대 상단: GM·다른 사람의 대사/서술/주사위가 뜨는 대사창. 절대 위치로 무대 위에
+            얹히기 때문에, 나타나거나 사라져도 무대(작은 무대 포함) 크기·위치는 그대로예요. */}
         {othersLatestDialogue&&(othersLatestDialogue.speaker==="ic"||othersLatestDialogue.speaker==="npc")&&(
-          <div className="vn-dock">
+          <div className="vn-dock vn-dock-top">
             <div className="vn-textbox vn-textbox-top" ref={othersBoxRef}>
               <div className="vn-portrait">
                 {othersLatestDialogue.avatar?<img src={othersLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
@@ -4420,9 +4429,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           )}
         </div>
 
-        {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 */}
+        {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 (절대 위치로 무대 위에 얹힘) */}
         {myLatestDialogue&&(myLatestDialogue.speaker==="ic"||myLatestDialogue.speaker==="npc")&&(
-          <div className="vn-dock">
+          <div className="vn-dock vn-dock-bottom">
             <div className="vn-textbox" ref={myBoxRef}>
               <div className="vn-portrait">
                 {myLatestDialogue.avatar?<img src={myLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
