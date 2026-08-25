@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
   Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock,
-  Heart, Check, Mail, AlertTriangle, Bookmark
+  Heart, Check, Mail, AlertTriangle, Bookmark, UserRound, Sliders
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -234,12 +234,9 @@ input[type=number] { -moz-appearance: textfield; }
     outline: 2px dashed transparent; outline-offset: -2px;
   }
   .stage-panel.drag-over { outline-color: var(--accent); background-color: var(--accent-soft); }
-  /* 배경 사진은 이 전용 레이어에만 블러를 줘서, 그 위에 있는 툴바·대사창·토큰은
-     선명하게 유지됩니다. 살짝 확대해서 블러 때문에 가장자리가 비치는 것도 가려요. */
   .stage-bg-blur {
-    position: absolute; inset: -20px; z-index: 0;
+    position: absolute; inset: 0; z-index: 0;
     background-size: cover; background-position: center; background-repeat: no-repeat;
-    filter: blur(16px); transform: scale(1.08);
   }
 }
 /* 채팅창 폭 조절 핸들: 데스크톱 2단 레이아웃에서만 보입니다. */
@@ -329,6 +326,7 @@ input[type=number] { -moz-appearance: textfield; }
 
 /* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게 */
 .vn-narration-box {
+  position: relative; z-index: 5;
   background: linear-gradient(to top, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 100%);
   color: #fff; border-radius: 0;
   padding: 16px 22px; margin: 0;
@@ -2005,7 +2003,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 // 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고, 제목줄을 잡고 끌어서 원하는
 // 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
 const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
-function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
+function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,anchorPos}){
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState("#c0392b");
   const [code,setCode]=useState("");
@@ -2078,7 +2076,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
     borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12.5,fontWeight:700,
   };
 
-  const anchor=pos ? {position:"fixed",left:pos.x,top:pos.y} : {position:"fixed",right:18,bottom:90};
+  const anchor=(pos||anchorPos) ? {position:"fixed",left:(pos||anchorPos).x,top:(pos||anchorPos).y} : {position:"fixed",right:18,bottom:90};
 
   return(
     <div ref={wrapRef}
@@ -2275,15 +2273,16 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
 // GM 전용 가로 툴바: 배경/레이어/배부/꾸미기 네 개 버튼을 작게 한 줄로 모아둔, 화면 위를
 // 자유롭게 옮길 수 있는 떠있는 바입니다. (시트·꾸미기 창이랑 같은 드래그 방식)
 function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFileChange,
+  showScenePopover,setShowScenePopover,scenePopoverRef,
   layers,showLayerPanel,setShowLayerPanel,layerPanelRef,layerFileInputRef,onLayerFileChange,
   layerUrlInput,setLayerUrlInput,onAddLayerUrl,layerDragIndex,setLayerDragIndex,onReorderLayer,onRemoveLayer,onUpdateLayer,
-  onOpenDistribute,onOpenDecorate,
+  onOpenDistribute,onOpenDecorate,onOpenStatAdjust,
   npcBookmarks,showBookmarkPanel,setShowBookmarkPanel,bookmarkPanelRef,
   npcName,npcAvatar,onSaveNpcBookmark,onApplyNpcBookmark,onRemoveNpcBookmark,
   showImgPopover,setShowImgPopover,imgPopoverRef,imgInputRef,onImgFileChange,
-  imgUrlInput,setImgUrlInput,onSendImageUrl,onImportCocofolia}){
+  imgUrlInput,setImgUrlInput,onSendImageUrl,onImportCocofolia,
+  pos,setPos}){
   const wrapRef=useRef(null);
-  const [pos,setPos]=useState(null);
   const [showCocoSetup,setShowCocoSetup]=useState(false);
   const [cocoJsonFile,setCocoJsonFile]=useState(null);
   const [cocoImageFiles,setCocoImageFiles]=useState([]);
@@ -2310,7 +2309,9 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
     setPos(clamp(d.ox+dx,d.oy+dy));
   };
   const onPointerUp=()=>{ drag.current.on=false; };
-  const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}:{position:"fixed",top:14,left:14};
+  // 위치를 아직 한 번도 안 옮겼으면(=pos가 없으면), 화면 중앙 상단이 기본 자리입니다.
+  const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}
+    :{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)"};
   const btnStyle={width:34,height:34,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",
     color:"var(--text-dim)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,position:"relative"};
 
@@ -2323,15 +2324,19 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
         <svg width="10" height="16" viewBox="0 0 10 16"><circle cx="2" cy="2" r="1.4" fill="currentColor"/><circle cx="8" cy="2" r="1.4" fill="currentColor"/><circle cx="2" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="2" cy="14" r="1.4" fill="currentColor"/><circle cx="8" cy="14" r="1.4" fill="currentColor"/></svg>
       </div>
 
-      <button type="button" onClick={onSceneClick} title="배경 이미지 설정" style={{...btnStyle,color:sceneUrl?"var(--accent-deep)":"var(--text-dim)",borderColor:sceneUrl?"var(--accent)":"var(--border)"}}>
-        <ImageIcon size={16}/>
-      </button>
-      <input ref={sceneInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={onSceneFileChange}/>
-      {sceneUrl&&(
-        <button type="button" onClick={onClearScene} title="배경 이미지 지우기" style={{...btnStyle,color:"#c05050"}}>
-          <Trash2 size={15}/>
+      <div style={{position:"relative"}} ref={scenePopoverRef}>
+        <button type="button" onClick={()=>sceneUrl?setShowScenePopover(v=>!v):onSceneClick()} title="배경 이미지"
+          style={{...btnStyle,color:sceneUrl?"var(--accent-deep)":"var(--text-dim)",borderColor:sceneUrl?"var(--accent)":"var(--border)"}}>
+          <ImageIcon size={16}/>
         </button>
-      )}
+        <input ref={sceneInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={onSceneFileChange}/>
+        {showScenePopover&&sceneUrl&&(
+          <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:31,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:8,display:"flex",flexDirection:"column",gap:4,minWidth:110}}>
+            <button type="button" className="coc-btn ghost small" style={{justifyContent:"center"}} onClick={()=>{setShowScenePopover(false);onSceneClick();}}>변경</button>
+            <button type="button" className="coc-btn ghost small" style={{justifyContent:"center",color:"#c05050"}} onClick={()=>{setShowScenePopover(false);onClearScene();}}>삭제</button>
+          </div>
+        )}
+      </div>
 
       <div style={{position:"relative"}} ref={layerPanelRef}>
         <button type="button" onClick={()=>setShowLayerPanel(v=>!v)} title="레이어 (사진/토큰)"
@@ -2420,8 +2425,11 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
 
       <div style={{width:1,height:20,background:"var(--border)",flexShrink:0}}/>
 
-      <button type="button" onClick={onOpenDistribute} title="배부 (핸드아웃·광기·수치 조정)" style={btnStyle}>
+      <button type="button" onClick={onOpenDistribute} title="배부 (핸드아웃·광기)" style={btnStyle}>
         <Folder size={16}/>
+      </button>
+      <button type="button" onClick={onOpenStatAdjust} title="수치 조정" style={btnStyle}>
+        <Sliders size={16}/>
       </button>
       <button type="button" onClick={onOpenDecorate} title="꾸미기" style={btnStyle}>
         <Brush size={16}/>
@@ -2453,7 +2461,7 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
       <div style={{position:"relative"}} ref={bookmarkPanelRef}>
         <button type="button" onClick={()=>setShowBookmarkPanel(v=>!v)} title="NPC 북마크"
           style={{...btnStyle,color:npcBookmarks.length>0?"var(--accent-deep)":"var(--text-dim)",borderColor:npcBookmarks.length>0?"var(--accent)":"var(--border)"}}>
-          <Bookmark size={16}/>
+          <UserRound size={16}/>
         </button>
         {showBookmarkPanel&&(
           <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:31,width:230,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
@@ -2490,19 +2498,14 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
 
 // GM이 핸드아웃·광기·수치 조정을 하나로 모아 쓰는 떠있는 창. 시트·꾸미기 창이랑 같은 방식으로
 // 자유롭게 옮길 수 있고, 열어둔 채로 채팅 등 바깥을 자유롭게 쓸 수 있습니다.
-function DistributePanel({onClose,onOpenHandout,onOpenMadness,
-  participantsList,presenceMap,userCode,
-  statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
-  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,
-  statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
+function DistributePanel({onClose,onOpenHandout,onOpenMadness,anchorPos}){
   const wrapRef=useRef(null);
   const [pos,setPos]=useState(null);
-  const [tab,setTab]=useState("menu"); // menu | stat
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const clamp=(x,y)=>{
     const el=wrapRef.current;
-    const w=el?el.offsetWidth:340;
-    const h=el?el.offsetHeight:400;
+    const w=el?el.offsetWidth:220;
+    const h=el?el.offsetHeight:140;
     return { x:Math.max(4,Math.min(window.innerWidth-w-4,x)), y:Math.max(4,Math.min(window.innerHeight-h-4,y)) };
   };
   const onPointerDown=e=>{
@@ -2519,10 +2522,11 @@ function DistributePanel({onClose,onOpenHandout,onOpenMadness,
     setPos(clamp(d.ox+dx,d.oy+dy));
   };
   const onPointerUp=()=>{ drag.current.on=false; };
-  const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}:{position:"fixed",right:18,bottom:90};
+  const base=pos||anchorPos;
+  const anchor=base?{position:"fixed",left:base.x,top:base.y}:{position:"fixed",right:18,bottom:90};
 
   return(
-    <div ref={wrapRef} style={{...anchor,width:"min(94vw, 340px)",maxHeight:"82vh",display:"flex",flexDirection:"column",
+    <div ref={wrapRef} style={{...anchor,width:"min(94vw, 260px)",display:"flex",flexDirection:"column",
       background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
       boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
       <div onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -2536,76 +2540,123 @@ function DistributePanel({onClose,onOpenHandout,onOpenMadness,
           <Minus size={13}/>
         </button>
       </div>
+      <div style={{padding:"14px 16px",display:"flex",gap:7,flexWrap:"wrap"}}>
+        <button type="button" className="coc-btn small" onClick={onOpenHandout}>핸드아웃</button>
+        <button type="button" className="coc-btn small" onClick={onOpenMadness}>광기</button>
+      </div>
+    </div>
+  );
+}
+
+// GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는, 독립적으로
+// 떠있는 창. 배부 창에서 분리되어 GM 도구 바에서 바로 열립니다.
+function StatAdjustPanel({onClose,anchorPos,
+  participantsList,presenceMap,userCode,
+  statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
+  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,
+  statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
+  const wrapRef=useRef(null);
+  const [pos,setPos]=useState(null);
+  const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
+  const clamp=(x,y)=>{
+    const el=wrapRef.current;
+    const w=el?el.offsetWidth:320;
+    const h=el?el.offsetHeight:460;
+    return { x:Math.max(4,Math.min(window.innerWidth-w-4,x)), y:Math.max(4,Math.min(window.innerHeight-h-4,y)) };
+  };
+  const onPointerDown=e=>{
+    const rect=wrapRef.current.getBoundingClientRect();
+    drag.current={on:true,moved:false,sx:e.clientX,sy:e.clientY,ox:rect.left,oy:rect.top};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove=e=>{
+    const d=drag.current;
+    if(!d.on)return;
+    const dx=e.clientX-d.sx, dy=e.clientY-d.sy;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true;
+    if(!d.moved)return;
+    setPos(clamp(d.ox+dx,d.oy+dy));
+  };
+  const onPointerUp=()=>{ drag.current.on=false; };
+  const base=pos||anchorPos;
+  const anchor=base?{position:"fixed",left:base.x,top:base.y}:{position:"fixed",right:18,bottom:90};
+
+  return(
+    <div ref={wrapRef} style={{...anchor,width:"min(94vw, 320px)",maxHeight:"82vh",display:"flex",flexDirection:"column",
+      background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
+      boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+      <div onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
+          background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
+        <Sliders size={14} color="var(--accent-deep)"/>
+        <span style={{flex:1,fontSize:13,fontWeight:700,color:"var(--accent-deep)"}}>수치 조정</span>
+        <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose}
+          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <Minus size={13}/>
+        </button>
+      </div>
       <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"14px 16px",touchAction:"pan-y"}}>
-        <div style={{display:"flex",gap:7,marginBottom:12,flexWrap:"wrap"}}>
-          <button type="button" className="coc-btn small" onClick={onOpenHandout}>핸드아웃</button>
-          <button type="button" className="coc-btn small" onClick={onOpenMadness}>광기</button>
-          <button type="button" className={tab==="stat"?"coc-btn small":"coc-btn ghost small"} onClick={()=>setTab(tab==="stat"?"menu":"stat")}>수치 조정</button>
+        <div className="coc-label" style={{marginBottom:6}}>대상</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+          {participantsList.filter(c=>c!==userCode).map(code=>{
+            const displayName=presenceMap[code]?.charName||code;
+            const active=statAdjustTarget===code;
+            return(
+              <button key={code} type="button" onClick={()=>setStatAdjustTarget(code)}
+                style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
+                  background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
+                  border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
+                {displayName}
+              </button>
+            );
+          })}
         </div>
-        {tab==="stat"&&(
-          <div>
-            <div className="coc-label" style={{marginBottom:6}}>대상</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-              {participantsList.filter(c=>c!==userCode).map(code=>{
-                const displayName=presenceMap[code]?.charName||code;
-                const active=statAdjustTarget===code;
-                return(
-                  <button key={code} type="button" onClick={()=>setStatAdjustTarget(code)}
-                    style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
-                      background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
-                      border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
-                    {displayName}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="coc-label" style={{marginBottom:6}}>종류</div>
-            <div style={{display:"flex",gap:5,marginBottom:10}}>
-              {[["characteristics","특성치"],["derived","파생 능력치"],["skills","기능치"]].map(([v,l])=>(
-                <button key={v} type="button" onClick={()=>{setStatAdjustCategory(v);setStatAdjustKey("");}}
-                  style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
-                    background:statAdjustCategory===v?"var(--accent)":"var(--surface)",color:statAdjustCategory===v?"#fff":"var(--text-dim)",
-                    border:"1px solid "+(statAdjustCategory===v?"var(--accent)":"var(--border)")}}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            <div className="coc-label" style={{marginBottom:6}}>항목</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10,maxHeight:120,overflowY:"auto"}}>
-              {(statAdjustCategory==="characteristics"?CHAR_KEYS.map(k=>[k,CHAR_LABEL[k]]):
-                statAdjustCategory==="derived"?Object.entries(DERIVED_LABEL):
-                SKILL_LIST_SORTED.map(([name])=>[name,name])
-              ).map(([key,label])=>(
-                <button key={key} type="button" onClick={()=>setStatAdjustKey(key)}
-                  style={{fontSize:11,padding:"4px 10px",borderRadius:999,cursor:"pointer",
-                    background:statAdjustKey===key?"var(--accent)":"var(--surface)",color:statAdjustKey===key?"#fff":"var(--text-dim)",
-                    border:"1px solid "+(statAdjustKey===key?"var(--accent)":"var(--border)")}}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <input className="coc-input" type="number" value={statAdjustAmount} onChange={e=>setStatAdjustAmount(e.target.value)}
-              placeholder="증감량 (예: 5, -10)" style={{marginBottom:10}}/>
-            <div style={{display:"flex",gap:5,marginBottom:10}}>
-              {[[true,"공개"],[false,"비공개"]].map(([v,l])=>(
-                <button key={l} type="button" onClick={()=>setStatAdjustPublic(v)}
-                  style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
-                    background:statAdjustPublic===v?"var(--accent)":"var(--surface)",color:statAdjustPublic===v?"#fff":"var(--text-dim)",
-                    border:"1px solid "+(statAdjustPublic===v?"var(--accent)":"var(--border)")}}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:10}}>
-              {statAdjustPublic?"채팅에 '누구의 무엇이 얼마나 조정되었습니다'라고 안내가 남아요.":"시트에만 조용히 반영되고, 채팅엔 아무 안내도 남지 않아요."}
-            </div>
-            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
-              disabled={!statAdjustTarget||!statAdjustKey||!statAdjustAmount||Number(statAdjustAmount)===0}
-              onClick={onApplyStatAdjust}>
-              적용
+        <div className="coc-label" style={{marginBottom:6}}>종류</div>
+        <div style={{display:"flex",gap:5,marginBottom:10}}>
+          {[["characteristics","특성치"],["derived","파생 능력치"],["skills","기능치"]].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>{setStatAdjustCategory(v);setStatAdjustKey("");}}
+              style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
+                background:statAdjustCategory===v?"var(--accent)":"var(--surface)",color:statAdjustCategory===v?"#fff":"var(--text-dim)",
+                border:"1px solid "+(statAdjustCategory===v?"var(--accent)":"var(--border)")}}>
+              {l}
             </button>
-          </div>
-        )}
+          ))}
+        </div>
+        <div className="coc-label" style={{marginBottom:6}}>항목</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10,maxHeight:120,overflowY:"auto"}}>
+          {(statAdjustCategory==="characteristics"?CHAR_KEYS.map(k=>[k,CHAR_LABEL[k]]):
+            statAdjustCategory==="derived"?Object.entries(DERIVED_LABEL):
+            SKILL_LIST_SORTED.map(([name])=>[name,name])
+          ).map(([key,label])=>(
+            <button key={key} type="button" onClick={()=>setStatAdjustKey(key)}
+              style={{fontSize:11,padding:"4px 10px",borderRadius:999,cursor:"pointer",
+                background:statAdjustKey===key?"var(--accent)":"var(--surface)",color:statAdjustKey===key?"#fff":"var(--text-dim)",
+                border:"1px solid "+(statAdjustKey===key?"var(--accent)":"var(--border)")}}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <input className="coc-input" type="number" value={statAdjustAmount} onChange={e=>setStatAdjustAmount(e.target.value)}
+          placeholder="증감량 (예: 5, -10)" style={{marginBottom:10}}/>
+        <div style={{display:"flex",gap:5,marginBottom:10}}>
+          {[[true,"공개"],[false,"비공개"]].map(([v,l])=>(
+            <button key={l} type="button" onClick={()=>setStatAdjustPublic(v)}
+              style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
+                background:statAdjustPublic===v?"var(--accent)":"var(--surface)",color:statAdjustPublic===v?"#fff":"var(--text-dim)",
+                border:"1px solid "+(statAdjustPublic===v?"var(--accent)":"var(--border)")}}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:10}}>
+          {statAdjustPublic?"채팅에 '누구의 무엇이 얼마나 조정되었습니다'라고 안내가 남아요.":"시트에만 조용히 반영되고, 채팅엔 아무 안내도 남지 않아요."}
+        </div>
+        <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
+          disabled={!statAdjustTarget||!statAdjustKey||!statAdjustAmount||Number(statAdjustAmount)===0}
+          onClick={onApplyStatAdjust}>
+          적용
+        </button>
       </div>
     </div>
   );
@@ -3557,6 +3608,16 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [sceneUrl,setSceneUrl]=useState("");
   const [showDecorate,setShowDecorate]=useState(false);
   const [showDistribute,setShowDistribute]=useState(false);
+  const [showStatAdjust,setShowStatAdjust]=useState(false);
+  const [gmBarPos,setGmBarPos]=useState(null); // GM 도구 바 위치(끌어서 옮긴 뒤 자리). 배부·수치조정·꾸미기 창이 이 자리를 따라 열립니다.
+  const [showScenePopover,setShowScenePopover]=useState(false);
+  const scenePopoverRef=useRef(null);
+  useEffect(()=>{
+    if(!showScenePopover)return;
+    const onDocClick=e=>{ if(scenePopoverRef.current&&!scenePopoverRef.current.contains(e.target)) setShowScenePopover(false); };
+    document.addEventListener("mousedown",onDocClick);
+    return()=>document.removeEventListener("mousedown",onDocClick);
+  },[showScenePopover]);
   const sceneInputRef=useRef(null);
   useEffect(()=>{
     const unsub=storeListenDoc(`scene:${room.id}`,async manifest=>{
@@ -3756,16 +3817,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     let data;
     try{ data=JSON.parse(await jsonFile.text()); }
     catch{ alert("JSON 파일을 읽을 수 없어요. 코코포리아에서 내보낸 파일이 맞는지 확인해주세요."); return; }
-    const room=data?.entities?.room;
+    // ⚠️ 여기서 변수명을 "room"으로 쓰면, 우리 채팅방을 가리키던 바깥의 room(prop)을
+    // 코코포리아 JSON 안의 room 데이터로 덮어써버려서 room.id가 깨지고, 그 아래 모든 저장이
+    // 엉뚱한 경로(layerdata:undefined:...)로 들어가 화면에 전혀 반영되지 않는 버그가 있었습니다.
+    // 그래서 이름을 cocoRoom으로 분리했습니다.
+    const cocoRoom=data?.entities?.room;
     const items=data?.entities?.items;
-    if(!room||!items){ alert("이 파일에서 방 정보를 찾을 수 없어요."); return; }
-    const fw=room.fieldWidth||100, fh=room.fieldHeight||100;
+    if(!cocoRoom||!items){ alert("이 파일에서 방 정보를 찾을 수 없어요."); return; }
+    const fw=cocoRoom.fieldWidth||100, fh=cocoRoom.fieldHeight||100;
     const fileByName={};
     imageFiles.forEach(f=>{ fileByName[f.name]=f; });
 
     // 배경(있고, 첨부한 이미지 중에 파일명이 일치하는 게 있으면)
-    if(room.backgroundUrl&&fileByName[room.backgroundUrl]){
-      await uploadScene(fileByName[room.backgroundUrl]);
+    if(cocoRoom.backgroundUrl&&fileByName[cocoRoom.backgroundUrl]){
+      await uploadScene(fileByName[cocoRoom.backgroundUrl]);
     }
 
     // 항목들: order가 클수록 앞(우리 배열은 index 0이 맨 앞)이라 내림차순 정렬
@@ -4645,9 +4710,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         )}
       </div>
 
-      {isGM&&(
+      {isGM&&(()=>{
+        // 배부·꾸미기·수치조정 창은 GM 도구 바 자리를 따라 그 근처에서 열립니다.
+        const gmPanelAnchor=gmBarPos
+          ? {x:Math.max(4,Math.min(window.innerWidth-340,gmBarPos.x)),y:gmBarPos.y+48}
+          : {x:window.innerWidth/2-140,y:60};
+        return(
+        <>
         <GmToolsBar
+          pos={gmBarPos} setPos={setGmBarPos}
           sceneUrl={sceneUrl} onSceneClick={()=>sceneInputRef.current?.click()} onClearScene={clearScene}
+          showScenePopover={showScenePopover} setShowScenePopover={setShowScenePopover} scenePopoverRef={scenePopoverRef}
           sceneInputRef={sceneInputRef} onSceneFileChange={async e=>{const f=e.target.files?.[0];if(!f)return;await uploadScene(f);e.target.value="";}}
           layers={layers} showLayerPanel={showLayerPanel} setShowLayerPanel={setShowLayerPanel} layerPanelRef={layerPanelRef}
           layerFileInputRef={layerFileInputRef} onLayerFileChange={async e=>{const f=e.target.files?.[0];if(!f)return;await addLayerFromFile(f);e.target.value="";}}
@@ -4655,28 +4728,31 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           onAddLayerUrl={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");}}
           layerDragIndex={layerDragIndex} setLayerDragIndex={setLayerDragIndex}
           onReorderLayer={reorderLayer} onRemoveLayer={removeLayer} onUpdateLayer={commitLayer}
-          onOpenDistribute={()=>setShowDistribute(true)} onOpenDecorate={()=>setShowDecorate(true)}
+          onOpenDistribute={()=>setShowDistribute(true)} onOpenDecorate={()=>setShowDecorate(true)} onOpenStatAdjust={()=>setShowStatAdjust(true)}
           npcBookmarks={npcBookmarks} showBookmarkPanel={showBookmarkPanel} setShowBookmarkPanel={setShowBookmarkPanel} bookmarkPanelRef={bookmarkPanelRef}
           npcName={npcName} npcAvatar={npcAvatar} onSaveNpcBookmark={saveNpcBookmark} onApplyNpcBookmark={applyNpcBookmark} onRemoveNpcBookmark={removeNpcBookmark}
           showImgPopover={showImgPopover} setShowImgPopover={setShowImgPopover} imgPopoverRef={imgPopoverRef}
           imgInputRef={imgInputRef} onImgFileChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}
           imgUrlInput={imgUrlInput} setImgUrlInput={setImgUrlInput} onSendImageUrl={sendImageUrl}
           onImportCocofolia={importCocofoliaSetup}/>
-      )}
 
-      {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
-      {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
-        onSendText={markup=>doSend("narrate",markup,"","")}
-        diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
-      {showDistribute&&<DistributePanel onClose={()=>setShowDistribute(false)}
-        onOpenHandout={()=>setShowHandoutManager(true)} onOpenMadness={()=>setShowMadnessModal(true)}
-        participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
-        statAdjustTarget={statAdjustTarget} setStatAdjustTarget={setStatAdjustTarget}
-        statAdjustCategory={statAdjustCategory} setStatAdjustCategory={setStatAdjustCategory}
-        statAdjustKey={statAdjustKey} setStatAdjustKey={setStatAdjustKey}
-        statAdjustAmount={statAdjustAmount} setStatAdjustAmount={setStatAdjustAmount}
-        statAdjustPublic={statAdjustPublic} setStatAdjustPublic={setStatAdjustPublic}
-        onApplyStatAdjust={applyStatAdjust}/>}
+        {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
+        {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)} anchorPos={gmPanelAnchor}
+          onSendText={markup=>doSend("narrate",markup,"","")}
+          diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
+        {showDistribute&&<DistributePanel onClose={()=>setShowDistribute(false)} anchorPos={gmPanelAnchor}
+          onOpenHandout={()=>setShowHandoutManager(true)} onOpenMadness={()=>setShowMadnessModal(true)}/>}
+        {showStatAdjust&&<StatAdjustPanel onClose={()=>setShowStatAdjust(false)} anchorPos={gmPanelAnchor}
+          participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
+          statAdjustTarget={statAdjustTarget} setStatAdjustTarget={setStatAdjustTarget}
+          statAdjustCategory={statAdjustCategory} setStatAdjustCategory={setStatAdjustCategory}
+          statAdjustKey={statAdjustKey} setStatAdjustKey={setStatAdjustKey}
+          statAdjustAmount={statAdjustAmount} setStatAdjustAmount={setStatAdjustAmount}
+          statAdjustPublic={statAdjustPublic} setStatAdjustPublic={setStatAdjustPublic}
+          onApplyStatAdjust={applyStatAdjust}/>}
+        </>
+        );
+      })()}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
         onClose={()=>setShowMadnessModal(false)} onSend={saveMadness}/>}
