@@ -10,7 +10,7 @@ import { db } from "./firebase";
 import {
   doc, getDoc, setDoc, deleteDoc,
   collection, query, orderBy, startAt, endAt, getDocs, onSnapshot,
-  enableNetwork, disableNetwork, limitToLast,
+  enableNetwork, disableNetwork,
 } from "firebase/firestore";
 
 /* ============================== CONFIG ============================== */
@@ -662,21 +662,19 @@ async function storeListKeys(prefix, _shared) {
 // Firestore 무료 요금제의 "하루 읽기 5만 건" 한도를 채팅이 길어질수록 빠르게 소모했습니다.
 // onSnapshot은 최초 1회만 전체를 읽고, 그 뒤로는 "바뀐 문서"만 전송받기 때문에
 // 폴링 대비 읽기 횟수가 크게 줄어듭니다. 반환값은 구독 해제 함수(unsubscribe)입니다.
-// limit을 주면 "그 안에서 최신 N개"만 가져옵니다. 메시지 id(newId())가 타임스탬프로
-// 시작해서 사전순 정렬이 곧 시간순 정렬이라, limitToLast로 정확히 최근 것만 골라낼 수 있어요.
-// 방에 메시지가 아무리 쌓여도, 화면엔 최근 것만 불러오니 접속할 때 느려지지 않습니다.
+// limit을 주면 "그 안에서 최신 N개"만 화면에 씁니다. (쿼리 자체에 limitToLast를 걸었더니
+// 조용히 실패하는 문제가 있어서, 안전하게 받아온 뒤 자바스크립트에서 최근 것만 잘라냅니다.)
 function storeListenPrefix(prefix, onChange, limit) {
   try {
     const col = collection(db, KV_COLLECTION);
-    const constraints = [orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff")];
-    if (limit) constraints.push(limitToLast(limit));
-    const q = query(col, ...constraints);
+    const q = query(col, orderBy("__name__"), startAt(prefix), endAt(prefix + "\uf8ff"));
     return onSnapshot(q, snap => {
-      const out = [];
+      let out = [];
       snap.forEach(d => out.push({ key: d.id, value: d.data().value }));
+      if (limit && out.length > limit) out = out.slice(-limit);
       onChange(out);
-    }, () => {});
-  } catch { return () => {}; }
+    }, err => { console.error("storeListenPrefix 오류:", prefix, err); });
+  } catch (err) { console.error("storeListenPrefix 예외:", prefix, err); return () => {}; }
 }
 function storeListenDoc(key, onChange) {
   try {
