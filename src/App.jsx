@@ -234,9 +234,11 @@ input[type=number] { -moz-appearance: textfield; }
     outline: 2px dashed transparent; outline-offset: -2px;
   }
   .stage-panel.drag-over { outline-color: var(--accent); background-color: var(--accent-soft); }
+  /* 큰 무대를 채우는 배경: 작은 무대 밖으로 남는 여백을 같은 그림의 블러로 채웁니다. */
   .stage-bg-blur {
-    position: absolute; inset: 0; z-index: 0;
+    position: absolute; inset: -20px; z-index: 0;
     background-size: cover; background-position: center; background-repeat: no-repeat;
+    filter: blur(18px); transform: scale(1.08);
   }
 }
 /* 채팅창 폭 조절 핸들: 데스크톱 2단 레이아웃에서만 보입니다. */
@@ -251,6 +253,18 @@ input[type=number] { -moz-appearance: textfield; }
 }
 /* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
 .stage-scene { flex: 1; position: relative; min-height: 0; }
+/* 작은 무대: 맵 세팅(레이어)과 선명한 배경이 실제로 놓이는 곳입니다.
+   항상 16:9 비율을 유지한 채, 큰 무대 안에 들어갈 수 있는 가장 큰 크기로 가운데 놓입니다.
+   그래서 창 크기가 바뀌어도 배치가 그대로 유지돼요. */
+.stage-inner {
+  position: absolute; inset: 0; margin: auto;
+  aspect-ratio: 16 / 9; max-width: 100%; max-height: 100%;
+  z-index: 1;
+}
+.stage-inner-bg {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+}
 
 /* 롤20 스타일 좌측 세로 아이콘 바. 모바일에서는 화면 맨 위에 가로로,
    PC(1024px~)에서는 무대 왼쪽에 세로로 길게 붙습니다. */
@@ -2173,7 +2187,7 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
   // "화면 몇 픽셀"이 아니라 "무대의 몇 %"로 저장되어서, 창 크기나 보는 사람 화면 크기가 달라도
   // 항상 같은 상대적 자리에 보입니다.
   const getContainerSize=el=>{
-    const container=el.closest(".stage-scene");
+    const container=el.closest(".stage-inner");
     const rect=container?container.getBoundingClientRect():{width:1000,height:600};
     return {w:rect.width||1000,h:rect.height||600};
   };
@@ -3840,9 +3854,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     // 코코포리아 필드(가로세로 비율이 파일마다 다름)를 우리 무대 안에 "원본 비율 그대로"
     // 가장 크게 들어가도록 맞춥니다. 가로·세로를 따로 계산하면 그림이 찌그러지기 때문에,
     // 한쪽을 기준으로 같은 배율을 쓰고 남는 쪽은 여백(레터박스)으로 둡니다.
-    const stageEl=document.querySelector(".stage-scene");
-    const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
-    const stageRatio=(sr.width||16)/(sr.height||9);
+    // 맵 세팅은 "작은 무대" 안에 놓입니다. 작은 무대는 항상 16:9로 고정돼 있어서,
+    // 코코포리아 필드 비율이 파일마다 달라도 원본 비율 그대로(찌그러지지 않게) 맞춰 넣습니다.
+    const stageRatio=16/9;
     const fieldRatio=fw/fh;
     // 무대 대비 필드가 차지할 비율(0~1). 넓은 쪽이 100%가 되고 좁은 쪽만 줄어듭니다.
     const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
@@ -4368,13 +4382,19 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         })()}
 
         <div className="stage-scene" onMouseDown={()=>setSelectedLayerId(null)}>
-          {layers.map((l,i)=>(
-            <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
-              selected={selectedLayerId===l.id}
-              onSelect={()=>setSelectedLayerId(l.id)}
-              onUpdate={patch=>updateLayerLocal(l.id,patch)}
-              onCommit={patch=>commitLayer(l.id,patch)}/>
-          ))}
+          {/* 작은 무대: 맵 세팅(레이어)과 선명한 배경이 실제로 놓이는 공간.
+              화면 크기와 상관없이 항상 같은 비율이라, 어떤 파일을 넣어도 배치가 그대로 유지됩니다.
+              바깥 큰 무대의 남는 부분은 같은 배경을 블러 처리해서 채웁니다. */}
+          <div className="stage-inner">
+            {sceneUrl&&<div className="stage-inner-bg" style={{backgroundImage:`url(${sceneUrl})`}}/>}
+            {layers.map((l,i)=>(
+              <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
+                selected={selectedLayerId===l.id}
+                onSelect={()=>setSelectedLayerId(l.id)}
+                onUpdate={patch=>updateLayerLocal(l.id,patch)}
+                onCommit={patch=>commitLayer(l.id,patch)}/>
+            ))}
+          </div>
           {activeChoice&&(()=>{
             let data=null;try{data=JSON.parse(activeChoice.text);}catch{}
             if(!data)return null;
