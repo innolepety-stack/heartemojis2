@@ -3837,6 +3837,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
     const newIds=[];
     let missing=0;
+    // 코코포리아 전체 배치를 무대의 80% 크기로 축소해서, 가장자리에 여백이 좀 남도록 합니다.
+    const IMPORT_SCALE=0.8, IMPORT_OFFSET=(1-IMPORT_SCALE)/2*100; // = 10
     for(const it of sorted){
       const file=fileByName[it.imageUrl];
       if(!file){ missing++; continue; }
@@ -3846,10 +3848,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요.
       await storeSet(`layerdata:${room.id}:${id}`,{
         url,
-        x:((it.x||0)+fw/2)/fw*100,
-        y:((it.y||0)+fh/2)/fh*100,
-        width:(it.width||10)/fw*100,
-        height:(it.height||10)/fh*100,
+        x:IMPORT_OFFSET+((it.x||0)+fw/2)/fw*100*IMPORT_SCALE,
+        y:IMPORT_OFFSET+((it.y||0)+fh/2)/fh*100*IMPORT_SCALE,
+        width:(it.width||10)/fw*100*IMPORT_SCALE,
+        height:(it.height||10)/fh*100*IMPORT_SCALE,
         angle:it.angle||0,
         locked:!!it.locked,
       },true);
