@@ -2158,7 +2158,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,an
 // 방에 있는 모든 사람에게 똑같이 보여요(GM만 옮기고/크기 조절할 수 있어요). 삭제·순서 변경은
 // 좌측 아이콘 바의 "레이어" 패널에서 합니다(포토샵 레이어창처럼요). 드래그·리사이즈 도중에는
 // 화면에서만 바로바로 움직이다가, 손을 뗀 순간에만 서버에 저장해서(=다른 사람 화면에 반영) 씁니다.
-function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
+function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect,viewScale=1}){
   const editable=canEdit&&!layer.locked;
   // 무대(.stage-scene) 크기를 기준으로 픽셀 이동량을 %로 바꿔줍니다. 이렇게 하면 위치·크기가
   // "화면 몇 픽셀"이 아니라 "무대의 몇 %"로 저장되어서, 창 크기나 보는 사람 화면 크기가 달라도
@@ -2238,32 +2238,34 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect}){
     document.addEventListener("mousemove",onMove);
     document.addEventListener("mouseup",onUp);
   };
-  const handleStyle={position:"absolute",width:12,height:12,background:"var(--accent)",border:"1.5px solid #fff",borderRadius:3,zIndex:2};
+  // 무대를 확대하면 손잡이까지 같이 커져서 잡기 불편해지므로, 배율의 역수를 곱해
+  // 화면상 크기가 항상 일정하게 보이도록 합니다.
+  const hs=12/viewScale, off=-hs/2, bw=1.5/viewScale;
+  const handleStyle={position:"absolute",width:hs,height:hs,background:"var(--accent)",border:`${bw}px solid #fff`,borderRadius:3/viewScale,zIndex:2};
   return(
     <div onMouseDown={onDragMouseDown}
       style={{position:"absolute",left:`${layer.x}%`,top:`${layer.y}%`,width:`${layer.width}%`,height:`${layer.height}%`,zIndex,
         transform:`rotate(${layer.angle||0}deg)`,
         cursor:editable?"move":"default",touchAction:"none",
-        outline:selected&&canEdit?"1.5px dashed var(--accent)":"none",outlineOffset:2}}>
+        outline:selected&&canEdit?`${bw}px dashed var(--accent)`:"none",outlineOffset:2/viewScale}}>
       <img src={layer.url} draggable={false} alt=""
         style={{width:"100%",height:"100%",objectFit:"contain",userSelect:"none",pointerEvents:"none",filter:"drop-shadow(0 4px 10px rgba(0,0,0,0.25))"}}/>
       {layer.locked&&canEdit&&(
-        <div style={{position:"absolute",top:4,left:4,width:16,height:16,borderRadius:4,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <Lock size={9} color="#fff"/>
+        <div style={{position:"absolute",top:4/viewScale,left:4/viewScale,width:16/viewScale,height:16/viewScale,borderRadius:4/viewScale,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Lock size={9/viewScale} color="#fff"/>
         </div>
       )}
       {editable&&selected&&(
         <>
-          <div onMouseDown={onCornerMouseDown("nw")} style={{...handleStyle,top:-6,left:-6,cursor:"nwse-resize"}}/>
-          <div onMouseDown={onCornerMouseDown("ne")} style={{...handleStyle,top:-6,right:-6,cursor:"nesw-resize"}}/>
-          <div onMouseDown={onCornerMouseDown("sw")} style={{...handleStyle,bottom:-6,left:-6,cursor:"nesw-resize"}}/>
-          <div onMouseDown={onCornerMouseDown("se")} style={{...handleStyle,bottom:-6,right:-6,cursor:"nwse-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("nw")} style={{...handleStyle,top:off,left:off,cursor:"nwse-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("ne")} style={{...handleStyle,top:off,right:off,cursor:"nesw-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("sw")} style={{...handleStyle,bottom:off,left:off,cursor:"nesw-resize"}}/>
+          <div onMouseDown={onCornerMouseDown("se")} style={{...handleStyle,bottom:off,right:off,cursor:"nwse-resize"}}/>
           <div onMouseDown={onRotateMouseDown}
-            style={{position:"absolute",top:-28,left:"50%",transform:"translateX(-50%)",width:12,height:12,
-              background:"var(--accent)",border:"1.5px solid #fff",borderRadius:"50%",cursor:"grab",zIndex:2}}/>
-          <div style={{position:"absolute",top:-22,left:"50%",width:1,height:14,background:"var(--accent)",transform:"translateX(-50%)"}}/>
-        </>
-      )}
+            style={{position:"absolute",top:-28/viewScale,left:"50%",transform:"translateX(-50%)",width:hs,height:hs,
+              background:"var(--accent)",border:`${bw}px solid #fff`,borderRadius:"50%",cursor:"grab",zIndex:2}}/>
+          <div style={{position:"absolute",top:-22/viewScale,left:"50%",width:bw,height:14/viewScale,background:"var(--accent)",transform:"translateX(-50%)"}}/>
+        </>      )}
     </div>
   );
 }
@@ -3712,6 +3714,69 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
   const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
 
+  // 무대 확대/축소·이동(롤20·코코포리아 방식). 이건 방 전체가 아니라 "지금 보고 있는 내 화면"에만
+  // 적용됩니다. 그래서 GM이 확대해도 다른 사람 화면은 그대로고, 각자 원하는 곳을 볼 수 있어요.
+  const MIN_ZOOM=0.3, MAX_ZOOM=5;
+  const [stageView,setStageView]=useState({scale:1,tx:0,ty:0}); // tx,ty는 픽셀 단위 이동량
+  const stageSceneRef=useRef(null);
+  const stageViewRef=useRef(stageView);
+  useEffect(()=>{ stageViewRef.current=stageView; },[stageView]);
+  const resetStageView=()=>setStageView({scale:1,tx:0,ty:0});
+  // 확대/축소 버튼: 무대 한가운데를 기준으로 커지고 작아집니다.
+  const zoomStageBy=factor=>{
+    setStageView(v=>{
+      const scale=Math.min(MAX_ZOOM,Math.max(MIN_ZOOM,v.scale*factor));
+      const k=scale/v.scale;
+      return {scale,tx:v.tx*k,ty:v.ty*k};
+    });
+  };
+  // 마우스 휠: 커서가 가리키는 지점을 기준으로 확대/축소돼서, 보고 싶은 곳을 그대로 당겨볼 수 있어요.
+  // (브라우저 기본 스크롤을 막아야 해서 passive:false로 직접 등록합니다.)
+  useEffect(()=>{
+    const el=stageSceneRef.current;
+    if(!el)return;
+    const onWheel=e=>{
+      e.preventDefault();
+      const v=stageViewRef.current;
+      const rect=el.getBoundingClientRect();
+      // 무대 중심 기준, 커서까지의 거리
+      const cx=e.clientX-(rect.left+rect.width/2);
+      const cy=e.clientY-(rect.top+rect.height/2);
+      const factor=e.deltaY<0?1.12:1/1.12;
+      const scale=Math.min(MAX_ZOOM,Math.max(MIN_ZOOM,v.scale*factor));
+      const k=scale/v.scale;
+      // 커서 아래의 지점이 제자리에 머물도록 이동량을 보정합니다.
+      setStageView({scale,tx:cx-(cx-v.tx)*k,ty:cy-(cy-v.ty)*k});
+    };
+    el.addEventListener("wheel",onWheel,{passive:false});
+    return()=>el.removeEventListener("wheel",onWheel);
+  },[]);
+  // 빈 공간을 잡고 끌거나(토큰이 아닌 곳), 가운데 버튼으로 끌면 무대를 이동할 수 있습니다.
+  const stagePanDrag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
+  const onStageMouseDown=e=>{
+    // 토큰 위에서 누른 경우는 StageToken이 stopPropagation 하므로 여기 오지 않습니다.
+    if(e.button!==0&&e.button!==1)return;
+    const v=stageViewRef.current;
+    stagePanDrag.current={on:true,moved:false,sx:e.clientX,sy:e.clientY,ox:v.tx,oy:v.ty};
+    const onMove=ev=>{
+      const d=stagePanDrag.current;
+      if(!d.on)return;
+      const dx=ev.clientX-d.sx, dy=ev.clientY-d.sy;
+      if(Math.abs(dx)>3||Math.abs(dy)>3) d.moved=true;
+      if(!d.moved)return;
+      setStageView(prev=>({...prev,tx:d.ox+dx,ty:d.oy+dy}));
+    };
+    const onUp=()=>{
+      document.removeEventListener("mousemove",onMove);
+      document.removeEventListener("mouseup",onUp);
+      // 끌지 않고 그냥 눌렀다 뗀 거라면 선택 해제로 동작합니다(기존 동작 유지).
+      if(!stagePanDrag.current.moved) setSelectedLayerId(null);
+      stagePanDrag.current.on=false;
+    };
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+  };
+
 
   // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지이 그 결과가
   // 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다. Cloudflare에 올리고 URL만
@@ -4420,19 +4485,41 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           );
         })()}
 
-        <div className="stage-scene" onMouseDown={()=>setSelectedLayerId(null)}>
+        <div className="stage-scene" ref={stageSceneRef} onMouseDown={onStageMouseDown}
+          style={{cursor:stageView.scale!==1||stageView.tx||stageView.ty?"grab":"default",overflow:"hidden"}}>
           {/* 작은 무대: 맵 세팅(레이어)과 선명한 배경이 실제로 놓이는 공간.
               화면 크기와 상관없이 항상 같은 비율이라, 어떤 파일을 넣어도 배치가 그대로 유지됩니다.
-              바깥 큰 무대의 남는 부분은 같은 배경을 블러 처리해서 채웁니다. */}
-          <div className="stage-inner">
+              바깥 큰 무대의 남는 부분은 같은 배경을 블러 처리해서 채웁니다.
+              여기에 확대/축소·이동(뷰)이 통째로 적용돼서, 안에 있는 배경과 토큰이 같이 움직입니다. */}
+          <div className="stage-inner"
+            style={{transform:`translate(-50%,-50%) translate(${stageView.tx}px, ${stageView.ty}px) scale(${stageView.scale})`}}>
             {sceneUrl&&<div className="stage-inner-bg" style={{backgroundImage:`url(${sceneUrl})`}}/>}
             {layers.map((l,i)=>(
               <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
-                selected={selectedLayerId===l.id}
+                selected={selectedLayerId===l.id} viewScale={stageView.scale}
                 onSelect={()=>setSelectedLayerId(l.id)}
                 onUpdate={patch=>updateLayerLocal(l.id,patch)}
                 onCommit={patch=>commitLayer(l.id,patch)}/>
             ))}
+          </div>
+
+          {/* 확대/축소 컨트롤 — 마우스 휠로도 되고, 빈 곳을 끌면 화면을 옮길 수 있어요.
+              이 조작은 내 화면에만 적용되고 다른 사람에게는 영향이 없습니다. */}
+          <div style={{position:"absolute",right:12,bottom:12,zIndex:12,display:"flex",flexDirection:"column",gap:4}}
+            onMouseDown={e=>e.stopPropagation()}>
+            {[["확대",()=>zoomStageBy(1.2),<Plus size={14}/>],
+              ["축소",()=>zoomStageBy(1/1.2),<Minus size={14}/>],
+              ["원래 크기로",resetStageView,<RotateCcw size={13}/>]].map(([title,onClick,icon])=>(
+              <button key={title} type="button" title={title} onClick={onClick}
+                style={{width:28,height:28,borderRadius:7,background:"var(--glass)",backdropFilter:"blur(4px)",
+                  border:"1px solid var(--border-soft)",color:"var(--accent-deep)",cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>
+                {icon}
+              </button>
+            ))}
+            <div className="coc-mono" style={{fontSize:9,color:"var(--text-faint)",textAlign:"center",marginTop:1}}>
+              {Math.round(stageView.scale*100)}%
+            </div>
           </div>
           {activeChoice&&(()=>{
             let data=null;try{data=JSON.parse(activeChoice.text);}catch{}
