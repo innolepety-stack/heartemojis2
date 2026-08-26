@@ -77,6 +77,15 @@ function saveSoundPref(v) {
   try { localStorage.setItem(SOUND_PREF_KEY, v ? "1" : "0"); } catch {}
 }
 
+// 팝업(브라우저) 알림 켜짐/꺼짐 — 소리와 따로 켜고 끌 수 있습니다. 이 기기에만 저장됩니다.
+const POPUP_PREF_KEY = "heartEmojiPopupEnabled";
+function loadPopupPref() {
+  try { const raw = localStorage.getItem(POPUP_PREF_KEY); return raw===null ? true : raw==="1"; } catch { return true; }
+}
+function savePopupPref(v) {
+  try { localStorage.setItem(POPUP_PREF_KEY, v ? "1" : "0"); } catch {}
+}
+
 // 다크 모드 — 이 기기(브라우저)에 저장되는 화면 설정입니다.
 const DARK_PREF_KEY = "heartEmojiDarkMode";
 function loadDarkPref() {
@@ -735,14 +744,17 @@ async function uploadToCloudflare(file){
 
 /* ============================== SUBCOMPONENTS ============================== */
 
-function AvatarUpload({value,onChange,size=58}){
+function AvatarUpload({value,onChange,size=58,vertical=false}){
   const inputRef=useRef(null);
   return(
-    <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",border:"1px solid var(--border)",background:"var(--bg-panel)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+    <div style={{display:"flex",alignItems:"center",gap:vertical?6:10,flexDirection:vertical?"column":"row"}}>
+      <div style={{width:size,height:size,borderRadius:vertical?10:"50%",overflow:"hidden",border:"1px solid var(--border)",background:"var(--bg-panel)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         {value?<img src={value} alt="avatar" className="coc-avatar" style={{width:"100%",height:"100%"}}/>:<Sparkles size={size*0.38} color="var(--accent-soft)"/>}
       </div>
-      <button type="button" className="coc-btn ghost small" onClick={()=>inputRef.current?.click()}><Camera size={12}/> 사진 변경</button>
+      <button type="button" className="coc-btn ghost small" onClick={()=>inputRef.current?.click()}
+        style={vertical?{width:"100%",justifyContent:"center",padding:"4px 6px",fontSize:11.5}:undefined}>
+        <Camera size={12}/> {vertical?"변경":"사진 변경"}
+      </button>
       <input ref={inputRef} type="file" accept="image/*" style={{display:"none"}}
         onChange={async(e)=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)onChange(url);e.target.value="";}}/>
     </div>
@@ -759,9 +771,10 @@ function stripLeadingZero(e){
   return cleaned;
 }
 
-function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,onRollCheck,compact=false}){
+function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,onRollCheck,compact=false,cols}){
+  const columns=cols||(compact?2:4);
   return(
-    <div style={{display:"grid",gridTemplateColumns:compact?"repeat(2,1fr)":"repeat(4,1fr)",gap:7}}>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${columns},1fr)`,gap:7}}>
       {CHAR_KEYS.map(k=>(
         <div key={k} className="coc-stat-box">
           <div className="coc-label" style={{marginBottom:3}}>{CHAR_LABEL[k]} ({k})</div>
@@ -829,8 +842,10 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll,onRollCheck}
   );
 }
 
-function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false,onRollCheck}){
-  const [open,setOpen]=useState(false);
+function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false,onRollCheck,cols,alwaysOpen=false}){
+  const [openState,setOpen]=useState(false);
+  const open=alwaysOpen||openState;
+  const gridCols=`repeat(${cols||(compact?1:2)},1fr)`;
 
   const addCustom=()=>{
     setCustomSkills([...customSkills,{id:newId(),name:"",value:0}]);
@@ -844,14 +859,18 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
 
   return(
     <div>
-      <button type="button" onClick={()=>setOpen(!open)}
-        style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",fontSize:12,padding:0,fontWeight:600}}>
-        {open?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
-        기능치 {open?"숨기기":`펼치기 (${SKILL_LIST.length+customSkills.length})`}
-      </button>
+      {alwaysOpen?(
+        <div className="coc-label">기능치</div>
+      ):(
+        <button type="button" onClick={()=>setOpen(!open)}
+          style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",fontSize:12,padding:0,fontWeight:600}}>
+          {open?<ChevronUp size={12}/>:<ChevronDown size={12}/>}
+          기능치 {open?"숨기기":`펼치기 (${SKILL_LIST.length+customSkills.length})`}
+        </button>
+      )}
       {open&&(
         <>
-          <div className="coc-scroll" style={{marginTop:9,maxHeight:280,overflowY:"auto",display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,1fr)",gap:5,paddingRight:4,paddingBottom:8}}>
+          <div className="coc-scroll" style={{marginTop:9,maxHeight:alwaysOpen?"none":280,overflowY:alwaysOpen?"visible":"auto",display:"grid",gridTemplateColumns:gridCols,gap:5,paddingRight:4,paddingBottom:8}}>
             {SKILL_LIST_SORTED.map(([name])=>(
               <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                 {onRollCheck&&(
@@ -875,7 +894,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
             <div style={{marginTop:12}}>
               <div className="coc-label" style={{marginBottom:6}}>자유 기능치</div>
               {customSkills.length===0&&readOnly&&<div style={{fontSize:12.5,color:"var(--text-faint)"}}>없음</div>}
-              <div style={{display:"grid",gridTemplateColumns:compact?"1fr":"repeat(2,1fr)",gap:5}}>
+              <div style={{display:"grid",gridTemplateColumns:gridCols,gap:5}}>
                 {customSkills.map(c=>(
                   <div key={c.id} style={{display:"flex",alignItems:"center",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                     {onRollCheck&&(
@@ -928,7 +947,7 @@ function calcSkillPoints(sheet){
   return {total,spent,remaining:total-spent};
 }
 
-function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false,onRollCheck}){
+function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false,onRollCheck,panel=false}){
   if(readOnly) return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
@@ -943,6 +962,65 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
       <div className="coc-divider"/>
       <SkillsGrid skills={sheet.skills} setSkills={()=>{}} customSkills={sheet.customSkills||[]} setCustomSkills={()=>{}} readOnly compact={compact}/>
       {sheet.notes&&<><div className="coc-divider"/><div className="coc-label" style={{marginBottom:5}}>메모</div><div style={{fontSize:14,color:"var(--text-dim)",whiteSpace:"pre-wrap"}}>{sheet.notes}</div></>}
+    </div>
+  );
+  // 떠 있는 캐릭터 시트 패널 전용 배치:
+  // 왼쪽에 사진·이름·색상을 세로로 쌓고, 그 오른쪽에 능력치, 그 아래에 파생 능력치를 가로로 나란히.
+  if(panel) return(
+    <div>
+      <div style={{display:"flex",gap:12,marginBottom:12,alignItems:"flex-start"}}>
+        <div style={{width:104,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+          <AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})} size={104} vertical/>
+          <div>
+            <div className="coc-label" style={{marginBottom:3}}>이름</div>
+            <input className="coc-input" value={sheet.name} onChange={e=>setSheet({...sheet,name:e.target.value})}
+              placeholder="탐사자 이름" style={{fontSize:13,padding:"5px 8px"}}/>
+          </div>
+          <div>
+            <div className="coc-label" style={{marginBottom:3}}>이름 색깔</div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <label style={{position:"relative",width:30,height:30,borderRadius:7,overflow:"hidden",border:"1.5px solid var(--border)",cursor:"pointer",flexShrink:0}}>
+                <input type="color" value={sheet.nameColor||"#d96fa0"}
+                  onChange={e=>setSheet({...sheet,nameColor:e.target.value})}
+                  style={{position:"absolute",top:-6,left:-6,width:44,height:44,border:"none",padding:0,cursor:"pointer"}}/>
+              </label>
+              {sheet.nameColor&&(
+                <button type="button" className="coc-btn ghost small" title="기본 테마색으로"
+                  onClick={()=>setSheet({...sheet,nameColor:""})} style={{padding:"4px 6px"}}>
+                  <RotateCcw size={11}/>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{flex:1,minWidth:0}}>
+          <div className="coc-label" style={{marginBottom:6}}>능력치</div>
+          <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})}
+            allowRoll={allowRoll} onRollCheck={onRollCheck} cols={3}/>
+        </div>
+      </div>
+
+      <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})}
+        allowRoll={allowRoll} onRollCheck={onRollCheck}/>
+      <div className="coc-divider"/>
+      {(()=>{
+        const {total,spent,remaining}=calcSkillPoints(sheet);
+        return(
+          <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:"7px 10px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+            <span className="coc-label">기능 점수 (교육×4)</span>
+            <span className="coc-mono" style={{fontSize:12,fontWeight:700,color:remaining<0?"#c05050":"var(--accent-deep)"}}>
+              {spent}/{total} · 남음 {remaining}
+            </span>
+          </div>
+        );
+      })()}
+      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})}
+        customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})}
+        cols={2} onRollCheck={onRollCheck} alwaysOpen/>
+      <div className="coc-divider"/>
+      <div className="coc-label" style={{marginBottom:5}}>메모 / 배경</div>
+      <textarea className="coc-textarea" rows={3} value={sheet.notes} onChange={e=>setSheet({...sheet,notes:e.target.value})} placeholder="직업, 배경, 소지품 등 자유롭게 기록하세요"/>
     </div>
   );
   return(
@@ -1086,7 +1164,8 @@ function AuthScreen({onLogin}){
 
 /* ============================== SETTINGS TAB ============================== */
 
-function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark}){
+function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleDark,
+  soundEnabled, onChangeSound, popupEnabled, onChangePopup, notifPermission, requestNotifPermission}){
   const [hexInput, setHexInput] = useState(customColor);
   useEffect(()=>{ setHexInput(customColor); }, [customColor]);
 
@@ -1137,6 +1216,49 @@ function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleD
             </button>
           ))}
         </div>
+
+        <div style={{height:1,background:"var(--border-soft)",margin:"2px 0 18px"}}/>
+
+        <div className="coc-label" style={{marginBottom:6}}>알림</div>
+        <div style={{fontSize:12.5,color:"var(--text-faint)",marginBottom:12}}>
+          게임방에서 새 메시지가 왔을 때 알려줄 방법을 고르세요. 이 기기에만 저장됩니다.
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+          {[
+            {on:soundEnabled,set:onChangeSound,label:"소리",desc:"새 메시지가 오면 짧은 알림음이 나요.",Icon:soundEnabled?Bell:BellOff},
+            {on:popupEnabled,set:onChangePopup,label:"팝업",desc:"다른 창을 보고 있을 때 브라우저 알림으로 알려줘요.",Icon:Mail},
+          ].map(o=>(
+            <button key={o.label} type="button" onClick={()=>o.set(!o.on)}
+              style={{display:"flex",alignItems:"center",gap:11,padding:"11px 14px",borderRadius:10,textAlign:"left",
+                border:"2px solid "+(o.on?"var(--accent)":"var(--border)"),
+                background:o.on?"var(--bg-panel)":"var(--surface)",cursor:"pointer",transition:"all 0.15s"}}>
+              <o.Icon size={16} color={o.on?"var(--accent-deep)":"var(--text-faint)"} style={{flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:o.on?700:500,color:o.on?"var(--accent-deep)":"var(--text-dim)"}}>{o.label}</div>
+                <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:1}}>{o.desc}</div>
+              </div>
+              <span style={{flexShrink:0,fontSize:12,fontWeight:700,color:o.on?"var(--accent)":"var(--text-faint)"}}>
+                {o.on?"켜짐":"꺼짐"}
+              </span>
+            </button>
+          ))}
+        </div>
+        {popupEnabled&&notifPermission==="default"&&(
+          <button type="button" className="coc-btn ghost small" style={{marginBottom:8}}
+            onClick={()=>requestNotifPermission&&requestNotifPermission()}>
+            브라우저 알림 권한 허용하기
+          </button>
+        )}
+        {popupEnabled&&notifPermission==="denied"&&(
+          <div style={{fontSize:12,color:"#c05050",marginBottom:8}}>
+            브라우저에서 알림이 차단되어 있어요. 주소창 옆 자물쇠 아이콘에서 알림을 허용해주세요.
+          </div>
+        )}
+        {popupEnabled&&notifPermission==="unsupported"&&(
+          <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:8}}>
+            이 브라우저는 팝업 알림을 지원하지 않아요. (iPhone은 홈 화면에 추가해서 앱처럼 열면 사용할 수 있어요.)
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1995,6 +2117,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
 // 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
 const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
 function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,anchorPos}){
+  const [folded,setFolded]=useState(false);
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState("#c0392b");
   const [code,setCode]=useState("");
@@ -2024,7 +2147,13 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,an
     if(!d.moved)return;
     setPos(clamp(d.ox+dx,d.oy+dy));
   };
-  const onPointerUp=()=>{ drag.current.on=false; };
+  const onPointerUp=()=>{
+    const wasMoved=drag.current.moved;
+    drag.current.on=false;
+    return wasMoved;
+  };
+  // 접힌 바: 끌면 이동, 그냥 누르면 다시 펼치기
+  const onFoldedBarUp=()=>{ if(!onPointerUp()) setFolded(false); };
   const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
 
   // 우측 하단 손잡이로 창 크기 조절
@@ -2067,7 +2196,17 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,an
     borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12.5,fontWeight:700,
   };
 
-  const anchor=(pos||anchorPos) ? {position:"fixed",left:(pos||anchorPos).x,top:(pos||anchorPos).y} : {position:"fixed",right:18,bottom:90};
+  const anchor=(pos||anchorPos) ? {position:"fixed",left:(pos||anchorPos).x,top:(pos||anchorPos).y} : {position:"fixed",left:76,top:80};
+
+  if(folded) return(
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+      title="눌러서 펼치기 · 끌어서 위치 옮기기"
+      style={{...anchor,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
+        background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
+        cursor:"grab",zIndex:30,touchAction:"none",fontSize:12.5,fontWeight:600}}>
+      <Brush size={14}/> 꾸미기
+    </div>
+  );
 
   return(
     <div ref={wrapRef}
@@ -2081,10 +2220,15 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,an
           background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
         <Brush size={14} color="var(--accent-deep)"/>
         <span style={{flex:1,fontSize:13,fontWeight:700,color:"var(--accent-deep)"}}>꾸미기</span>
-        <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose}
+        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>setFolded(true)}
           style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
             color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <Minus size={13}/>
+        </button>
+        <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose}
+          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <X size={13}/>
         </button>
       </div>
 
@@ -2279,7 +2423,7 @@ function MapSettingsPanel({onClose,
   sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFileChange,
   layers,layerFileInputRef,onLayerFileChange,
   layerUrlInput,setLayerUrlInput,onAddLayerUrl,layerDragIndex,setLayerDragIndex,onReorderLayer,onRemoveLayer,onUpdateLayer,
-  onOpenDecorate,onImportCocofolia,
+  onImportCocofolia,
   scenesList,activeSceneId,onAddScene,onSwitchScene,onDeleteScene,
   pos,setPos}){
   const wrapRef=useRef(null);
@@ -2333,7 +2477,7 @@ function MapSettingsPanel({onClose,
     </div>
   );
 
-  const TABS=[["scene","배경",ImageIcon],["layer","레이어",Layers],["scenes","장면",Clapperboard],["decorate","꾸미기",Brush]];
+  const TABS=[["scene","배경",ImageIcon],["layer","레이어",Layers],["scenes","장면",Clapperboard]];
 
   return(
     <div ref={wrapRef} style={{...anchor,width:"min(94vw, 280px)",maxHeight:"78vh",display:"flex",flexDirection:"column",
@@ -2485,17 +2629,6 @@ function MapSettingsPanel({onClose,
           </div>
         )}
 
-        {tab==="decorate"&&(
-          <div>
-            <div className="coc-label" style={{marginBottom:8}}>꾸미기</div>
-            <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:10}}>
-              무대에 표시될 서술 문구를 직접 꾸며서 보낼 수 있는 도구예요.
-            </div>
-            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}} onClick={onOpenDecorate}>
-              <Brush size={13}/> 꾸미기 도구 열기
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -2532,7 +2665,8 @@ function StatAdjustPanel({onClose,anchorPos,
   };
   const onPointerUp=()=>{ drag.current.on=false; };
   const base=pos||anchorPos;
-  const anchor=base?{position:"fixed",left:base.x,top:base.y}:{position:"fixed",right:18,bottom:90};
+  // 기본 자리는 왼쪽 아이콘 바 바로 옆(버튼 옆)입니다. 끌어서 원하는 데로 옮길 수 있어요.
+  const anchor=base?{position:"fixed",left:base.x,top:base.y}:{position:"fixed",left:76,top:80};
 
   return(
     <div ref={wrapRef} style={{...anchor,width:"min(94vw, 320px)",maxHeight:"82vh",display:"flex",flexDirection:"column",
@@ -2976,12 +3110,32 @@ function HandoutFloatingDetail({handout,onClose}){
 }
 
 function DicePanel({char,onRollToChat,roomId,onClose}){
-  // 채팅방 우측 상단의 "캐릭터" 아이콘을 눌러야 열리는 떠 있는 패널입니다.
-  // (예전에는 화면에 항상 떠다니는 하트 버튼이었지만, 이제는 아이콘으로 여닫습니다.)
-  // 열린 채로 원하는 자리로 끌어다 놓을 수 있어요.
+  // 채팅방 상단의 "캐릭터" 버튼을 눌러야 열리는 떠 있는 패널입니다.
+  // 접기를 누르면 닫히는 게 아니라, 내 캐릭터 이름이 적힌 투명도 80%의 작은 바로 줄어들어
+  // 무대 어디에든 둘 수 있고, 그 바를 다시 누르면 펼쳐집니다. 닫기(X)를 눌러야 완전히 사라져요.
+  const [folded,setFolded]=useState(false);
   const [sheetDraft,setSheetDraft]=useState(char);
   const [saving,setSaving]=useState(false);
   const wrapRef=useRef(null);
+  // 창 크기(가로·세로). 기본은 기능치 2열이 딱 들어가는 폭입니다. 이보다 좁히면 내용이
+  // 찌그러지는 대신 아래에 가로 스크롤 바가 생겨서, 옆으로 밀어 나머지를 볼 수 있어요.
+  const SHEET_MIN_CONTENT=440; // 이 폭 아래로는 내용을 줄이지 않고 가로 스크롤로 넘깁니다.
+  const [size,setSize]=useState({w:470,h:560});
+  const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
+  const onResizePointerDown=e=>{
+    e.stopPropagation();
+    resizeDrag.current={on:true,sx:e.clientX,sy:e.clientY,ow:size.w,oh:size.h};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onResizePointerMove=e=>{
+    const r=resizeDrag.current;
+    if(!r.on)return;
+    setSize({
+      w:Math.max(240,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
+      h:Math.max(240,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
+    });
+  };
+  const onResizePointerUp=()=>{ resizeDrag.current.on=false; };
 
   // 위치는 이 기기(브라우저)에 기억됩니다.
   const [pos,setPos]=useState(()=>loadHeartPos());
@@ -3007,7 +3161,7 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
     const t=setTimeout(fix,0);
     window.addEventListener("resize",fix);
     return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
-  },[]); // eslint-disable-line
+  },[folded]); // eslint-disable-line
 
   const onPointerDown=e=>{
     const rect=wrapRef.current.getBoundingClientRect();
@@ -3025,8 +3179,12 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
   const onPointerUp=()=>{
     const d=drag.current;
     if(d.on&&d.moved) setPos(p=>{ if(p) saveHeartPos(p); return p; });
+    const wasMoved=d.moved;
     drag.current.on=false;
+    return wasMoved;
   };
+  // 접힌 바: 끌면 이동, 그냥 누르면 다시 펼치기
+  const onFoldedBarUp=()=>{ if(!onPointerUp()) setFolded(false); };
   const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
 
   const roll=(skillName,value)=>{
@@ -3048,9 +3206,23 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
     ? {position:"fixed",left:pos.x,top:pos.y}
     : {position:"fixed",right:18,top:70};
 
+  if(folded) return(
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+      title="눌러서 펼치기 · 끌어서 위치 옮기기"
+      style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
+        background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
+        cursor:"grab",zIndex:30,touchAction:"none"}}>
+      <Sparkles size={13}/>
+      <span style={{fontSize:12.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        {char?.name||"탐사자 시트"}
+      </span>
+    </div>
+  );
+
   return(
     <div ref={wrapRef}
-      style={{...anchor,width:"min(92vw, 370px)",maxHeight:"80vh",display:"flex",flexDirection:"column",
+      style={{...anchor,width:Math.min(size.w,window.innerWidth-16),height:size.h,maxHeight:"90vh",
+        display:"flex",flexDirection:"column",position:"fixed",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
         boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
 
@@ -3063,6 +3235,13 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
           {char?.name||"탐사자 시트"}
         </span>
+        <button type="button" title="접기"
+          onPointerDown={e=>e.stopPropagation()}
+          onClick={()=>setFolded(true)}
+          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <Minus size={13}/>
+        </button>
         <button type="button" title="닫기"
           onPointerDown={e=>e.stopPropagation()}
           onClick={onClose}
@@ -3072,29 +3251,38 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
         </button>
       </div>
 
-      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
-        {char?.madness?.name&&(
-          <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-              <span style={{fontSize:12,fontWeight:700,color:"#c05050"}}>{char.madness.name}</span>
-              <span style={{fontSize:10.5,color:"#a86a6a",flexShrink:0}}>{char.madness.term||"단기적"} 광기</span>
+      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",overflowX:"auto",padding:"12px 14px 14px",touchAction:"pan-x pan-y"}}>
+        {/* 창을 좁혀도 내용은 이 최소 폭을 유지하고, 대신 가로 스크롤 바로 옆을 볼 수 있게 합니다. */}
+        <div style={{minWidth:SHEET_MIN_CONTENT}}>
+          {char?.madness?.name&&(
+            <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <span style={{fontSize:12,fontWeight:700,color:"#c05050"}}>{char.madness.name}</span>
+                <span style={{fontSize:10.5,color:"#a86a6a",flexShrink:0}}>{char.madness.term||"단기적"} 광기</span>
+              </div>
+              {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:4,whiteSpace:"pre-wrap"}}>{char.madness.note}</div>}
             </div>
-            {char.madness.note&&<div style={{fontSize:11,color:"#8a4040",marginTop:4,whiteSpace:"pre-wrap"}}>{char.madness.note}</div>}
-          </div>
-        )}
+          )}
 
-        {/* 롤20 스타일: 각 항목 옆 주사위 아이콘을 누르면 "지금 이 값"으로 바로 판정이 나가고,
-            값 자체는 그 자리에서 바로 수정할 수 있어요. 따로 "판정" 화면이 없어도 됩니다. */}
-        <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={false} compact onRollCheck={roll}/>
-        <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
-          {saving?"저장 중...":"시트 저장"}
-        </button>
+          {/* 롤20 스타일: 각 항목 옆 주사위 아이콘을 누르면 "지금 이 값"으로 바로 판정이 나가고,
+              값 자체는 그 자리에서 바로 수정할 수 있어요. 따로 "판정" 화면이 없어도 됩니다. */}
+          <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={false} panel onRollCheck={roll}/>
+          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
+            {saving?"저장 중...":"시트 저장"}
+          </button>
+        </div>
       </div>
+
+      {/* 우측 하단 손잡이 — 끌면 창 크기가 바뀝니다 */}
+      <div onPointerDown={onResizePointerDown} onPointerMove={onResizePointerMove} onPointerUp={onResizePointerUp} onPointerCancel={onResizePointerUp}
+        style={{position:"absolute",bottom:2,right:2,width:16,height:16,cursor:"nwse-resize",touchAction:"none",
+          background:"linear-gradient(135deg,transparent 50%,var(--border) 50%)",borderRadius:"0 0 4px 0"}}/>
     </div>
   );
 }
 
-function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,onChangeThemeColor}){
+function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,onChangeThemeColor,
+  soundEnabled,onChangeSound,popupEnabled,onChangePopup,notifPermission,requestNotifPermission}){
   // 게임방 안에서도 톱니바퀴를 눌러 로비와 같은 설정 화면으로 들어갈 수 있습니다.
   // 뒤로가기를 누르면 다시 이 게임방으로 돌아옵니다.
   const [showRoomSettings,setShowRoomSettings]=useState(false);
@@ -3414,26 +3602,16 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setSeenMadnessKey(key);
   },[char?.madness]); // eslint-disable-line
 
-  // 브라우저 알림: 탭이 백그라운드일 때 새 메시지가 오면 알려줍니다.
-  // (iOS Safari는 일반 브라우저 탭에서는 이 기능을 지원하지 않아요 — 홈 화면에 추가한
+  // 새 메시지 알림: 소리와 팝업(브라우저 알림)을 따로 켜고 끌 수 있습니다.
+  // 상태는 App에서 관리해서, 로비 설정 화면과 게임방 안에서 항상 같은 값을 보게 됩니다.
+  // (iOS Safari는 일반 브라우저 탭에서는 팝업 알림을 지원하지 않아요 — 홈 화면에 추가한
   // 앱(PWA) 형태로 열었을 때만 iOS에서도 동작합니다. 안드로이드/PC는 바로 됩니다.)
-  const [notifPermission,setNotifPermission]=useState(("Notification" in window)?Notification.permission:"unsupported");
-
-  // 새 메시지 알림(브라우저 알림 + 소리)을 하나로 합친 토글. 이 기기에 켜짐/꺼짐 상태가 기억됩니다.
-  const [soundEnabled,setSoundEnabled]=useState(loadSoundPref);
   const toggleNotif=async()=>{
-    // 브라우저 알림 권한을 아직 한 번도 물어본 적이 없다면(default), soundEnabled가 이미
-    // true(기본값)라서 "끄기"로 취급되는 바람에 권한 요청 자체가 실행이 안 되던 문제가
-    // 있었어요. 그래서 권한이 아직 결정 안 된 상태라면, 무조건 지금 눌렀을 때 권한부터
-    // 물어보고 켜기로 확정합니다. 권한이 이미 허용/차단으로 정해진 뒤에만 단순 on/off로 동작해요.
-    if("Notification" in window&&notifPermission==="default"){
-      const perm=await Notification.requestPermission();
-      setNotifPermission(perm);
-      setSoundEnabled(true);
-      saveSoundPref(true);
-      return;
+    // 팝업 권한을 아직 한 번도 물어본 적이 없다면 먼저 권한부터 요청하고 켜기로 확정합니다.
+    if(!soundEnabled&&"Notification" in window&&notifPermission==="default"){
+      await requestNotifPermission();
     }
-    setSoundEnabled(v=>{ saveSoundPref(!v); return !v; });
+    onChangeSound(!soundEnabled);
   };
 
   // GM이 참가자에게 광기(장기적/단기적)를 부여하는 기능
@@ -3571,7 +3749,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
       // 브라우저 알림: 처음 이 탭을 여는 순간(전체 과거 기록 불러오기)은 제외하고,
       // 새로 도착한 메시지 중 내가 보낸 게 아니고, 탭이 백그라운드이고, 알림 토글이 켜져있을 때만 알립니다.
-      if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"&&soundEnabled){
+      if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"&&popupEnabled){
         incoming.forEach((m,id)=>{
           if(!prevMap.has(id)&&m.userCode!==userCode){
             try{
@@ -3618,7 +3796,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       }
     },CHAT_FETCH_LIMIT);
     return()=>unsub();
-  },[room.id,activeTab,userCode,soundEnabled]);
+  },[room.id,activeTab,userCode,soundEnabled,popupEnabled]);
 
   useEffect(()=>{
     const unsub=storeListenDoc(`bgm:${room.id}`,d=>{ if(d) setBgmUrl(d.url||""); });
@@ -4350,7 +4528,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <ArrowLeft size={13}/> 게임방으로 돌아가기
         </button>
         <SettingsTab currentTheme="custom" customColor={customColor} onSelectCustom={onChangeThemeColor}
-          dark={dark} onToggleDark={onToggleDark}/>
+          dark={dark} onToggleDark={onToggleDark}
+          soundEnabled={soundEnabled} onChangeSound={onChangeSound} popupEnabled={popupEnabled} onChangePopup={onChangePopup}
+          notifPermission={notifPermission} requestNotifPermission={requestNotifPermission}/>
       </div>
     );
   }
@@ -4383,6 +4563,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
             <button type="button" className={"chat-icon-btn"+(showMapSettings?" on":"")} onClick={()=>setShowMapSettings(v=>!v)} title="맵세팅 (배경·레이어·장면·꾸미기)">
               <Layers size={18}/>
+            </button>
+
+            <button type="button" className={"chat-icon-btn"+(showDecorate?" on":"")} onClick={()=>setShowDecorate(v=>!v)} title="꾸미기 (서술 문구 꾸며서 보내기)">
+              <Brush size={18}/>
             </button>
 
             <button type="button" className={"chat-icon-btn"+(showStatAdjust?" on":"")} onClick={()=>setShowStatAdjust(v=>!v)} title="수치 조정">
@@ -4961,12 +5145,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         )}
       </div>
 
-      {isGM&&(()=>{
-        // 꾸미기 창은 맵세팅 패널 자리를 따라 그 근처에서 열립니다.
-        const gmPanelAnchor=gmBarPos
-          ? {x:Math.max(4,Math.min(window.innerWidth-340,gmBarPos.x)),y:gmBarPos.y+48}
-          : {x:window.innerWidth/2-140,y:60};
-        return(
+      {isGM&&(
         <>
         {showMapSettings&&<MapSettingsPanel
           onClose={()=>setShowMapSettings(false)}
@@ -4979,12 +5158,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           onAddLayerUrl={()=>{addLayer(layerUrlInput.trim());setLayerUrlInput("");}}
           layerDragIndex={layerDragIndex} setLayerDragIndex={setLayerDragIndex}
           onReorderLayer={reorderLayer} onRemoveLayer={removeLayer} onUpdateLayer={commitLayer}
-          onOpenDecorate={()=>setShowDecorate(true)}
           onImportCocofolia={importCocofoliaSetup}
           scenesList={scenesList} activeSceneId={activeSceneId} onAddScene={addScene} onSwitchScene={switchScene} onDeleteScene={deleteScene}/>}
 
         {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
-        {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)} anchorPos={gmPanelAnchor}
+        {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
           onSendText={markup=>doSend("narrate",markup,"","")}
           diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
         {showStatAdjust&&<StatAdjustPanel onClose={()=>setShowStatAdjust(false)}
@@ -4996,8 +5174,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           statAdjustPublic={statAdjustPublic} setStatAdjustPublic={setStatAdjustPublic}
           onApplyStatAdjust={applyStatAdjust}/>}
         </>
-        );
-      })()}
+      )}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
       {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
         onClose={()=>setShowMadnessModal(false)} onSend={saveMadness}/>}
@@ -5097,6 +5274,19 @@ function AppInner(){
   const [activeRoom,setActiveRoom]=useState(null);
   const [themeKey,setThemeKey]=useState("sky");
   const [customColor,setCustomColor]=useState("#2e9bdb");
+  // 새 메시지 알림 설정 — 소리와 팝업을 따로 켜고 끌 수 있고, 이 기기에 기억됩니다.
+  // 로비 설정 화면과 게임방 안에서 같은 값을 공유하도록 여기서 관리합니다.
+  const [soundEnabled,setSoundEnabled]=useState(loadSoundPref);
+  const [popupEnabled,setPopupEnabled]=useState(loadPopupPref);
+  const [notifPermission,setNotifPermission]=useState(("Notification" in window)?Notification.permission:"unsupported");
+  const handleSoundPref=v=>{ setSoundEnabled(v); saveSoundPref(v); };
+  const handlePopupPref=v=>{ setPopupEnabled(v); savePopupPref(v); };
+  const requestNotifPermission=async()=>{
+    if(!("Notification" in window)) return "unsupported";
+    const perm=await Notification.requestPermission();
+    setNotifPermission(perm);
+    return perm;
+  };
   // 다크 모드는 이 기기(브라우저)에 저장됩니다.
   const [dark,setDark]=useState(()=>loadDarkPref());
   const handleDark=v=>{ setDark(v); saveDarkPref(v); };
@@ -5175,10 +5365,14 @@ function AppInner(){
 
   let body;
   if(activeRoom){
-    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark} customColor={customColor} onChangeThemeColor={handleThemeCustom}/>;
+    body=<ChatScreen room={activeRoom} userCode={user.code} profile={profile} onBack={()=>{setActiveRoom(null);}} dark={dark} onToggleDark={handleDark} customColor={customColor} onChangeThemeColor={handleThemeCustom}
+      soundEnabled={soundEnabled} onChangeSound={handleSoundPref} popupEnabled={popupEnabled} onChangePopup={handlePopupPref}
+      notifPermission={notifPermission} requestNotifPermission={requestNotifPermission}/>;
   }else if(tab==="settings"){
     body=<SettingsTab currentTheme={themeKey} customColor={customColor} onSelectCustom={handleThemeCustom}
-      dark={dark} onToggleDark={handleDark}/>;
+      dark={dark} onToggleDark={handleDark}
+      soundEnabled={soundEnabled} onChangeSound={handleSoundPref} popupEnabled={popupEnabled} onChangePopup={handlePopupPref}
+      notifPermission={notifPermission} requestNotifPermission={requestNotifPermission}/>;
   }else if(tab==="profile"){
     body=profileLoaded&&<MyPage userCode={user.code} profile={profile} setProfile={setProfile} onDeleteAccount={deleteAccount}/>;
   }else{
