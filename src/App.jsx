@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
   Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock,
-  Heart, Check, Mail, AlertTriangle, Bookmark, UserRound, Sliders
+  Heart, Check, Mail, AlertTriangle, Bookmark, UserRound, Sliders, Clapperboard
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -254,11 +254,11 @@ input[type=number] { -moz-appearance: textfield; }
 /* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
 .stage-scene { flex: 1; position: relative; min-height: 0; }
 /* 작은 무대: 맵 세팅(레이어)과 선명한 배경이 실제로 놓이는 곳입니다.
-   16:9 같은 특정 비율을 강제하는 게 아니라, 그냥 큰 무대의 가로·세로 각각 80% 크기로
+   16:9 같은 특정 비율을 강제하는 게 아니라, 그냥 큰 무대의 가로·세로 각각 65% 크기로
    가운데 놓입니다. 그래서 큰 무대가 어떤 모양이든 항상 사방에 여백(블러 영역)이 남아요. */
 .stage-inner {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  width: 80%; height: 80%;
+  width: 65%; height: 65%;
   z-index: 1;
 }
 .stage-inner-bg {
@@ -704,93 +704,24 @@ function storeListenDoc(key, onChange) {
 
 // 주사위 컷인용 APNG 등은 캔버스로 리사이즈하면 애니메이션이 깨지므로(정지 프레임 한 장만 남음),
 // 압축·리사이즈 없이 원본 그대로 data URL로 읽습니다.
-function fileToRawDataURL(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(reader.result);
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
-  });
-}
-async function fileToResizedDataURL(file, maxSize=220, quality=0.9) {
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        let {width,height}=img;
-        if(width>height&&width>maxSize){height=Math.round(height*maxSize/width);width=maxSize;}
-        else if(height>maxSize){width=Math.round(width*maxSize/height);height=maxSize;}
-        const canvas=document.createElement("canvas");
-        canvas.width=width;canvas.height=height;
-        canvas.getContext("2d").drawImage(img,0,0,width,height);
-        resolve(canvas.toDataURL("image/jpeg",quality));
-      };
-      img.onerror=reject; img.src=reader.result;
-    };
-    reader.onerror=reject; reader.readAsDataURL(file);
-  });
-}
-// 배경/장면 이미지처럼 "최대한 화질을 살리고 싶은" 사진용: Firestore 문서 용량 한도
-// 안에서 가능한 가장 큰 크기·높은 화질로 자동으로 맞춰줍니다(무손실은 아니지만,
-// 일반 사진에서는 육안으로 차이를 느끼기 어려운 수준까지 화질을 끌어올려요).
-async function fileToBestQualityDataURL(file, maxBytes=900000) {
-  const attempts=[[1800,0.95],[1600,0.93],[1400,0.9],[1200,0.88],[1000,0.85],[800,0.8]];
-  for(const [size,q] of attempts){
-    const url=await fileToResizedDataURL(file,size,q);
-    if(url.length*0.75<=maxBytes) return url;
-  }
-  return fileToResizedDataURL(file,700,0.75);
-}
-// 파일이 "움직이는" PNG(APNG)인지 확인합니다. PNG 안의 청크(조각)들을 순서대로 훑어서,
-// 실제 그림 데이터(IDAT)가 나오기 전에 애니메이션 정보 청크(acTL)가 있으면 APNG입니다.
-// (일반 PNG는 이 청크가 아예 없어요.)
-async function isApngFile(file){
-  if(!/png$/i.test(file.type)&&!/\.a?png$/i.test(file.name)) return false;
+// 이미지 저장은 Firestore(base64로 문서에 통째로 넣기)가 아니라 Cloudflare(R2)에 올리고,
+// 짧은 URL 하나만 Firestore에 저장합니다. 그래서 문서 용량 한도(1MB)나 "조각내서 저장"
+// 같은 복잡한 처리가 더 이상 필요 없고, 큰 파일(APNG 등)도 그대로 걱정 없이 올릴 수 있어요.
+const CF_WORKER_URL="https://heart-emoji-image.innolepety.workers.dev";
+const CF_UPLOAD_SECRET="TmxpdlTl5@";
+async function uploadToCloudflare(file){
   try{
-    const buf=new Uint8Array(await file.slice(0,300000).arrayBuffer()); // acTL은 항상 파일 앞쪽에 있어서 이 정도면 충분해요
-    let offset=8; // 앞 8바이트는 PNG 시그니처
-    while(offset+8<=buf.length){
-      const len=(buf[offset]<<24)|(buf[offset+1]<<16)|(buf[offset+2]<<8)|buf[offset+3];
-      const type=String.fromCharCode(buf[offset+4],buf[offset+5],buf[offset+6],buf[offset+7]);
-      if(type==="acTL") return true;
-      if(type==="IDAT") return false; // 그림 데이터가 먼저 나오면 APNG가 아닙니다
-      offset+=8+len+4; // 길이(4) + 타입(4) + 데이터(len) + CRC(4)
-    }
-  }catch{}
-  return false;
-}
-// 채팅으로 보내는 이미지는 PNG로 저장해 투명 배경(알파 채널)을 유지합니다.
-// ⚠️ 캔버스(canvas)에 그려서 크기를 줄이는 방식은 애니메이션의 "첫 프레임만" 남기 때문에,
-// 움직이는 GIF·APNG는 리사이즈를 건너뛰고 원본을 그대로 데이터 URL로 바꿔서 애니메이션을
-// 그대로 보존합니다. (용량은 조금 커질 수 있지만, 정적 이미지로 굳어버리는 것보다 낫습니다.)
-async function fileToResizedPNG(file, maxSize=480) {
-  const isGif=/gif$/i.test(file.type)||/\.gif$/i.test(file.name);
-  if(isGif||await isApngFile(file)){
-    return new Promise((resolve,reject)=>{
-      const reader=new FileReader();
-      reader.onload=()=>resolve(reader.result);
-      reader.onerror=reject;
-      reader.readAsDataURL(file);
+    const formData=new FormData();
+    formData.append("file",file);
+    const res=await fetch(CF_WORKER_URL,{
+      method:"POST",
+      headers:{"X-Upload-Secret":CF_UPLOAD_SECRET},
+      body:formData,
     });
-  }
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const img=new Image();
-      img.onload=()=>{
-        let {width,height}=img;
-        if(width>height&&width>maxSize){height=Math.round(height*maxSize/width);width=maxSize;}
-        else if(height>maxSize){width=Math.round(width*maxSize/height);height=maxSize;}
-        const canvas=document.createElement("canvas");
-        canvas.width=width;canvas.height=height;
-        canvas.getContext("2d").drawImage(img,0,0,width,height);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror=reject; img.src=reader.result;
-    };
-    reader.onerror=reject; reader.readAsDataURL(file);
-  });
+    if(!res.ok)return null;
+    const data=await res.json();
+    return data.url||null;
+  }catch{ return null; }
 }
 
 /* ============================== SUBCOMPONENTS ============================== */
@@ -804,7 +735,7 @@ function AvatarUpload({value,onChange,size=58}){
       </div>
       <button type="button" className="coc-btn ghost small" onClick={()=>inputRef.current?.click()}><Camera size={12}/> 사진 변경</button>
       <input ref={inputRef} type="file" accept="image/*" style={{display:"none"}}
-        onChange={async(e)=>{const f=e.target.files?.[0];if(!f)return;onChange(await fileToResizedDataURL(f,480));e.target.value="";}}/>
+        onChange={async(e)=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)onChange(url);e.target.value="";}}/>
     </div>
   );
 }
@@ -2196,7 +2127,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,an
                 <span style={{fontSize:12,fontWeight:600,flex:1}}>{label}</span>
                 <label htmlFor={inputId} className="coc-btn ghost small" style={{cursor:"pointer"}}>{url?"교체":"추가"}</label>
                 <input id={inputId} type="file" accept="image/*" style={{display:"none"}}
-                  onChange={async e=>{const f=e.target.files?.[0];if(!f)return;onSetCutin(label,await fileToRawDataURL(f));e.target.value="";}}/>
+                  onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)onSetCutin(label,url);else alert("업로드에 실패했어요. 다시 시도해주세요.");e.target.value="";}}/>
                 {url&&<button type="button" className="coc-btn ghost small" onClick={()=>onClearCutin(label)}><X size={12}/></button>}
               </div>
             );
@@ -2333,6 +2264,7 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
   npcName,npcAvatar,onSaveNpcBookmark,onApplyNpcBookmark,onRemoveNpcBookmark,
   showImgPopover,setShowImgPopover,imgPopoverRef,imgInputRef,onImgFileChange,
   imgUrlInput,setImgUrlInput,onSendImageUrl,onImportCocofolia,
+  scenesList,activeSceneId,onAddScene,onSwitchScene,onDeleteScene,showScenesPanel,setShowScenesPanel,scenesPanelRef,
   pos,setPos}){
   const wrapRef=useRef(null);
   const [showCocoSetup,setShowCocoSetup]=useState(false);
@@ -2471,6 +2403,37 @@ function GmToolsBar({sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFil
                 ))}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      <div style={{position:"relative"}} ref={scenesPanelRef}>
+        <button type="button" onClick={()=>setShowScenesPanel(v=>!v)} title="장면 (배경+레이어 구성을 여러 개 저장해두고 전환)"
+          style={{...btnStyle,color:scenesList.length>1?"var(--accent-deep)":"var(--text-dim)",borderColor:scenesList.length>1?"var(--accent)":"var(--border)"}}>
+          <Clapperboard size={16}/>
+        </button>
+        {showScenesPanel&&(
+          <div style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:31,width:200,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
+            <div className="coc-label" style={{marginBottom:8}}>장면</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:8,maxHeight:220,overflowY:"auto"}}>
+              {scenesList.map(s=>(
+                <div key={s.id} style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button type="button" onClick={()=>onSwitchScene(s.id)}
+                    style={{flex:1,textAlign:"left",fontSize:12,padding:"6px 9px",borderRadius:6,cursor:"pointer",
+                      background:activeSceneId===s.id?"var(--accent)":"var(--bg-panel)",color:activeSceneId===s.id?"#fff":"var(--text-dim)",
+                      border:"1px solid "+(activeSceneId===s.id?"var(--accent)":"var(--border-soft)")}}>
+                    {s.name}
+                  </button>
+                  {scenesList.length>1&&(
+                    <button type="button" onClick={()=>onDeleteScene(s.id)} title="이 장면 삭제"
+                      style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1,flexShrink:0}}>×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center"}} onClick={onAddScene}>
+              <Plus size={12}/> 장면 추가
+            </button>
           </div>
         )}
       </div>
@@ -2919,7 +2882,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
                 {image&&<button type="button" className="coc-btn ghost small" onClick={()=>setImage("")}>제거</button>}
               </div>
               <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}}
-                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;setImage(await fileToResizedDataURL(f,640));e.target.value="";}}/>
+                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setImage(url);e.target.value="";}}/>
               <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!title.trim()||saving} onClick={createHandout}>
                 {saving?"저장 중...":"핸드아웃 만들기"}
               </button>
@@ -3651,12 +3614,57 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>unsub();
   },[room.id]);
 
+  // 장면(scene) 관리: 방 하나에 여러 "배경+레이어 구성"을 저장해두고 전환할 수 있습니다.
+  // 코코포리아의 "scene" 개념과 비슷해요. 기존에 이미 있던 배경·레이어(장면 개념이 생기기
+  // 전 데이터)는 특별한 id("legacy")를 가진 "장면 1"로 취급해서, 예전 room.id 기반 키를
+  // 그대로 재사용합니다 — 그래서 이미 만들어두신 무대가 하나도 안 사라지고 그대로
+  // "장면 1"이 됩니다. 새로 추가하는 장면만 room.id 뒤에 장면 id를 붙인 새 키를 씁니다.
+  const [scenesList,setScenesList]=useState([{id:"legacy",name:"장면 1"}]);
+  const [activeSceneId,setActiveSceneId]=useState("legacy");
+  const sceneRoomId=activeSceneId==="legacy"?room.id:`${room.id}:${activeSceneId}`;
+  useEffect(()=>{
+    const unsub1=storeListenDoc(`scenelist:${room.id}`,d=>{
+      if(d?.scenes?.length) setScenesList(d.scenes);
+    });
+    const unsub2=storeListenDoc(`activescene:${room.id}`,d=>{
+      setActiveSceneId(d?.sceneId||"legacy");
+    });
+    return()=>{unsub1();unsub2();};
+  },[room.id]);
+  const addScene=async()=>{
+    const id=newId();
+    const name=`장면 ${scenesList.length+1}`;
+    const next=[...scenesList,{id,name}];
+    setScenesList(next);
+    await storeSet(`scenelist:${room.id}`,{scenes:next},true);
+    await switchScene(id);
+  };
+  const switchScene=async id=>{
+    setActiveSceneId(id);
+    await storeSet(`activescene:${room.id}`,{sceneId:id},true);
+  };
+  const deleteScene=async id=>{
+    if(scenesList.length<=1)return; // 마지막 하나는 지울 수 없어요
+    const next=scenesList.filter(s=>s.id!==id);
+    setScenesList(next);
+    await storeSet(`scenelist:${room.id}`,{scenes:next},true);
+    if(activeSceneId===id) await switchScene(next[0].id);
+    // 그 장면의 배경·레이어 데이터도 정리합니다.
+    const delRoomId=id==="legacy"?room.id:`${room.id}:${id}`;
+    const prevManifest=await storeGet(`scene:${delRoomId}`,true);
+    for(let i=0;i<(prevManifest?.chunks||0);i++){ await storeDelete(`scenechunk:${delRoomId}:${i}`,true); }
+    await storeDelete(`scene:${delRoomId}`,true);
+    const orderDoc=await storeGet(`layerorder:${delRoomId}`,true);
+    for(const layerId of(orderDoc?.order||[])){
+      const m=await storeGet(`layerdata:${delRoomId}:${layerId}`,true);
+      for(let i=0;i<(m?.chunks||0);i++){ await storeDelete(`layerchunk:${delRoomId}:${layerId}:${i}`,true); }
+      await storeDelete(`layerdata:${delRoomId}:${layerId}`,true);
+    }
+    await storeDelete(`layerorder:${delRoomId}`,true);
+  };
+
   // 좌측 무대 배경/장면 이미지: GM이 올리면 방 전체(모든 참가자의 PC 화면)에 실시간 반영됩니다.
-  // ※ APNG(움직이는 PNG)나 GIF는 캔버스로 압축하면 애니메이션이 깨져버려서(정지 프레임 한 장만
-  // 남음), PNG·GIF 파일은 압축 없이 원본 그대로 여러 조각으로 나눠 저장합니다(다이스 컷인과
-  // 같은 방식). 그 외(JPEG 등, 애니메이션 걱정 없는) 사진은 기존처럼 압축해서 하나의 문서에
-  // 저장해 용량을 아낍니다.
-  const SCENE_CHUNK_SIZE=700000;
+  // Cloudflare에 올리고 URL만 저장하기 때문에, APNG 등 큰 파일도 용량 걱정이 없습니다.
   const [sceneUrl,setSceneUrl]=useState("");
   const [showDecorate,setShowDecorate]=useState(false);
   const [showDistribute,setShowDistribute]=useState(false);
@@ -3670,66 +3678,30 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     document.addEventListener("mousedown",onDocClick);
     return()=>document.removeEventListener("mousedown",onDocClick);
   },[showScenePopover]);
+  const [showScenesPanel,setShowScenesPanel]=useState(false);
+  const scenesPanelRef=useRef(null);
+  useEffect(()=>{
+    if(!showScenesPanel)return;
+    const onDocClick=e=>{ if(scenesPanelRef.current&&!scenesPanelRef.current.contains(e.target)) setShowScenesPanel(false); };
+    document.addEventListener("mousedown",onDocClick);
+    return()=>document.removeEventListener("mousedown",onDocClick);
+  },[showScenesPanel]);
   const sceneInputRef=useRef(null);
   useEffect(()=>{
-    const unsub=storeListenDoc(`scene:${room.id}`,async manifest=>{
-      if(!manifest){ setSceneUrl(""); return; }
-      if(manifest.url!==undefined){ setSceneUrl(manifest.url); return; } // 압축 저장(정적 이미지)
-      const total=manifest.chunks||0;
-      if(total<=0){ setSceneUrl(""); return; }
-      const parts=await Promise.all(Array.from({length:total},(_,i)=>storeGet(`scenechunk:${room.id}:${i}`,true)));
-      if(parts.some(p=>!p||p.data===undefined))return; // 아직 조각이 다 안 올라왔으면 건너뜀
-      setSceneUrl(parts.map(p=>p.data).join(""));
+    const unsub=storeListenDoc(`scene:${sceneRoomId}`,manifest=>{
+      setSceneUrl(manifest?.url||"");
     });
     return()=>unsub();
-  },[room.id]);
+  },[sceneRoomId]);
   const uploadScene=async file=>{
-    const prevManifest=await storeGet(`scene:${room.id}`,true);
-    const prevTotal=prevManifest?.chunks||0;
-    const animatable=file.type==="image/png"||file.type==="image/gif";
-    if(animatable){
-      const dataUrl=await fileToRawDataURL(file);
-      if(dataUrl.length>8000000){
-        alert("이미지 용량이 너무 커서 저장할 수 없어요(최대 약 6MB 파일). 더 작은 파일로 다시 시도해주세요.");
-        return;
-      }
-      const total=Math.ceil(dataUrl.length/SCENE_CHUNK_SIZE);
-      for(let i=0;i<total;i++){
-        const chunk=dataUrl.slice(i*SCENE_CHUNK_SIZE,(i+1)*SCENE_CHUNK_SIZE);
-        const res=await storeSet(`scenechunk:${room.id}:${i}`,{data:chunk},true);
-        if(res&&res.ok===false){
-          alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
-          return;
-        }
-      }
-      for(let i=total;i<prevTotal;i++){ await storeDelete(`scenechunk:${room.id}:${i}`,true); }
-      const res=await storeSet(`scene:${room.id}`,{chunks:total},true);
-      if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return; }
-      setSceneUrl(dataUrl);
-    }else{
-      const url=await fileToBestQualityDataURL(file);
-      // 글리치/노이즈가 많은 사진처럼 압축이 잘 안 먹히는 이미지는, 최대한 줄여도
-      // Firestore 문서 용량 한도(약 1MB)를 넘을 수 있습니다. 이 경우 저장이 조용히
-      // 실패하고(로컬엔 잠깐 반영됐다가 서버 값으로 되돌아가며) "깜빡이다 사라지는"
-      // 것처럼 보이므로, 미리 확인해서 바로 알려줍니다.
-      if(url.length*0.75>950000){
-        alert("이 이미지는 압축해도 용량이 너무 커서 저장할 수 없어요(문서당 최대 약 1MB). 더 단순한 이미지나 더 작은 파일로 다시 시도해주세요.");
-        return;
-      }
-      for(let i=0;i<prevTotal;i++){ await storeDelete(`scenechunk:${room.id}:${i}`,true); } // 이전에 조각 저장된 배경 정리
-      const res=await storeSet(`scene:${room.id}`,{url},true);
-      if(res&&res.ok===false){
-        alert("배경 저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
-        return;
-      }
-      setSceneUrl(url);
-    }
+    const url=await uploadToCloudflare(file);
+    if(!url){ alert("이미지 업로드에 실패했어요. 다시 시도해주세요."); return; }
+    const res=await storeSet(`scene:${sceneRoomId}`,{url},true);
+    if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return; }
+    setSceneUrl(url);
   };
   const clearScene=async()=>{
-    const prevManifest=await storeGet(`scene:${room.id}`,true);
-    const prevTotal=prevManifest?.chunks||0;
-    for(let i=0;i<prevTotal;i++){ await storeDelete(`scenechunk:${room.id}:${i}`,true); }
-    await storeSet(`scene:${room.id}`,{url:""},true);
+    await storeSet(`scene:${sceneRoomId}`,{url:""},true);
   };
 
   // GM이 무대 위로 이미지 파일을 드래그&드롭하면 바로 배경으로 설정됩니다.
@@ -3738,18 +3710,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 포토샵 레이어창처럼, 목록 맨 위(=배열 0번)가 가장 앞에 나옵니다. GM만 좌측 아이콘 바의
   // "레이어" 패널에서 추가/삭제/순서변경(드래그)을 할 수 있고, 드래그 이동은 무대 위에서
   // 손을 뗀 순간에만 저장해서(=다른 사람 화면 반영) 씁니다.
-  // ※ 예전엔 레이어 전체(이미지 데이터 포함)를 문서 하나에 몰아 저장했는데, 코코포리아
-  // 세팅처럼 한 번에 여러 장을 넣으면 합친 용량이 Firestore 문서 용량 한도(약 1MB)를 넘겨서
-  // 저장이 조용히 실패하고 "깜빡이다 사라지는" 문제가 있었습니다. 이제는 순서만 담은 작은
-  // 목록 문서(layerorder)와, 레이어마다 각각 따로 저장되는 데이터 문서(layerdata)로 나눠서
-  // 저장합니다 — 다이스 컷인과 같은 방식입니다.
-  // ※ 그런데 움직이는 APNG/GIF 토큰은 (배경·컷인과 마찬가지로) 압축하면 애니메이션이 첫
-  // 프레임 한 장으로 굳어버려서 원본을 그대로 저장해야 하는데, 그 원본이 1MB를 넘으면
-  // 위의 "레이어 하나당 문서 하나" 방식으로도 여전히 용량 한도를 넘어 저장이 실패했습니다.
-  // 그래서 배경·컷인과 동일하게, 이미지가 크면 이미지 데이터만 다시 여러 조각
-  // (layerchunk:방ID:레이어ID:번호)으로 쪼개 저장하고, layerdata 문서에는 조각 수(chunks)와
-  // 위치/크기 등 작은 정보만 남깁니다. 작은 이미지는 예전처럼 url을 그대로 한 문서에 담습니다.
-  const LAYER_CHUNK_SIZE=700000;
+  // 이미지는 Cloudflare에 올리고 URL만 저장해서, APNG 등 큰 파일도 용량 걱정이 없습니다.
   const [layerOrder,setLayerOrder]=useState([]); // [id, id, ...] — 순서 = 쌓임 순서
   const [layerDataMap,setLayerDataMap]=useState({}); // {id: {url,x,y,width,height,angle,locked}}
   const layers=layerOrder.map(id=>layerDataMap[id]?{id,...layerDataMap[id]}:null).filter(Boolean);
@@ -3760,73 +3721,26 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
 
 
-  // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지가
-  // 그 결과가 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다.
-  // ※ Firestore 문서 하나는 약 1MB까지만 저장할 수 있어서, 그보다 큰 파일은 여러 조각으로
-  // 쪼개 각각 다른 문서(cutinchunk:방ID:등급:번호)에 저장하고, 작은 "완료 안내" 문서
-  // (cutin:방ID:등급, {chunks: 조각수})를 마지막에 남깁니다. 불러올 때는 이 안내 문서를
-  // 보고 조각들을 순서대로 가져와 이어붙입니다. (예전 버전은 조각 없이 {url: ...} 하나로
-  // 저장했었는데, 그 형식도 그대로 읽을 수 있게 남겨뒀습니다.)
-  const CUTIN_CHUNK_SIZE=700000;
-  const [diceCutins,setDiceCutins]=useState({}); // {라벨: dataUrl}
+  // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지이 그 결과가
+  // 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다. Cloudflare에 올리고 URL만
+  // 저장하기 때문에, 큰 APNG여도 용량 걱정이나 조각내기가 필요 없습니다.
+  const [diceCutins,setDiceCutins]=useState({}); // {라벨: url}
   useEffect(()=>{
     const prefix=`cutin:${room.id}:`;
-    const unsub=storeListenPrefix(prefix,async list=>{
-      const entries=await Promise.all(list.map(async item=>{
-        const label=item.key.slice(prefix.length);
-        const manifest=item.value;
-        if(!manifest)return null;
-        if(manifest.url) return [label,manifest.url]; // 예전 형식(조각 없이 통째로 저장)
-        const total=manifest.chunks||0;
-        if(total<=0)return null;
-        const parts=await Promise.all(
-          Array.from({length:total},(_,i)=>storeGet(`cutinchunk:${room.id}:${label}:${i}`,true))
-        );
-        if(parts.some(p=>!p||p.data===undefined))return null; // 아직 조각이 다 안 올라왔으면 건너뜀
-        return [label,parts.map(p=>p.data).join("")];
-      }));
+    const unsub=storeListenPrefix(prefix,list=>{
       const map={};
-      entries.forEach(e=>{ if(e) map[e[0]]=e[1]; });
+      list.forEach(item=>{ if(item.value?.url) map[item.key.slice(prefix.length)]=item.value.url; });
       setDiceCutins(map);
     });
     return()=>unsub();
   },[room.id]);
-  const setDiceCutin=async(label,dataUrl)=>{
-    if(dataUrl.length>8000000){
-      alert("이미지 용량이 너무 커서 저장할 수 없어요(최대 약 6MB 파일). 더 작은 파일로 다시 시도해주세요.");
-      return;
-    }
-    const prevManifest=await storeGet(`cutin:${room.id}:${label}`,true);
-    const prevTotal=prevManifest?.chunks||0;
-    const total=Math.ceil(dataUrl.length/CUTIN_CHUNK_SIZE);
-    for(let i=0;i<total;i++){
-      const chunk=dataUrl.slice(i*CUTIN_CHUNK_SIZE,(i+1)*CUTIN_CHUNK_SIZE);
-      const res=await storeSet(`cutinchunk:${room.id}:${label}:${i}`,{data:chunk},true);
-      if(res&&res.ok===false){
-        alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요.");
-        return;
-      }
-    }
-    // 이전에 조각이 더 많았다면(더 큰 파일이었다면) 남는 조각들을 정리합니다.
-    for(let i=total;i<prevTotal;i++){
-      await storeDelete(`cutinchunk:${room.id}:${label}:${i}`,true);
-    }
-    // 조각을 다 저장한 뒤 마지막에 "완료" 안내 문서를 남겨서, 불러오는 쪽이 조각이
-    // 다 갖춰진 뒤에만 합치기 시작하도록 합니다.
-    const res=await storeSet(`cutin:${room.id}:${label}`,{chunks:total},true);
-    if(res&&res.ok===false){
-      alert("저장에 실패했어요. 다시 시도해주세요.");
-      return;
-    }
-    setDiceCutins(prev=>({...prev,[label]:dataUrl}));
+  const setDiceCutin=async(label,url)=>{
+    const res=await storeSet(`cutin:${room.id}:${label}`,{url},true);
+    if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return; }
+    setDiceCutins(prev=>({...prev,[label]:url}));
   };
   const clearDiceCutin=async label=>{
-    const manifest=await storeGet(`cutin:${room.id}:${label}`,true);
-    const total=manifest?.chunks||0;
     await storeDelete(`cutin:${room.id}:${label}`,true);
-    for(let i=0;i<total;i++){
-      await storeDelete(`cutinchunk:${room.id}:${label}:${i}`,true);
-    }
     setDiceCutins(prev=>{ const next={...prev}; delete next[label]; return next; });
   };
   const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
@@ -3834,28 +3748,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const layerFileInputRef=useRef(null);
   const layerPanelRef=useRef(null);
   useEffect(()=>{
-    const unsubOrder=storeListenDoc(`layerorder:${room.id}`,d=>{ setLayerOrder(d?.order||[]); });
-    const prefix=`layerdata:${room.id}:`;
-    const unsubData=storeListenPrefix(prefix,async list=>{
-      const entries=await Promise.all(list.map(async item=>{
-        const id=item.key.slice(prefix.length);
-        const manifest=item.value;
-        if(!manifest)return null;
-        if(manifest.url!==undefined) return [id,manifest]; // 작은 이미지: url을 그대로 담고 있음
-        const total=manifest.chunks||0;
-        if(total<=0) return null;
-        const parts=await Promise.all(
-          Array.from({length:total},(_,i)=>storeGet(`layerchunk:${room.id}:${id}:${i}`,true))
-        );
-        if(parts.some(p=>!p||p.data===undefined))return null; // 조각이 아직 다 안 올라왔으면 이번 갱신은 건너뜀
-        return [id,{...manifest,url:parts.map(p=>p.data).join("")}];
-      }));
+    const unsubOrder=storeListenDoc(`layerorder:${sceneRoomId}`,d=>{ setLayerOrder(d?.order||[]); });
+    const prefix=`layerdata:${sceneRoomId}:`;
+    const unsubData=storeListenPrefix(prefix,list=>{
       const map={};
-      entries.forEach(e=>{ if(e) map[e[0]]=e[1]; });
+      list.forEach(item=>{ if(item.value) map[item.key.slice(prefix.length)]=item.value; });
       setLayerDataMap(map);
     });
     return()=>{unsubOrder();unsubData();};
-  },[room.id]);
+  },[sceneRoomId]);
   useEffect(()=>{
     if(!showLayerPanel)return;
     const onDocClick=e=>{ if(layerPanelRef.current&&!layerPanelRef.current.contains(e.target)) setShowLayerPanel(false); };
@@ -3871,36 +3772,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>document.removeEventListener("mousedown",onDocClick);
   },[showBookmarkPanel]);
   // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
-  // 레이어 이미지 데이터를 저장합니다. 압축해도(또는 애니메이션 보존을 위해 압축을 건너뛰어도)
-  // 문서 용량 한도(약 1MB)를 넘는 경우, 자동으로 여러 조각(layerchunk)으로 쪼개 저장합니다.
-  // 실패하면 false를 반환합니다(호출한 쪽에서 이후 처리를 건너뛸 수 있도록).
+  // 레이어 이미지은 Cloudflare에 올리고, 그 URL만 문서에 저장합니다(짧은 문자열이라
+  // 용량 걱정이 없어요).
   const saveLayerData=async(id,{url,...meta})=>{
-    const prevManifest=await storeGet(`layerdata:${room.id}:${id}`,true);
-    const prevTotal=prevManifest?.chunks||0;
-    const needsChunk=(url||"").length*0.75>900000;
-    if(needsChunk){
-      const total=Math.ceil(url.length/LAYER_CHUNK_SIZE);
-      for(let i=0;i<total;i++){
-        const chunk=url.slice(i*LAYER_CHUNK_SIZE,(i+1)*LAYER_CHUNK_SIZE);
-        const res=await storeSet(`layerchunk:${room.id}:${id}:${i}`,{data:chunk},true);
-        if(res&&res.ok===false){ alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요."); return false; }
-      }
-      for(let i=total;i<prevTotal;i++){ await storeDelete(`layerchunk:${room.id}:${id}:${i}`,true); }
-      const res=await storeSet(`layerdata:${room.id}:${id}`,{chunks:total,...meta},true);
-      if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return false; }
-    }else{
-      for(let i=0;i<prevTotal;i++){ await storeDelete(`layerchunk:${room.id}:${id}:${i}`,true); } // 예전에 조각 저장돼 있었다면 정리
-      const res=await storeSet(`layerdata:${room.id}:${id}`,{url,...meta},true);
-      if(res&&res.ok===false){ alert("저장에 실패했어요. 이미지 용량을 줄여서 다시 시도해주세요."); return false; }
-    }
+    const res=await storeSet(`layerdata:${sceneRoomId}:${id}`,{url,...meta},true);
+    if(res&&res.ok===false){ alert("저장에 실패했어요. 다시 시도해주세요."); return false; }
     return true;
   };
-  // 레이어(+조각들)를 완전히 지웁니다.
   const deleteLayerData=async id=>{
-    const manifest=await storeGet(`layerdata:${room.id}:${id}`,true);
-    const total=manifest?.chunks||0;
-    await storeDelete(`layerdata:${room.id}:${id}`,true);
-    for(let i=0;i<total;i++){ await storeDelete(`layerchunk:${room.id}:${id}:${i}`,true); }
+    await storeDelete(`layerdata:${sceneRoomId}:${id}`,true);
   };
   const addLayer=async url=>{
     const id=newId();
@@ -3908,28 +3788,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(!ok) return;
     const nextOrder=[id,...layerOrder];
     setLayerOrder(nextOrder);
-    await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
+    await storeSet(`layerorder:${sceneRoomId}`,{order:nextOrder},true);
   };
-  // 맵시트(레이어) 이미지를 데이터 URL로 바꿉니다.
-  // ※ 예전엔 정지 이미지도 무조건 캔버스로 700px까지 줄여서 저장했는데, 그러다 보니 원본이
-  // 더 크면 그만큼 화질이 흐려져 보였습니다. 지금은 큰 이미지도 조각(chunk)으로 나눠 저장할
-  // 수 있게 됐으니, 굳이 그렇게 줄일 필요가 없어졌습니다. 그래서 애니메이션(APNG/GIF)뿐
-  // 아니라 웬만한 크기의 정지 PNG도 리사이즈 없이 원본 그대로 저장하고, 지나치게 큰
-  // 파일(용량 관리가 꼭 필요한 경우)만 예전보다 훨씬 높은 해상도로 줄입니다.
+  // 맵시트(레이어) 이미지를 Cloudflare에 올리고 URL을 돌려받습니다. APNG/GIF든 큰 사진이든
+  // 원본 그대로 올라가서 화질·애니메이션 걱정이 없어요.
   const layerFileToUrl=async file=>{
-    const isGif=/gif$/i.test(file.type)||/\.gif$/i.test(file.name);
-    const isPng=/png$/i.test(file.type)||/\.png$/i.test(file.name);
-    const animatable=isGif||(isPng&&await isApngFile(file));
-    if(animatable||(isPng&&file.size<=4000000)){
-      const url=await fileToRawDataURL(file);
-      if(url.length>8000000){
-        alert("이미지 용량이 너무 커서 저장할 수 없어요(최대 약 6MB 파일). 더 작은 파일로 다시 시도해주세요.");
-        return null;
-      }
-      return url;
-    }
-    // JPEG 등 그 외 형식이거나, 4MB가 넘는 아주 큰 PNG만 화질을 최대한 살려서 줄입니다.
-    return fileToResizedPNG(file,1400);
+    const url=await uploadToCloudflare(file);
+    if(!url) alert("이미지 업로드에 실패했어요. 다시 시도해주세요.");
+    return url;
   };
   const addLayerFromFile=async file=>{
     const url=await layerFileToUrl(file);
@@ -3940,6 +3806,75 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 코코포리아 방 내보내기(JSON) + 첨부 이미지들을 한꺼번에 넣으면, 배경/토큰 위치를
   // 자동으로 배치해주는 "세팅" 기능. 코코포리아는 중앙이 원점인 격자 단위 좌표계를 쓰는데,
   // 저희는 무대 크기 대비 %를 쓰기 때문에 좌표를 서로 변환해줍니다.
+  // 코코포리아 배경을 "지정한 장면"에 저장합니다. 지금 보고 있는(활성) 장면이
+  // 아니라 방금 새로 만든 다른 장면에도 저장할 수 있도록, room.id 대신 targetRoomId를
+  // 그대로 받아씁니다(uploadScene은 항상 "지금 활성 장면"에만 저장해서 재사용이 안 돼요).
+  const uploadSceneInto=async(targetRoomId,file)=>{
+    const url=await uploadToCloudflare(file);
+    if(!url)return false;
+    const res=await storeSet(`scene:${targetRoomId}`,{url},true);
+    return!(res&&res.ok===false);
+  };
+  // markers/items/foreground를 한데 모아 위치를 계산하고, 레이어로 "지정한 장면"에 저장합니다.
+  const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl},fileByName)=>{
+    const combined={...(items||{}),...(markers||{})};
+    if(foregroundUrl&&fileByName[foregroundUrl]){
+      const allX=Object.values(combined).map(it=>it.x||0);
+      const allY=Object.values(combined).map(it=>it.y||0);
+      const allX2=Object.values(combined).map(it=>(it.x||0)+(it.width||0));
+      const allY2=Object.values(combined).map(it=>(it.y||0)+(it.height||0));
+      const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>it.order||it.z||0));
+      combined["__foreground__"]={
+        x:Math.min(...allX,0), y:Math.min(...allY,0),
+        width:Math.max(...allX2,0)-Math.min(...allX,0)||100,
+        height:Math.max(...allY2,0)-Math.min(...allY,0)||100,
+        angle:0, locked:true, imageUrl:foregroundUrl, order:maxOrder+1,
+      };
+    }
+    const sorted=Object.values(combined).sort((a,b)=>(b.order??b.z??0)-(a.order??a.z??0));
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const it of Object.values(combined)){
+      const w=it.width||10,h=it.height||10;
+      const cx=(it.x||0)+w/2, cy=(it.y||0)+h/2;
+      const rad=(it.angle||0)*Math.PI/180;
+      const cos=Math.abs(Math.cos(rad)), sin=Math.abs(Math.sin(rad));
+      const halfW=(w*cos+h*sin)/2, halfH=(w*sin+h*cos)/2;
+      minX=Math.min(minX,cx-halfW);maxX=Math.max(maxX,cx+halfW);
+      minY=Math.min(minY,cy-halfH);maxY=Math.max(maxY,cy+halfH);
+    }
+    const boundW=Math.max(1,maxX-minX), boundH=Math.max(1,maxY-minY);
+    const stageEl=document.querySelector(".stage-scene");
+    const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
+    const stageRatio=(sr.width||16)/(sr.height||9);
+    const fieldRatio=boundW/boundH;
+    const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
+    const fitH=fieldRatio>=stageRatio?stageRatio/fieldRatio:1;
+    const padX=(1-fitW)/2*100, padY=(1-fitH)/2*100;
+    const newIds=[];
+    let missing=0;
+    for(const it of sorted){
+      const file=fileByName[it.imageUrl];
+      if(!file){ missing++; continue; }
+      const url=await layerFileToUrl(file);
+      if(!url){ missing++; continue; }
+      const id=newId();
+      const patch={
+        url,
+        x:padX+((it.x||0)-minX)/boundW*100*fitW,
+        y:padY+((it.y||0)-minY)/boundH*100*fitH,
+        width:(it.width||10)/boundW*100*fitW,
+        height:(it.height||10)/boundH*100*fitH,
+        angle:it.angle||0,
+        locked:!!it.locked,
+      };
+      const res=await storeSet(`layerdata:${targetRoomId}:${id}`,patch,true);
+      const ok=!(res&&res.ok===false);
+      if(!ok){ missing++; continue; }
+      newIds.push(id);
+    }
+    await storeSet(`layerorder:${targetRoomId}`,{order:newIds},true);
+    return{added:newIds.length,missing};
+  };
   const importCocofoliaSetup=async(jsonFile,imageFiles,{replace})=>{
     let data;
     try{ data=JSON.parse(await jsonFile.text()); }
@@ -3954,80 +3889,54 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const fileByName={};
     imageFiles.forEach(f=>{ fileByName[f.name]=f; });
 
-    // 배경(있고, 첨부한 이미지 중에 파일명이 일치하는 게 있으면)
+    // 지금 보고 있는(활성) 장면에는 "메인" 배치를 그대로 넣습니다. (replace가 켜져 있으면
+    // 기존 레이어를 먼저 지웁니다 — importItemsIntoScene은 항상 order를 통째로 새로 쓰기
+    // 때문에, replace가 꺼져 있으면 기존 것들의 데이터 문서가 남아 있도록 주의합니다.)
+    if(!replace){
+      // 기존 레이어를 유지하려면, 새로 추가되는 것들의 id만 앞에 붙여야 하므로
+      // importItemsIntoScene 대신 기존 로직을 그대로 사용합니다.
+    }
     if(cocoRoom.backgroundUrl&&fileByName[cocoRoom.backgroundUrl]){
       await uploadScene(fileByName[cocoRoom.backgroundUrl]);
     }
-
-    // 항목들: order가 클수록 앞(우리 배열은 index 0이 맨 앞)이라 내림차순 정렬
-    const sorted=Object.values(items).sort((a,b)=>(b.order||0)-(a.order||0));
-    const newIds=[];
-    let missing=0;
-    // ※ fieldWidth/fieldHeight(코코포리아가 적어둔 "필드" 크기) 대신, 실제 아이템들이
-    // 차지하는 전체 범위(바운딩 박스)를 기준으로 계산합니다. 파일에 따라 그림이 필드보다
-    // 훨씬 넓게 걸쳐 있는 경우가 있어서, 필드 기준으로 계산하면 화면 밖으로 튕겨나갔어요.
-    // 바운딩 박스를 기준으로 하면 어떤 파일이든 항상 화면 안에 맞게 들어옵니다.
-    //
-    // ⚠️ 45도처럼 축에 딱 맞지 않게 회전된 오브젝트(예: 비스듬한 표지판·소품)는, 회전 전
-    // 가로세로만 보고 범위를 재면 실제 화면에서 대각선으로 삐져나온 만큼을 놓치게 됩니다.
-    // 그래서 회전 후 축 정렬 바운딩 박스(각 오브젝트를 감싸는, 화면에 수평/수직인 사각형)를
-    // 각도까지 반영해서 계산해야, 회전된 오브젝트도 무대 밖으로 튀어나가지 않습니다.
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    for(const it of Object.values(items)){
-      const w=it.width||10,h=it.height||10;
-      const cx=(it.x||0)+w/2, cy=(it.y||0)+h/2; // 회전은 중심을 기준으로 돕니다 (렌더링과 동일)
-      const rad=(it.angle||0)*Math.PI/180;
-      const cos=Math.abs(Math.cos(rad)), sin=Math.abs(Math.sin(rad));
-      const halfW=(w*cos+h*sin)/2, halfH=(w*sin+h*cos)/2; // 회전 후 실제로 차지하는 절반 크기
-      minX=Math.min(minX,cx-halfW);maxX=Math.max(maxX,cx+halfW);
-      minY=Math.min(minY,cy-halfH);maxY=Math.max(maxY,cy+halfH);
-    }
-    const boundW=Math.max(1,maxX-minX), boundH=Math.max(1,maxY-minY);
-    // 코코포리아 배치(가로세로 비율이 파일마다 다름)를 "작은 무대" 안에 "원본 비율 그대로"
-    // 가장 크게 들어가도록 맞춥니다. 가로·세로를 따로 계산하면 그림이 찌그러지기 때문에,
-    // 한쪽을 기준으로 같은 배율을 쓰고 남는 쪽은 여백(레터박스)으로 둡니다.
-    // 작은 무대는 큰 무대를 그대로 80% 축소한 모양이라(비율은 큰 무대와 같음), 큰 무대의
-    // 실제 화면 비율을 그대로 기준으로 씁니다.
-    const stageEl=document.querySelector(".stage-scene");
-    const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
-    const stageRatio=(sr.width||16)/(sr.height||9);
-    const fieldRatio=boundW/boundH;
-    // 무대 대비 필드가 차지할 비율(0~1). 넓은 쪽이 100%가 되고 좁은 쪽만 줄어듭니다.
-    const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
-    const fitH=fieldRatio>=stageRatio?stageRatio/fieldRatio:1;
-    const padX=(1-fitW)/2*100, padY=(1-fitH)/2*100;
-    for(const it of sorted){
-      const file=fileByName[it.imageUrl];
-      if(!file){ missing++; continue; }
-      const url=await layerFileToUrl(file);
-      if(!url){ missing++; continue; }
-      const id=newId();
-      // 레이어마다 각각 따로 저장 — 한꺼번에 몰아 저장하면 합친 용량이 문서 용량 한도를
-      // 넘겨서 저장이 조용히 실패하고 나타났다 사라지는 문제가 생겼었어요. (움직이는
-      // APNG/GIF라 압축이 안 된 경우도 saveLayerData가 알아서 조각으로 쪼개 저장합니다.)
-      const ok=await saveLayerData(id,{
-        url,
-        x:padX+((it.x||0)-minX)/boundW*100*fitW,
-        y:padY+((it.y||0)-minY)/boundH*100*fitH,
-        width:(it.width||10)/boundW*100*fitW,
-        height:(it.height||10)/boundH*100*fitH,
-        angle:it.angle||0,
-        locked:!!it.locked,
-      });
-      if(!ok){ missing++; continue; }
-      newIds.push(id);
-    }
-    if(newIds.length===0){ alert("일치하는 이미지 파일을 하나도 못 찾았어요. 파일명을 바꾸지 않고 그대로 올려주세요."); return; }
-    let nextOrder;
     if(replace){
       for(const oldId of layerOrder){ await deleteLayerData(oldId); }
-      nextOrder=newIds;
-    }else{
-      nextOrder=[...newIds,...layerOrder];
     }
-    setLayerOrder(nextOrder);
-    await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
-    if(missing>0) alert(`레이어는 넣었는데, 이미지 ${missing}개는 첨부 파일 중에서 못 찾아서 건너뛰었어요.`);
+    const{added,missing}=await importItemsIntoScene(sceneRoomId,{items,markers:cocoRoom.markers,foregroundUrl:cocoRoom.foregroundUrl},fileByName);
+    if(!replace&&added>0){
+      // 기존 레이어 뒤에 이어붙입니다(importItemsIntoScene이 방금 order를 새 것들로만 썼으므로, 합쳐서 다시 씁니다).
+      const justWritten=await storeGet(`layerorder:${sceneRoomId}`,true);
+      const nextOrder=[...(justWritten?.order||[]),...layerOrder];
+      await storeSet(`layerorder:${sceneRoomId}`,{order:nextOrder},true);
+      setLayerOrder(nextOrder);
+    }else if(added>0){
+      const justWritten=await storeGet(`layerorder:${sceneRoomId}`,true);
+      setLayerOrder(justWritten?.order||[]);
+    }
+
+    // entities.scenes에 여러 장면이 들어있으면, 장면마다 우리 쪽에 새 장면을 만들어서
+    // 각자의 배경·전경·markers를 그 안에 채워 넣습니다. (같은 방에 공통으로 있는 items도
+    // 함께 넣어서, 장면이 바뀌어도 공통 소품은 계속 보이도록 합니다.)
+    const cocoScenes=data?.entities?.scenes;
+    let addedScenes=0;
+    if(cocoScenes&&Object.keys(cocoScenes).length>0){
+      let curScenesList=scenesList;
+      for(const sc of Object.values(cocoScenes).sort((a,b)=>(a.order||0)-(b.order||0))){
+        const newSceneId=newId();
+        const newTargetRoomId=`${room.id}:${newSceneId}`;
+        if(sc.backgroundUrl&&fileByName[sc.backgroundUrl]){
+          await uploadSceneInto(newTargetRoomId,fileByName[sc.backgroundUrl]);
+        }
+        await importItemsIntoScene(newTargetRoomId,{items,markers:sc.markers,foregroundUrl:sc.foregroundUrl},fileByName);
+        curScenesList=[...curScenesList,{id:newSceneId,name:`장면 ${curScenesList.length+1}`}];
+        addedScenes++;
+      }
+      setScenesList(curScenesList);
+      await storeSet(`scenelist:${room.id}`,{scenes:curScenesList},true);
+    }
+
+    if(missing>0) alert(`레이어는 넣었는데, 이미지 ${missing}개는 첨부 파일 중에서 못 찾아서 건너뛰었어요.`+(addedScenes>0?` (장면 ${addedScenes}개도 새로 만들었어요.)`:""));
+    else if(addedScenes>0) alert(`장면 ${addedScenes}개를 새로 만들어서 각각 배치했어요.`);
   };
   // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
   const updateLayerLocal=(id,patch)=>setLayerDataMap(m=>({...m,[id]:{...m[id],...patch}}));
@@ -4037,19 +3946,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const commitLayer=async(id,patch)=>{
     const merged={...layerDataMap[id],...patch};
     setLayerDataMap(m=>({...m,[id]:merged}));
-    if(patch.url!==undefined){
-      await saveLayerData(id,merged); // 이미지 자체가 바뀐 경우: 용량에 따라 다시 조각/단일 저장을 판단
-    }else{
-      const{url,chunks,...meta}=merged;
-      const doc=chunks!==undefined?{chunks,...meta}:{url,...meta};
-      await storeSet(`layerdata:${room.id}:${id}`,doc,true);
-    }
+    await storeSet(`layerdata:${sceneRoomId}:${id}`,merged,true);
   };
   const removeLayer=async id=>{
     const nextOrder=layerOrder.filter(x=>x!==id);
     setLayerOrder(nextOrder);
     await deleteLayerData(id);
-    await storeSet(`layerorder:${room.id}`,{order:nextOrder},true);
+    await storeSet(`layerorder:${sceneRoomId}`,{order:nextOrder},true);
   };
   // 레이어 패널 목록에서 드래그로 순서 바꾸기 (포토샵 레이어창처럼, 목록 순서가 곧 쌓임 순서입니다)
   const reorderLayer=async(fromIdx,toIdx)=>{
@@ -4057,7 +3960,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const [moved]=next.splice(fromIdx,1);
     next.splice(toIdx,0,moved);
     setLayerOrder(next);
-    await storeSet(`layerorder:${room.id}`,{order:next},true);
+    await storeSet(`layerorder:${sceneRoomId}`,{order:next},true);
   };
   const handleStageDrop=async e=>{
     e.preventDefault(); e.stopPropagation();
@@ -4218,9 +4121,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     storeSet(key,msg,true);
   };
   const sendImage=async(file)=>{
-    // 파일을 직접 올릴 땐 PNG로 변환해 투명 배경(알파 채널)을 지킵니다.
-    const dataUrl=await fileToResizedPNG(file,480);
-    postImageMsg(dataUrl);
+    const url=await uploadToCloudflare(file);
+    if(!url){ alert("이미지 업로드에 실패했어요. 다시 시도해주세요."); return; }
+    postImageMsg(url);
   };
   // Imgur 등 외부 링크는 원본 파일을 그대로 불러오므로 리사이즈·재인코딩 없이
   // 투명 배경이 있는 그대로 표시됩니다.
@@ -4831,7 +4734,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             </label>
             {npcNameColor&&<button type="button" className="coc-btn ghost small" title="이름 색 기본값으로" onClick={()=>setNpcNameColor("")} style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:3}}>색<RotateCcw size={10}/></button>}
             <input ref={npcAvatarInputRef} type="file" accept="image/*" style={{display:"none"}}
-              onChange={async e=>{const f=e.target.files?.[0];if(!f)return;setNpcAvatar(await fileToResizedDataURL(f,480));e.target.value="";}}/>
+              onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setNpcAvatar(url);e.target.value="";}}/>
             <button type="button" className="coc-btn ghost small" onClick={()=>npcAvatarInputRef.current?.click()} style={{flexShrink:0}}><Camera size={12}/></button>
             {npcAvatar&&<button type="button" className="coc-btn ghost small" onClick={()=>{setNpcAvatar("");setNpcName("");}} style={{flexShrink:0}}><X size={12}/></button>}
           </div>
@@ -4911,7 +4814,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           showImgPopover={showImgPopover} setShowImgPopover={setShowImgPopover} imgPopoverRef={imgPopoverRef}
           imgInputRef={imgInputRef} onImgFileChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}
           imgUrlInput={imgUrlInput} setImgUrlInput={setImgUrlInput} onSendImageUrl={sendImageUrl}
-          onImportCocofolia={importCocofoliaSetup}/>
+          onImportCocofolia={importCocofoliaSetup}
+          scenesList={scenesList} activeSceneId={activeSceneId} onAddScene={addScene} onSwitchScene={switchScene} onDeleteScene={deleteScene}
+          showScenesPanel={showScenesPanel} setShowScenesPanel={setShowScenesPanel} scenesPanelRef={scenesPanelRef}/>
 
         {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
         {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)} anchorPos={gmPanelAnchor}
