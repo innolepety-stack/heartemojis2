@@ -3816,22 +3816,22 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return!(res&&res.ok===false);
   };
   // markers/items/foreground를 한데 모아 위치를 계산하고, 레이어로 "지정한 장면"에 저장합니다.
-  const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl},fileByName)=>{
+  const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName)=>{
     const combined={...(items||{}),...(markers||{})};
+    const fw=fieldWidth||100, fh=fieldHeight||100;
+    const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>it.order||it.z||0));
+    // 필드(코코포리아가 실제로 보여주는 영역) 자체도 "아이템 하나"처럼 범위 계산에 포함시킵니다.
+    // 예전엔 전경만 필드 크기로 고정하고 다른 장식 아이템들은 "아이템 전체 범위" 기준으로
+    // 계산해서, 서로 기준이 달라 액자 장식과 전경이 어긋나 보이는 문제가 있었습니다. 이제는
+    // 전경도 다른 아이템들과 똑같은 계산식을 타서, 서로 정확한 비율로 맞물립니다.
+    // (__field__는 그려지지 않고 범위 계산에만 참여합니다.)
+    const fieldRect={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
+    combined["__field__"]=fieldRect;
     if(foregroundUrl&&fileByName[foregroundUrl]){
-      const allX=Object.values(combined).map(it=>it.x||0);
-      const allY=Object.values(combined).map(it=>it.y||0);
-      const allX2=Object.values(combined).map(it=>(it.x||0)+(it.width||0));
-      const allY2=Object.values(combined).map(it=>(it.y||0)+(it.height||0));
-      const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>it.order||it.z||0));
-      combined["__foreground__"]={
-        x:Math.min(...allX,0), y:Math.min(...allY,0),
-        width:Math.max(...allX2,0)-Math.min(...allX,0)||100,
-        height:Math.max(...allY2,0)-Math.min(...allY,0)||100,
-        angle:0, locked:true, imageUrl:foregroundUrl, order:maxOrder+1,
-      };
+      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,order:maxOrder+1};
     }
-    const sorted=Object.values(combined).sort((a,b)=>(b.order??b.z??0)-(a.order??a.z??0));
+    const sorted=Object.entries(combined).filter(([k])=>k!=="__field__").map(([,v])=>v)
+      .sort((a,b)=>(b.order??b.z??0)-(a.order??a.z??0));
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     for(const it of Object.values(combined)){
       const w=it.width||10,h=it.height||10;
@@ -3902,7 +3902,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(replace){
       for(const oldId of layerOrder){ await deleteLayerData(oldId); }
     }
-    const{added,missing}=await importItemsIntoScene(sceneRoomId,{items,markers:cocoRoom.markers,foregroundUrl:cocoRoom.foregroundUrl},fileByName);
+    const{added,missing}=await importItemsIntoScene(sceneRoomId,{items,markers:cocoRoom.markers,foregroundUrl:cocoRoom.foregroundUrl,fieldWidth:cocoRoom.fieldWidth,fieldHeight:cocoRoom.fieldHeight},fileByName);
     if(!replace&&added>0){
       // 기존 레이어 뒤에 이어붙입니다(importItemsIntoScene이 방금 order를 새 것들로만 썼으므로, 합쳐서 다시 씁니다).
       const justWritten=await storeGet(`layerorder:${sceneRoomId}`,true);
@@ -3927,7 +3927,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         if(sc.backgroundUrl&&fileByName[sc.backgroundUrl]){
           await uploadSceneInto(newTargetRoomId,fileByName[sc.backgroundUrl]);
         }
-        await importItemsIntoScene(newTargetRoomId,{items,markers:sc.markers,foregroundUrl:sc.foregroundUrl},fileByName);
+        await importItemsIntoScene(newTargetRoomId,{items,markers:sc.markers,foregroundUrl:sc.foregroundUrl,fieldWidth:sc.fieldWidth,fieldHeight:sc.fieldHeight},fileByName);
         curScenesList=[...curScenesList,{id:newSceneId,name:`장면 ${curScenesList.length+1}`}];
         addedScenes++;
       }
