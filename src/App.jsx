@@ -3712,29 +3712,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [layersLocked,setLayersLocked]=useState(false); // 켜면 실수로 토큰을 옮기는 걸 막습니다
   const [selectedLayerId,setSelectedLayerId]=useState(null); // 컨트롤+T처럼 선택된 토큰(모서리 손잡이 표시용)
 
-  // 무대에 참가자 프로필(사각형 카드)을 항상 띄워두는 기능. GM이 켜고/끄고, 크기(가로·세로 px)를
-  // 정할 수 있고, 방 전체(모든 참가자 화면)에 동기화됩니다.
-  const [stageProfiles,setStageProfiles]=useState({enabled:false,width:64,height:64});
-  useEffect(()=>{
-    const unsub=storeListenDoc(`stageprofiles:${room.id}`,d=>{
-      if(d) setStageProfiles({enabled:!!d.enabled,width:d.width||64,height:d.height||64});
-    });
-    return()=>unsub();
-  },[room.id]);
-  const updateStageProfiles=async patch=>{
-    const next={...stageProfiles,...patch};
-    setStageProfiles(next);
-    await storeSet(`stageprofiles:${room.id}`,next,true);
-  };
-  const [showStageProfilesPanel,setShowStageProfilesPanel]=useState(false);
-  const stageProfilesRef=useRef(null);
-  useEffect(()=>{
-    if(!showStageProfilesPanel)return;
-    const onDocClick=e=>{ if(stageProfilesRef.current&&!stageProfilesRef.current.contains(e.target)) setShowStageProfilesPanel(false); };
-    document.addEventListener("mousedown",onDocClick);
-    return()=>document.removeEventListener("mousedown",onDocClick);
-  },[showStageProfilesPanel]);
-
 
   // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지이 그 결과가
   // 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다. Cloudflare에 올리고 URL만
@@ -4335,24 +4312,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <Music size={18}/>
         </button>
 
-        {/* 게임 화면 안에서도 바로 밝게/어둡게 전환 */}
-        <button type="button" className={"chat-icon-btn"+(dark?" on":"")} onClick={()=>onToggleDark(!dark)}
-          title={dark?"밝은 화면으로 바꾸기":"어두운 화면으로 바꾸기"}>
-          {dark?<Sun size={18}/>:<Moon size={18}/>}
-        </button>
-
-        {/* 세션 안에서도 바로 테마 색상 변경 */}
-        <label className="chat-icon-btn" title="테마 색상 바꾸기" style={{position:"relative"}}>
-          <Palette size={18} color={customColor} style={{pointerEvents:"none"}}/>
-          <input type="color" value={customColor} onChange={e=>onChangeThemeColor(e.target.value)}
-            style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0,cursor:"pointer"}}/>
-        </label>
-
-        {/* 게임방 안에서 로비와 같은 설정 화면 열기 */}
-        <button type="button" className="chat-icon-btn" title="설정" onClick={()=>setShowRoomSettings(true)}>
-          <Settings size={18}/>
-        </button>
-
         {isGM&&(
           <>
             <div className="rail-divider"/>
@@ -4368,26 +4327,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             <button type="button" className={"chat-icon-btn"+(showMadnessModal?" on":"")} onClick={()=>setShowMadnessModal(v=>!v)} title="광기 부여">
               <AlertTriangle size={18}/>
             </button>
-
-            <div style={{position:"relative"}} ref={stageProfilesRef}>
-              <button type="button" className={"chat-icon-btn"+(stageProfiles.enabled?" on":"")} onClick={()=>setShowStageProfilesPanel(v=>!v)} title="무대에 참가자 프로필 표시">
-                <UserRound size={18}/>
-              </button>
-              {showStageProfilesPanel&&(
-                <div style={{position:"absolute",top:0,left:"calc(100% + 8px)",zIndex:31,width:190,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
-                  <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:"var(--text-dim)",marginBottom:10,cursor:"pointer"}}>
-                    <input type="checkbox" checked={stageProfiles.enabled} onChange={e=>updateStageProfiles({enabled:e.target.checked})} style={{cursor:"pointer"}}/>
-                    무대에 프로필 표시
-                  </label>
-                  <div className="coc-label" style={{marginBottom:4}}>가로 (px)</div>
-                  <input className="coc-input" type="number" value={stageProfiles.width}
-                    onChange={e=>updateStageProfiles({width:Math.max(20,Number(e.target.value)||64)})} style={{marginBottom:8}}/>
-                  <div className="coc-label" style={{marginBottom:4}}>세로 (px)</div>
-                  <input className="coc-input" type="number" value={stageProfiles.height}
-                    onChange={e=>updateStageProfiles({height:Math.max(20,Number(e.target.value)||64)})}/>
-                </div>
-              )}
-            </div>
 
             <div style={{position:"relative"}} ref={imgPopoverRef}>
               <button type="button" className={"chat-icon-btn"+(showImgPopover?" on":"")} onClick={()=>setShowImgPopover(v=>!v)} title="이미지 전송">
@@ -4422,16 +4361,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
         <div className="rail-spacer"/>
 
-        <div className="rail-char" title={`${char?.name||profile.name||userCode}${char?` · HP ${char?.derived?.HP}/${char?.derived?.maxHP} · SAN ${char?.derived?.SAN}/${char?.derived?.maxSAN}`:""}`}>
-          <div style={{width:30,height:30,borderRadius:"50%",overflow:"hidden",border:"1px solid var(--accent-soft)",background:"var(--bg-panel)",flexShrink:0}}>
-            {char?.avatar?<img src={char.avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={12} color="var(--accent-soft)" style={{margin:9}}/>}
-          </div>
-          <div className="rail-char-text">
-            <div style={{fontSize:12.5,fontWeight:600,lineHeight:1.2}}>{char?.name||profile.name||userCode}</div>
-            {char?<div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>HP {char?.derived?.HP}/{char?.derived?.maxHP} SAN {char?.derived?.SAN}/{char?.derived?.maxSAN}</div>
-              :<div className="coc-mono" style={{fontSize:9.5,color:"var(--text-faint)"}}>캐릭터 없음</div>}
-          </div>
-        </div>
+        {/* 게임방 안에서 로비와 같은 설정 화면 열기 (다크 모드·테마 색상도 이 안에 있습니다) */}
+        <button type="button" className="chat-icon-btn" title="설정" onClick={()=>setShowRoomSettings(true)}>
+          <Settings size={18}/>
+        </button>
       </div>
 
       <div className={"stage-panel"+(stageDragOver?" drag-over":"")}
@@ -4460,30 +4393,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,color:"var(--accent-deep)"}}>
             {layersLocked?<Lock size={15}/>:<Unlock size={15}/>}
           </button>
-        )}
-
-        {/* 무대에 항상 떠 있는 참가자 프로필 카드 (사각형, GM이 켜고 크기를 정합니다) */}
-        {stageProfiles.enabled&&(
-          <div style={{position:"absolute",left:12,bottom:12,zIndex:9,display:"flex",gap:6,flexWrap:"wrap",maxWidth:"70%",pointerEvents:"none"}}>
-            {participantsList.map(code=>{
-              const isMe=code===userCode;
-              const avatar=isMe?char?.avatar:presenceMap[code]?.charAvatar;
-              const displayName=isMe?(char?.name||profile.name||userCode):(presenceMap[code]?.charName||code);
-              return(
-                <div key={code} style={{width:stageProfiles.width,height:stageProfiles.height,borderRadius:0,
-                  overflow:"hidden",border:"1px solid var(--border)",background:"var(--bg-panel)",position:"relative",flexShrink:0}}>
-                  {avatar?<img src={avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:
-                    <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <Sparkles size={Math.min(18,stageProfiles.width/3)} color="var(--accent-soft)"/>
-                    </div>}
-                  <div style={{position:"absolute",left:0,right:0,bottom:0,background:"rgba(0,0,0,0.55)",color:"#fff",
-                    fontSize:10,padding:"2px 4px",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {displayName}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         )}
 
         {/* 무대 상단: GM·다른 사람의 대사/서술/주사위가 뜨는 대사창. 절대 위치로 무대 위에
@@ -4597,12 +4506,32 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
       {/* 헤더는 좌측 세로 아이콘 바(chat-icon-rail)로 옮겨갔습니다. 참가자 목록/광기·이성 처리 로직은 그대로 유지됩니다. */}
 
-      {/* 채팅방 우측 상단: 접속 멤버 수 알약 / 캐릭터 시트 / 핸드아웃 아이콘 */}
-      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginBottom:6,flexShrink:0}}>
+      {/* 채팅방 상단: 왼쪽에 캐릭터·핸드아웃 버튼, 오른쪽에 접속 멤버 수 알약 (높이를 서로 맞췄습니다) */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,marginBottom:6,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button type="button" onClick={()=>setShowCharSheet(v=>!v)} title={char?.name||"캐릭터 시트"}
+            style={{display:"flex",alignItems:"center",gap:5,height:32,padding:"0 12px",borderRadius:999,
+              border:"1px solid "+(showCharSheet?"var(--accent-soft)":"var(--border)"),
+              background:showCharSheet?"var(--bg-panel)":"var(--surface)",
+              color:showCharSheet?"var(--accent-deep)":"var(--text-dim)",fontSize:12,cursor:"pointer"}}>
+            <Sparkles size={13}/> 캐릭터
+          </button>
+          <button type="button" onClick={openHandoutIcon}
+            title={isGM?"핸드아웃 관리":`핸드아웃${myHandouts.length>0?` (${myHandouts.length})`:""}`}
+            style={{display:"flex",alignItems:"center",gap:5,height:32,padding:"0 12px",borderRadius:999,
+              border:"1px solid "+(myHandouts.length>0?"var(--accent-soft)":"var(--border)"),
+              background:myHandouts.length>0?"var(--bg-panel)":"var(--surface)",
+              color:myHandouts.length>0?"var(--accent-deep)":"var(--text-dim)",fontSize:12,cursor:"pointer",position:"relative"}}>
+            <Folder size={13}/> 핸드아웃
+            {!isGM&&myHandouts.length>seenHandoutCount&&
+              <span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
+          </button>
+        </div>
+
         <div style={{position:"relative"}} ref={participantsRef}>
           <button type="button" onClick={()=>{setShowParticipants(v=>!v);setSeenOnlineIds(onlineOthers);}}
             title="접속 중인 참가자"
-            style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:999,
+            style={{display:"flex",alignItems:"center",gap:5,height:32,padding:"0 12px",borderRadius:999,
               border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text-dim)",
               fontSize:12,cursor:"pointer",position:"relative"}}>
             <Circle size={8} fill="#3a9a6e" color="#3a9a6e"/>
@@ -4631,16 +4560,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             </div>
           )}
         </div>
-
-        <button type="button" className={"chat-icon-btn"+(showCharSheet?" on":"")} onClick={()=>setShowCharSheet(v=>!v)}
-          title={char?.name||"캐릭터 시트"}>
-          <Sparkles size={17}/>
-        </button>
-        <button type="button" className={"chat-icon-btn"+(myHandouts.length>0?" on":"")} onClick={openHandoutIcon}
-          title={isGM?"핸드아웃 관리":`핸드아웃${myHandouts.length>0?` (${myHandouts.length})`:""}`}>
-          <Folder size={17}/>
-          {!isGM&&myHandouts.length>seenHandoutCount&&<span className="dot"/>}
-        </button>
       </div>
 
       {/* BGM 패널 */}
