@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Users, Sparkles,
+  Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
   Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock,
-  Heart, Check, Mail, AlertTriangle, Bookmark, UserRound, Sliders, Clapperboard, Palette, Circle
+  Heart, Check, Mail, AlertTriangle, UserRound, Sliders, Clapperboard, Circle
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -296,10 +296,6 @@ input[type=number] { -moz-appearance: textfield; }
 .chat-icon-btn.on { color: var(--accent-deep); border-color: var(--accent-soft); background: var(--bg-panel); }
 .chat-icon-btn.danger:hover { border-color: #e0507a; color: #e0507a; }
 .chat-icon-btn .dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: #e0507a; border: 1.5px solid var(--surface); }
-.rail-char {
-  display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px;
-  border-radius: 999px; background: var(--surface); border: 1px solid var(--border); flex-shrink: 0;
-}
 .rail-title { display: flex; flex-direction: column; gap: 1px; margin-right: 4px; flex-shrink: 0; }
 .rail-participants-flyout { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); padding: 10px; }
 
@@ -313,8 +309,6 @@ input[type=number] { -moz-appearance: textfield; }
   .chat-icon-rail .rail-spacer { display: block; flex: 1; }
   .chat-icon-btn { width: 42px; height: 42px; }
   .rail-title { display: none; } /* 넓은 무대 쪽에 오버레이로 따로 표시 */
-  .rail-char { flex-direction: column; border-radius: 12px; padding: 6px 4px; gap: 4px; }
-  .rail-char .rail-char-text { display: none; }
   .rail-participants-flyout { top: 0; left: calc(100% + 8px); right: auto; }
   .stage-title-overlay {
     position: absolute; top: 12px; left: 12px; z-index: 8;
@@ -2153,7 +2147,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
 // 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고, 제목줄을 잡고 끌어서 원하는
 // 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
 const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
-function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,anchorPos}){
+function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
   const [folded,setFolded]=useState(false);
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState("#c0392b");
@@ -2233,7 +2227,8 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,an
     borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12.5,fontWeight:700,
   };
 
-  const anchor=(pos||anchorPos) ? {position:"fixed",left:(pos||anchorPos).x,top:(pos||anchorPos).y} : {position:"fixed",left:76,top:80};
+  // 아직 한 번도 안 옮겼으면 왼쪽 아이콘 바 옆이 기본 자리입니다.
+  const anchor=pos ? {position:"fixed",left:pos.x,top:pos.y} : {position:"fixed",left:76,top:80};
 
   if(folded) return(
     <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
@@ -2673,7 +2668,7 @@ function MapSettingsPanel({onClose,
 
 // GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는, 독립적으로
 // 떠있는 창. 배부 창에서 분리되어 GM 도구 바에서 바로 열립니다.
-function StatAdjustPanel({onClose,anchorPos,
+function StatAdjustPanel({onClose,
   participantsList,presenceMap,userCode,
   statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
   statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,
@@ -2701,7 +2696,7 @@ function StatAdjustPanel({onClose,anchorPos,
     setPos(clamp(d.ox+dx,d.oy+dy));
   };
   const onPointerUp=()=>{ drag.current.on=false; };
-  const base=pos||anchorPos;
+  const base=pos;
   // 기본 자리는 왼쪽 아이콘 바 바로 옆(버튼 옆)입니다. 끌어서 원하는 데로 옮길 수 있어요.
   const anchor=base?{position:"fixed",left:base.x,top:base.y}:{position:"fixed",left:76,top:80};
 
@@ -3910,8 +3905,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   const addScene=async()=>{
     const id=newId();
-    const name=`장면 ${scenesList.length+1}`;
-    const next=[...scenesList,{id,name}];
+    // 개수로 번호를 매기면, 중간 장면을 지운 뒤 추가할 때 이미 있는 이름과 겹칩니다.
+    // (예: 장면1·2·3에서 2를 지우면 개수가 2라서 새 장면도 "장면 3"이 돼요.)
+    // 그래서 아직 안 쓰인 가장 작은 번호를 찾아 붙입니다.
+    const taken=new Set(scenesList.map(s=>s.name));
+    let n=scenesList.length+1;
+    while(taken.has(`장면 ${n}`)) n++;
+    const next=[...scenesList,{id,name:`장면 ${n}`}];
     setScenesList(next);
     await storeSet(`scenelist:${room.id}`,{scenes:next},true);
     await switchScene(id);
