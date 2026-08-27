@@ -228,7 +228,7 @@ input[type=number] { -moz-appearance: textfield; }
    모바일에서는 지금까지 쓰던 화면 그대로 유지되고, 이 레이아웃은 아예 적용되지 않습니다. */
 .stage-panel { display: none; }
 @media (min-width: 1024px) {
-  .chat-desktop-wrap { display: flex; flex-direction: row; gap: 0; align-items: stretch; height: calc(100dvh - 76px); }
+  .chat-desktop-wrap { display: flex; flex-direction: row; gap: 0; align-items: stretch; height: calc(100dvh - 16px); }
   .chat-desktop-wrap > .chat-icon-rail { margin-right: 16px; }
   .chat-desktop-wrap > .stage-panel { margin-right: 10px; }
   .chat-desktop-wrap > .chat-font { flex: 0 0 var(--chat-w, 420px); max-width: var(--chat-w, 420px) !important; width: var(--chat-w, 420px); height: 100% !important; margin: 0 !important; }
@@ -1582,7 +1582,7 @@ async function fetchRoomTranscript(room){
   return ids.map(id=>({id,label:labelOf[id]||id,messages:(byTab[id]||[]).sort((a,b)=>a.timestamp-b.timestamp)}));
 }
 
-function buildHtmlExport(room,transcript,theme){
+function buildHtmlExport(room,transcript,theme,{interactive=false}={}){
   // 티스토리 등 블로그 에디터는 붙여넣을 때 <style> 태그를 걸러내는 경우가 많아서,
   // class + 스타일시트 방식 대신 태그 하나하나에 style을 직접 박아넣는 방식으로
   // 만들었습니다. 이렇게 하면 <style> 블록이 통째로 사라져도 디자인이 유지됩니다.
@@ -1643,15 +1643,47 @@ function buildHtmlExport(room,transcript,theme){
       const linesHtml=g.lines.map(line=>`<div data-role="dialogue">${chatTextToHtml(line,theme)}</div>`).join("");
       return `<div style="${S.line}">${avatarHtml(g)}<div><span style="${nameStyle}" data-role="char-name">${escapeHtmlExport(g.characterName||"")}</span>${suffix}${linesHtml}</div></div>`;
     }).join("\n");
-    return `<section>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
+    return interactive
+      ? `<section data-tab-panel="${escapeHtmlExport(tab.id)}">${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`
+      : `<section>${msgs||`<div style="${S.empty}">기록 없음</div>`}</section>`;
   }).join("\n");
+
+  // "전문 보기"로 새 탭에 열 때만: 탭이 여러 개면 위쪽에 탭 버튼을 달고 한 번에 한 탭만 보여줍니다.
+  // (예전엔 잡담 탭 같은 게 메인 기록 중간에 그대로 이어 붙어서 헷갈렸어요.)
+  // 블로그에 붙여넣는 "내보내기"에서는 스크립트가 걸러지므로 이 기능을 넣지 않고, 예전처럼
+  // 전부 이어서 내보냅니다.
+  const showTabs=interactive&&transcript.length>1;
+  const tabBarHtml=showTabs?`
+<div data-role="tab-bar" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid rgba(128,128,128,0.28);">
+${transcript.map((tab,i)=>`<button type="button" data-tab-btn="${escapeHtmlExport(tab.id)}" style="font-family:'Noto Sans KR',sans-serif;font-size:0.9em;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer;border:1px solid ${theme?.accent||"#888"};background:${i===0?(theme?.accent||"#888"):"transparent"};color:${i===0?"#fff":"inherit"};">${escapeHtmlExport(tab.label)}</button>`).join("\n")}
+</div>`:"";
+  const tabScript=showTabs?`
+<script>
+(function(){
+  var btns=document.querySelectorAll("[data-tab-btn]");
+  var panels=document.querySelectorAll("[data-tab-panel]");
+  var accent=${JSON.stringify(theme?.accent||"#888")};
+  function show(id){
+    panels.forEach(function(p){ p.style.display=(p.getAttribute("data-tab-panel")===id)?"block":"none"; });
+    btns.forEach(function(b){
+      var on=b.getAttribute("data-tab-btn")===id;
+      b.style.background=on?accent:"transparent";
+      b.style.color=on?"#fff":"inherit";
+    });
+  }
+  btns.forEach(function(b){ b.addEventListener("click",function(){ show(b.getAttribute("data-tab-btn")); }); });
+  if(panels.length) show(panels[0].getAttribute("data-tab-panel"));
+})();
+</script>`:"";
 
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>${escapeHtmlExport(room.title)} — 세션 기록</title>
 </head><body>
 <div data-role="session-root" style="font-family:'Noto Sans KR',sans-serif;max-width:760px;margin:0 auto;padding:32px 20px 60px;line-height:1.7;">
+${tabBarHtml}
 ${tabsHtml}
 </div>
+${tabScript}
 </body></html>`;
 }
 
@@ -2099,7 +2131,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
             if(isDice) return <DiceCard key={i} line={line}/>;
             const editable=isMine&&!isDice;
             return (
-              <div key={i} style={{fontSize:14,lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",cursor:editable?"pointer":"default"}}
+              <div key={i} style={{fontSize:"inherit",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",cursor:editable?"pointer":"default"}}
                 onClick={withDoubleTap(()=>editable&&onEdit(items[i]))}>
                 <FormattedText text={line}/>
               </div>
@@ -3383,7 +3415,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     try{
       const transcript=await fetchRoomTranscript(room);
       const themeForExport=dark?toDarkTheme(deriveThemeFromColor(customColor)):deriveThemeFromColor(customColor);
-      openInNewTab(buildHtmlExport(room,transcript,themeForExport),"text/html;charset=utf-8");
+      openInNewTab(buildHtmlExport(room,transcript,themeForExport,{interactive:true}),"text/html;charset=utf-8");
     }catch(err){
       alert("불러오기에 실패했습니다: "+(err?.message||String(err)));
     }
@@ -3594,6 +3626,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       setSeenHandoutIds(ids);
     }
   },[myHandouts]); // eslint-disable-line
+
+  // 채팅창 글자 크기 — 입력창 옆 동그란 +/− 버튼으로 조절하고, 이 기기에 기억됩니다.
+  const CHAT_FONT_MIN=12, CHAT_FONT_MAX=24;
+  const [chatFontSize,setChatFontSize]=useState(()=>{
+    try{ const v=Number(localStorage.getItem("heartEmojiChatFontSize")); return v>=CHAT_FONT_MIN&&v<=CHAT_FONT_MAX?v:15; }catch{ return 15; }
+  });
+  const changeChatFont=delta=>setChatFontSize(v=>{
+    const next=Math.min(CHAT_FONT_MAX,Math.max(CHAT_FONT_MIN,v+delta));
+    try{ localStorage.setItem("heartEmojiChatFontSize",String(next)); }catch{}
+    return next;
+  });
 
   const [seenMadnessKey,setSeenMadnessKey]=useState(undefined); // undefined=아직 초기화 전
   const [popupMadness,setPopupMadness]=useState(null);
@@ -4851,7 +4894,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         })()}
       </div>
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
-    <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 76px)"}}>
+    <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 16px)"}}>
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
 
       {/* 헤더는 좌측 세로 아이콘 바(chat-icon-rail)로 옮겨갔습니다. 참가자 목록/광기·이성 처리 로직은 그대로 유지됩니다. */}
@@ -5018,7 +5061,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
       <div style={{position:"relative",flex:"1 1 auto",minHeight:150,display:"flex",flexDirection:"column"}}>
-        <div ref={msgListRef} onScroll={onMsgListScroll} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5}}>
+        <div ref={msgListRef} onScroll={onMsgListScroll} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5,fontSize:chatFontSize}}>
           {groups.length===0&&(
             <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
               <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
@@ -5100,6 +5143,24 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             )}
           </div>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
+
+          {/* 글자 크기 조절 — 캐릭터/GM 버튼 맞은편(오른쪽 끝)에 동그랗게 */}
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
+            <button type="button" title="글자 작게" onClick={()=>changeChatFont(-1)} disabled={chatFontSize<=CHAT_FONT_MIN}
+              style={{width:26,height:26,borderRadius:"50%",border:"1px solid var(--border)",background:"var(--surface)",
+                color:chatFontSize<=CHAT_FONT_MIN?"var(--border)":"var(--text-dim)",
+                cursor:chatFontSize<=CHAT_FONT_MIN?"default":"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
+              <Minus size={13}/>
+            </button>
+            <button type="button" title="글자 크게" onClick={()=>changeChatFont(1)} disabled={chatFontSize>=CHAT_FONT_MAX}
+              style={{width:26,height:26,borderRadius:"50%",border:"1px solid var(--border)",background:"var(--surface)",
+                color:chatFontSize>=CHAT_FONT_MAX?"var(--border)":"var(--text-dim)",
+                cursor:chatFontSize>=CHAT_FONT_MAX?"default":"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
+              <Plus size={13}/>
+            </button>
+          </div>
         </div>
         {/* GM 전용: 서술·판정·대사·선택지 네 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
@@ -5174,9 +5235,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           </div>
         )}
         {isGM&&speaker==="gm"&&gmTab==="choice"?(
-          <div style={{fontSize:12,color:"var(--text-faint)",padding:"10px 2px"}}>
-            위 '선택' 버튼을 눌러 선택지를 만들어보세요.
-          </div>
+          <div style={{padding:"10px 2px"}}/>
         ):isGM&&speaker==="gm"&&gmTab==="judge"?(
           <div style={{padding:"4px 2px"}}>
             <div className="coc-label" style={{marginBottom:6}}>판정 대상</div>
@@ -5206,20 +5265,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                 placeholder="예: 이성, 백병전..." style={{flex:1}}/>
               <button type="button" className="coc-btn" style={{flexShrink:0}} disabled={judgeTargets.length===0||!judgeSkill.trim()} onClick={sendJudgeRequest}><Send size={13}/></button>
             </div>
-            <div style={{fontSize:11.5,color:"var(--text-faint)"}}>
-              미리보기: <span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeTargets.length===0?"...":judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ")}</span>,
-              {" "}<span style={{color:"var(--accent-deep)",fontWeight:700}}>{judgeSkill.trim()||"..."}</span> 판정
-            </div>
           </div>
         ):(
           <>
             <div style={{display:"flex",gap:7}}>
               <textarea ref={inputRef} className="coc-input" rows={2} value={text}
                 onChange={e=>setText(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder={placeholder()} style={{flex:1,resize:"none"}}/>
+                placeholder={placeholder()} style={{flex:1,resize:"none",fontSize:12.5}}/>
               <button type="button" className="coc-btn" style={{flexShrink:0,alignSelf:"flex-end",padding:"10px 14px"}} onClick={send}><Send size={13}/></button>
             </div>
-            <div style={{fontSize:11.5,color:"var(--text-faint)",marginTop:4}}>Enter: 전송 · Shift+Enter: 줄바꿈</div>
           </>
         )}
       </div>
@@ -5463,7 +5517,8 @@ function AppInner(){
   return(
     <div className="coc-root" style={rootStyle}>
       <style>{CSS}</style>
-      <div style={{position:"relative",zIndex:1,padding:"20px 16px 56px"}}>
+      {/* 게임방 안에서는 화면을 꽉 쓰도록 바깥 여백을 줄입니다. (로비는 그대로 넉넉하게) */}
+      <div style={{position:"relative",zIndex:1,padding:activeRoom?"8px 10px":"20px 16px 56px"}}>
         {!activeRoom&&(
           <div style={{maxWidth:680,margin:"0 auto 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
