@@ -671,6 +671,30 @@ function toDarkTheme(t) {
 /* ============================== HELPERS ============================== */
 
 function newId() { return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8); }
+// 수치 조정에 쓰는 값 해석기.
+// 그냥 숫자("5")도 되고, 주사위 표기("1d6", "[[1d6]]", "2d6+1")도 됩니다.
+// 성공하면 {value, detail}을, 못 읽으면 null을 돌려줍니다. (detail은 굴린 눈을 보여줄 때 씀)
+function rollAmountExpression(raw){
+  if(raw==null) return null;
+  let t=String(raw).trim();
+  if(!t) return null;
+  t=t.replace(/^\[\[|\]\]$/g,"").trim();   // [[1d6]] 처럼 감싼 대괄호는 벗겨냅니다
+  t=t.replace(/\s+/g,"");
+  if(/^[+-]?\d+$/.test(t)) return {value:Number(t),detail:null};   // 그냥 숫자
+  const m=t.match(/^([+-]?)(\d*)[dD](\d+)([+-]\d+)?$/);
+  if(!m) return null;
+  const sign=m[1]==="-"?-1:1;
+  const count=m[2]===""?1:Number(m[2]);
+  const faces=Number(m[3]);
+  const bonus=m[4]?Number(m[4]):0;
+  if(count<1||count>100||faces<1||faces>1000) return null;
+  const rolls=[];
+  for(let i=0;i<count;i++) rolls.push(1+Math.floor(Math.random()*faces));
+  const sum=rolls.reduce((a,b)=>a+b,0)+bonus;
+  const detail=`${count}d${faces}${bonus?(bonus>0?"+"+bonus:bonus):""} → ${rolls.join("+")}${bonus?(bonus>0?"+"+bonus:bonus):""} = ${sum}`;
+  return {value:sign*sum,detail};
+}
+
 // 이미지 원본 가로/세로 픽셀 크기를 얻습니다. 레이어를 추가할 때 원본 비율대로 박스 크기를 잡기 위해 씁니다.
 function getImageSize(url){
   return new Promise(resolve=>{
@@ -2834,10 +2858,10 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
   );
 }
 
-function StatAdjustPanel({onClose,
+function StatAdjustPanel({onClose,displayNameOf,
   participantsList,presenceMap,userCode,
   statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
-  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,
+  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,statAdjustSign,setStatAdjustSign,
   statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
   return(
     <FloatingPanel title="수치 조정" icon={Sliders} onClose={onClose} width="min(94vw, 320px)"
@@ -2845,7 +2869,7 @@ function StatAdjustPanel({onClose,
         <div className="coc-label" style={{marginBottom:6}}>대상</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
           {participantsList.filter(c=>c!==userCode).map(code=>{
-            const displayName=presenceMap[code]?.charName||code;
+            const displayName=displayNameOf?displayNameOf(code):(presenceMap[code]?.charName||code);
             const active=statAdjustTarget===code;
             return(
               <button key={code} type="button" onClick={()=>setStatAdjustTarget(code)}
@@ -2882,8 +2906,24 @@ function StatAdjustPanel({onClose,
             </button>
           ))}
         </div>
-        <input className="coc-input" type="number" value={statAdjustAmount} onChange={e=>setStatAdjustAmount(e.target.value)}
-          placeholder="증감량 (예: 5, -10)" style={{marginBottom:10}}/>
+        {/* 증감량: 앞의 +/- 버튼으로 방향을 고르고, 뒤에 숫자나 주사위 표기를 적습니다. */}
+        <div style={{display:"flex",gap:5,marginBottom:6}}>
+          <div style={{display:"flex",flexShrink:0,borderRadius:6,overflow:"hidden",border:"1px solid var(--border)"}}>
+            {[["+","더하기"],["-","빼기"]].map(([sg,t])=>(
+              <button key={sg} type="button" title={t} onClick={()=>setStatAdjustSign(sg)}
+                style={{width:30,fontSize:14,fontWeight:700,border:"none",cursor:"pointer",
+                  background:statAdjustSign===sg?"var(--accent)":"var(--surface)",
+                  color:statAdjustSign===sg?"#fff":"var(--text-faint)"}}>
+                {sg}
+              </button>
+            ))}
+          </div>
+          <input className="coc-input" value={statAdjustAmount} onChange={e=>setStatAdjustAmount(e.target.value)}
+            placeholder="숫자 또는 1d6" style={{flex:1,minWidth:0}}/>
+        </div>
+        <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:10}}>
+          숫자를 그대로 적어도 되고, <span className="coc-mono">1d6</span> · <span className="coc-mono">[[2d6+1]]</span>처럼 주사위로 적으면 굴려서 적용됩니다.
+        </div>
         <div style={{display:"flex",gap:5,marginBottom:10}}>
           {[[true,"공개"],[false,"비공개"]].map(([v,l])=>(
             <button key={l} type="button" onClick={()=>setStatAdjustPublic(v)}
@@ -2898,7 +2938,7 @@ function StatAdjustPanel({onClose,
           {statAdjustPublic?"채팅에 '누구의 무엇이 얼마나 조정되었습니다'라고 안내가 남아요.":"시트에만 조용히 반영되고, 채팅엔 아무 안내도 남지 않아요."}
         </div>
         <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
-          disabled={!statAdjustTarget||!statAdjustKey||!statAdjustAmount||Number(statAdjustAmount)===0}
+          disabled={!statAdjustTarget||!statAdjustKey||!statAdjustAmount.trim()}
           onClick={onApplyStatAdjust}>
           적용
         </button>
@@ -2983,7 +3023,7 @@ function ChoiceCreatorModal({onClose,onCreate}){
 
 // GM이 대상·종류(단기적/장기적)·이름·내용을 골라 광기를 부여하는 창. 핸드아웃 관리 창과
 // 똑같은 패턴(별도로 뜨는 모달)이라, "배부" 탭 안에 인라인으로 있던 예전 방식 대신 이걸 씁니다.
-function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSend}){
+function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSend,displayNameOf}){
   const [target,setTarget]=useState(null);
   const [term,setTerm]=useState("단기적");
   const [name,setName]=useState("");
@@ -2994,7 +3034,7 @@ function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSen
           <div className="coc-label" style={{marginBottom:6}}>대상</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
             {participantsList.filter(c=>c!==userCode).map(code=>{
-              const displayName=presenceMap[code]?.charName||code;
+              const displayName=displayNameOf?displayNameOf(code):(presenceMap[code]?.charName||code);
               const active=target===code;
               return(
                 <button key={code} type="button" onClick={()=>setTarget(code)}
@@ -3030,8 +3070,9 @@ function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSen
   );
 }
 
-function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
+function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,onPreview,displayNameOf}){
   const [showCreate,setShowCreate]=useState(false);
+  const [editing,setEditing]=useState(null); // 수정 중인 핸드아웃 (없으면 새로 만들기)
   const [title,setTitle]=useState("");
   const [text,setText]=useState("");
   const [image,setImage]=useState("");
@@ -3040,13 +3081,21 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
   const [selection,setSelection]=useState({});
   const imgRef=useRef(null);
 
-  const createHandout=async()=>{
+  const closeForm=()=>{ setShowCreate(false);setEditing(null);setTitle("");setText("");setImage(""); };
+  // 새로 만들 때도, 이미 있는 걸 고칠 때도 이 함수를 씁니다.
+  // 고칠 때는 이미 전송한 대상(visibleTo)과 만든 사람·만든 시각을 그대로 유지합니다.
+  const saveHandout=async()=>{
     const t=title.trim();if(!t)return;
     setSaving(true);
-    const id=newId();
-    const handout={id,roomId:room.id,title:t,text:text.trim(),image,creatorCode:userCode,createdAt:Date.now(),visibleTo:[]};
-    await storeSet(`handout:${room.id}:${id}`,handout,true);
-    setSaving(false);setShowCreate(false);setTitle("");setText("");setImage("");
+    const handout=editing
+      ? {...editing,title:t,text:text.trim(),image}
+      : {id:newId(),roomId:room.id,title:t,text:text.trim(),image,creatorCode:userCode,createdAt:Date.now(),visibleTo:[]};
+    await storeSet(`handout:${room.id}:${handout.id}`,handout,true);
+    setSaving(false);
+    closeForm();
+  };
+  const openEdit=h=>{
+    setEditing(h);setTitle(h.title||"");setText(h.text||"");setImage(h.image||"");setShowCreate(true);
   };
   const deleteHandout=async h=>{
     if(!window.confirm(`'${h.title}' 핸드아웃을 삭제하시겠습니까?`))return;
@@ -3077,7 +3126,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
                   {roomParticipants.map(code=>(
                     <label key={code} style={{display:"flex",alignItems:"center",gap:8,fontSize:13.5,cursor:"pointer",padding:"8px 10px",background:"var(--bg-panel)",borderRadius:8}}>
                       <input type="checkbox" checked={!!selection[code]} onChange={e=>setSelection(s=>({...s,[code]:e.target.checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
-                      {code}
+                      {displayNameOf?displayNameOf(code):code}
                     </label>
                   ))}
                 </div>
@@ -3086,7 +3135,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
             </div>
           ):showCreate?(
             <div>
-              <button className="coc-btn ghost small" onClick={()=>setShowCreate(false)} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
+              <button className="coc-btn ghost small" onClick={closeForm} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
               <div className="coc-label" style={{marginBottom:5}}>제목</div>
               <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 낡은 편지" style={{marginBottom:12}} autoFocus/>
               <div className="coc-label" style={{marginBottom:5}}>내용</div>
@@ -3099,9 +3148,14 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
               </div>
               <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}}
                 onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setImage(url);e.target.value="";}}/>
-              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!title.trim()||saving} onClick={createHandout}>
-                {saving?"저장 중...":"핸드아웃 만들기"}
+              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!title.trim()||saving} onClick={saveHandout}>
+                {saving?"저장 중...":editing?"수정 저장":"핸드아웃 만들기"}
               </button>
+              {editing&&(
+                <div style={{fontSize:11,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
+                  이미 받은 사람에게도 바뀐 내용이 바로 보여요.
+                </div>
+              )}
             </div>
           ):(
             <div>
@@ -3113,15 +3167,17 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
               ):(
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {handouts.map(h=>(
-                    <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:10}}>
+                    <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                       {h.image?<img src={h.image} style={{width:40,height:40,borderRadius:6,objectFit:"cover",flexShrink:0}}/>:
                         <div style={{width:40,height:40,borderRadius:6,background:"var(--bg-panel)",flexShrink:0}}/>}
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title}</div>
                         <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
-                          {(h.visibleTo||[]).length>0?`공개 대상: ${h.visibleTo.join(", ")}`:"아직 공개 안 됨"}
+                          {(h.visibleTo||[]).length>0?`공개 대상: ${h.visibleTo.map(c=>displayNameOf?displayNameOf(c):c).join(", ")}`:"아직 공개 안 됨"}
                         </div>
                       </div>
+                      <button type="button" className="coc-btn ghost small" title="내용 보기" onClick={()=>onPreview&&onPreview(h)} style={{padding:"4px 7px"}}>보기</button>
+                      <button type="button" className="coc-btn ghost small" title="수정" onClick={()=>openEdit(h)} style={{padding:"4px 7px"}}><Pencil size={11}/></button>
                       <button type="button" className="coc-btn small" onClick={()=>openAssign(h)}>전송</button>
                       <button type="button" onClick={()=>deleteHandout(h)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:4}}><Trash2 size={13}/></button>
                     </div>
@@ -3158,10 +3214,27 @@ function HandoutViewerModal({handouts,onClose,onSelect}){
 // 핸드아웃 상세 보기: 새로 받았을 때 자동으로 뜨거나, 목록에서 골라 열 때 씁니다.
 // "접기"를 누르면 닫히는 게 아니라 투명도 80%의 작은 바로 줄어들어 무대 어디에든 둘 수 있고,
 // 그 바를 다시 누르면 펼쳐집니다. "닫기"를 눌러야 완전히 사라집니다.
-function HandoutFloatingDetail({handout,onClose}){
+function HandoutFloatingDetail({handout,onClose,index=0}){
   const wrapRef=useRef(null);
   const [folded,setFolded]=useState(false);
   const [pos,setPos]=useState(null);
+  // 사진이 큰 핸드아웃도 편히 보도록 우측 하단 손잡이로 창 크기를 조절할 수 있습니다.
+  const [size,setSize]=useState({w:340,h:420});
+  const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
+  const onResizePointerDown=e=>{
+    e.stopPropagation();
+    resizeDrag.current={on:true,sx:e.clientX,sy:e.clientY,ow:size.w,oh:size.h};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onResizePointerMove=e=>{
+    const r=resizeDrag.current;
+    if(!r.on)return;
+    setSize({
+      w:Math.max(200,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
+      h:Math.max(160,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
+    });
+  };
+  const onResizePointerUp=()=>{ resizeDrag.current.on=false; };
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const clamp=(x,y)=>{
     const el=wrapRef.current;
@@ -3199,7 +3272,10 @@ function HandoutFloatingDetail({handout,onClose}){
     return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
   },[folded]); // eslint-disable-line
 
-  const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}:{position:"fixed",right:18,top:70};
+  // 여러 장을 동시에 띄우면 정확히 겹치지 않도록 한 장씩 조금씩 어긋나게 놓습니다.
+  const step=(index%6)*26;
+  const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}
+    :{position:"fixed",right:18+step,top:70+step};
 
   if(folded) return(
     <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
@@ -3214,7 +3290,8 @@ function HandoutFloatingDetail({handout,onClose}){
 
   return(
     <div ref={wrapRef}
-      style={{...anchor,width:"min(92vw, 340px)",maxHeight:"70vh",display:"flex",flexDirection:"column",
+      style={{...anchor,width:Math.min(size.w,window.innerWidth-16),height:size.h,maxHeight:"92vh",
+        display:"flex",flexDirection:"column",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
         boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
       <div {...dragProps}
@@ -3238,6 +3315,11 @@ function HandoutFloatingDetail({handout,onClose}){
         {handout.image&&<img src={handout.image} style={{width:"100%",borderRadius:8,border:"1px solid var(--border)",marginBottom:10}}/>}
         {handout.text&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}>{handout.text}</div>}
       </div>
+
+      {/* 우측 하단 손잡이 — 끌면 창 크기가 바뀝니다 */}
+      <div onPointerDown={onResizePointerDown} onPointerMove={onResizePointerMove} onPointerUp={onResizePointerUp} onPointerCancel={onResizePointerUp}
+        style={{position:"absolute",bottom:2,right:2,width:16,height:16,cursor:"nwse-resize",touchAction:"none",
+          background:"linear-gradient(135deg,transparent 50%,var(--border) 50%)",borderRadius:"0 0 4px 0"}}/>
     </div>
   );
 }
@@ -3596,21 +3678,29 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 초대 대상 선택지 + 내 캐릭터 목록(빠른 전환용): 이 방의 캐릭터를 실시간으로 구독합니다.
   const [roomParticipants,setRoomParticipants]=useState([]);
   const [myChars,setMyChars]=useState([]);
+  // 닉네임(참가 코드) → 캐릭터 이름. 배부·초대 목록을 닉네임 대신 캐릭터 이름으로 보여주려고 씁니다.
+  const [charNameByCode,setCharNameByCode]=useState({});
   useEffect(()=>{
     const unsub=storeListenPrefix(`char:${room.id}:`,list=>{
       const owners=new Set();
       const mine=[];
+      const names={};
       list.forEach(x=>{
-        if(x.value.ownerCode&&x.value.ownerCode!==userCode) owners.add(x.value.ownerCode);
-        if(x.value.ownerCode===userCode) mine.push(x.value);
+        const c=x.value;
+        if(c.ownerCode&&c.name&&!names[c.ownerCode]) names[c.ownerCode]=c.name;
+        if(c.ownerCode&&c.ownerCode!==userCode) owners.add(c.ownerCode);
+        if(c.ownerCode===userCode) mine.push(c);
       });
       // 방을 만든 GM도 후보에 포함(캐릭터를 아직 안 만들었을 수도 있으므로)
       if(room.creatorCode&&room.creatorCode!==userCode) owners.add(room.creatorCode);
       setRoomParticipants(Array.from(owners));
       setMyChars(mine);
+      setCharNameByCode(names);
     });
     return()=>unsub();
   },[room.id,room.creatorCode,userCode]);
+  // 캐릭터 이름이 있으면 그걸로, 없으면(아직 안 만들었으면) 닉네임 그대로 보여줍니다.
+  const displayNameOf=code=>charNameByCode[code]||presenceMap[code]?.charName||code;
 
   // 캐릭터가 아직 안 골라진 상태(방에 처음 들어왔거나, 갖고 있던 캐릭터가 있는 경우)라면
   // 자동으로 첫 번째 캐릭터를 골라줍니다. 캐릭터가 하나도 없으면 그대로 null로 남아있고,
@@ -3723,18 +3813,46 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 핸드아웃·광기를 받으면 받은 사람 화면에 고정 크기 창으로 자동으로 떠요.
   // "이미 본 적 있는지"를 기억해뒀다가, 새로 생긴 것만 팝업으로 띄웁니다.
   const [seenHandoutIds,setSeenHandoutIds]=useState(null); // null=아직 초기화 전
-  const [popupHandout,setPopupHandout]=useState(null);
+  // 핸드아웃은 여러 장을 동시에 띄워둘 수 있습니다. 열어둔 것들의 id 목록이에요.
+  // (예전엔 하나만 담을 수 있어서, 새로 열면 보고 있던 게 닫혀버렸습니다.)
+  const [openHandoutIds,setOpenHandoutIds]=useState([]);
+  const openHandout=h=>setOpenHandoutIds(ids=>ids.includes(h.id)?ids:[...ids,h.id]);
+  const closeHandout=id=>setOpenHandoutIds(ids=>ids.filter(x=>x!==id));
   useEffect(()=>{
     const ids=myHandouts.map(h=>h.id);
     if(seenHandoutIds===null){ setSeenHandoutIds(ids); return; } // 첫 로드시엔 팝업 없이 조용히 "이미 본 것"으로
     const newOnes=myHandouts.filter(h=>!seenHandoutIds.includes(h.id));
     if(newOnes.length>0){
-      setPopupHandout(newOnes[newOnes.length-1]);
+      // 새로 받은 게 여러 장이면 전부 띄웁니다.
+      setOpenHandoutIds(prev=>[...prev,...newOnes.map(h=>h.id).filter(id=>!prev.includes(id))]);
       setSeenHandoutIds(ids);
     }else if(ids.length!==seenHandoutIds.length){
       setSeenHandoutIds(ids);
     }
   },[myHandouts]); // eslint-disable-line
+
+  // 입력창 높이 — 위쪽 손잡이를 끌어서 조절합니다. 입력창이 커지면 그만큼 채팅 목록이
+  // 좁아지고, 줄이면 채팅 목록이 넓어져요. (채팅 영역은 남는 공간을 채우는 구조라 자동입니다)
+  const INPUT_MIN=44, INPUT_MAX=320;
+  const [inputHeight,setInputHeight]=useState(()=>{
+    try{ const v=Number(localStorage.getItem("heartEmojiInputHeight")); return v>=INPUT_MIN&&v<=INPUT_MAX?v:56; }catch{ return 56; }
+  });
+  const inputResize=useRef({on:false,sy:0,oh:0});
+  const onInputResizeDown=e=>{
+    inputResize.current={on:true,sy:e.clientY,oh:inputHeight};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onInputResizeMove=e=>{
+    const r=inputResize.current;
+    if(!r.on)return;
+    // 위로 끌수록(=clientY가 작아질수록) 입력창이 커집니다.
+    setInputHeight(Math.max(INPUT_MIN,Math.min(INPUT_MAX,r.oh-(e.clientY-r.sy))));
+  };
+  const onInputResizeUp=()=>{
+    if(!inputResize.current.on)return;
+    inputResize.current.on=false;
+    try{ localStorage.setItem("heartEmojiInputHeight",String(inputHeight)); }catch{}
+  };
 
   // 채팅창 글자 크기 — 입력창 옆 동그란 +/− 버튼으로 조절하고, 이 기기에 기억됩니다.
   const CHAT_FONT_MIN=12, CHAT_FONT_MAX=24;
@@ -3777,10 +3895,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [statAdjustCategory,setStatAdjustCategory]=useState("characteristics"); // characteristics | derived | skills
   const [statAdjustKey,setStatAdjustKey]=useState("");
   const [statAdjustAmount,setStatAdjustAmount]=useState("");
+  const [statAdjustSign,setStatAdjustSign]=useState("+"); // 증감 방향 버튼
   const [statAdjustPublic,setStatAdjustPublic]=useState(true);
   const applyStatAdjust=async()=>{
     const code=statAdjustTarget;
-    const amount=Number(statAdjustAmount);
+    // 숫자든 주사위 표기든 여기서 실제 값으로 바꿉니다. 방향은 +/- 버튼이 정합니다.
+    const parsed=rollAmountExpression(statAdjustAmount);
+    if(!parsed){ alert("증감량을 숫자나 1d6 같은 형식으로 적어주세요."); return; }
+    const amount=(statAdjustSign==="-"?-1:1)*Math.abs(parsed.value);
     if(!code||!statAdjustKey||!Number.isFinite(amount)||amount===0)return;
     const p=presenceMap[code];
     if(!p?.charId)return;
@@ -3801,10 +3923,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     await storeSet(key,next,true);
     if(statAdjustPublic){
       const sign=amount>0?"+":"";
-      const displayName=p.charName||code;
-      await doSend("system",`${displayName}의 ${statLabel}이(가) ${sign}${amount} 조정되었습니다.`,"","");
+      const displayName=displayNameOf(code);
+      const dice=parsed.detail?` (${parsed.detail})`:"";
+      await doSend("system",`${displayName}의 ${statLabel}이(가) ${sign}${amount} 조정되었습니다.${dice}`,"","");
     }
-    setStatAdjustTarget(null);setStatAdjustAmount("");setStatAdjustKey("");setShowStatAdjust(false);
+    // 창은 닫지 않습니다 — 여러 명·여러 항목을 잇따라 조정하는 일이 많아서요.
+    // 입력한 증감량만 비우고, 고른 대상·항목은 그대로 둡니다.
+    setStatAdjustAmount("");
   };
   const saveMadness=async(code,data)=>{
     const p=presenceMap[code];
@@ -4547,7 +4672,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     // 다른 탭을 보고 있는 사람들에게 "새 메시지 있음" 점을 띄우기 위한 가벼운 신호.
     // 메시지 전체를 매번 구독하면 비용이 크니, 탭별로 최근 메시지 id만 담은 아주 작은 문서를 따로 둡니다.
     storeSet(`activity:${room.id}:${tid}`,{lastId:msgId,lastTimestamp:msg.timestamp},true);
-    return true;
+    return msg;   // 방금 보낸 메시지(선택지 공지를 저장할 때 id가 필요해서 돌려줍니다)
   },[room.id,userCode,activeTab]);
 
   const send=async()=>{
@@ -4636,7 +4761,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   };
   const handleCreateChoice=async(options,multi)=>{
     const payload=JSON.stringify({options,picked:{},multi});
-    await doSend("choice",payload,"","");
+    const msg=await doSend("choice",payload,"","");
+    // 여러 개 고르는 선택지는 "지금 걸린 공지"를 방에 따로 기록해둡니다.
+    // 이게 없으면 새로고침하거나 방을 다시 들어왔을 때 공지가 사라져요.
+    if(msg&&multi!==false){
+      await storeSet(`choicenotice:${room.id}`,{msgId:msg.id,tabId:msg.tabId||"main"},true);
+    }
     setShowChoiceCreator(false);
   };
 
@@ -4669,6 +4799,23 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 없어져 버렸어요. 그래서 한 번 잡은 공지는 따로 붙들어 두고(stickyChoice), 그 메시지만
   // 개별로 구독해서 선택 현황·내리기 여부를 계속 따라갑니다.
   const [stickyChoice,setStickyChoice]=useState(null);
+  // 방에 기록된 "지금 걸린 공지"를 따라갑니다. 새로고침하거나 다시 들어와도 이 기록 덕분에
+  // 공지가 되살아나고, 조회 범위(최근 몇 개) 밖으로 밀려난 선택지도 다시 찾을 수 있어요.
+  const [noticeRefDoc,setNoticeRefDoc]=useState(null);
+  useEffect(()=>{
+    const unsub=storeListenDoc(`choicenotice:${room.id}`,d=>setNoticeRefDoc(d||null));
+    return()=>unsub();
+  },[room.id]);
+  useEffect(()=>{
+    if(!noticeRefDoc?.msgId){ return; }
+    if(stickyChoice&&stickyChoice.id===noticeRefDoc.msgId) return; // 이미 보고 있음
+    const tid=noticeRefDoc.tabId||"main";
+    const key=tid==="main"?`chat:${room.id}:${noticeRefDoc.msgId}`:`chat:${room.id}:${tid}:${noticeRefDoc.msgId}`;
+    let alive=true;
+    storeGet(key,true).then(doc=>{ if(alive&&doc) setStickyChoice(doc); });
+    return()=>{alive=false;};
+  },[noticeRefDoc?.msgId,room.id]); // eslint-disable-line
+
   useEffect(()=>{
     for(let i=stageMsgs.length-1;i>=0;i--){
       const m=stageMsgs[i];
@@ -4700,6 +4847,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return {msg:stickyChoice,data:d};
   })();
   const [choiceNoticeFolded,setChoiceNoticeFolded]=useState(false);
+  // 공지는 메시지 목록 "위에 떠" 있어서, 그대로 두면 맨 위에 있는 "전문 보기" 버튼을 가립니다.
+  // 그래서 공지 높이를 재두었다가 목록 위쪽에 그만큼 여백을 줍니다.
+  const noticeRef=useRef(null);
+  const [noticeH,setNoticeH]=useState(0);
+  useEffect(()=>{
+    const el=noticeRef.current;
+    if(!el){ setNoticeH(0); return; }
+    const measure=()=>setNoticeH(el.offsetHeight||0);
+    measure();
+    const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(measure):null;
+    if(ro) ro.observe(el);
+    window.addEventListener("resize",measure);
+    return()=>{ if(ro)ro.disconnect(); window.removeEventListener("resize",measure); };
+  });
   // 새 공지가 뜨면 접힘 상태를 풀어줍니다.
   useEffect(()=>{ if(pinnedChoice) setChoiceNoticeFolded(false); },[pinnedChoice?.msg?.id]);
   // GM이 공지를 내립니다(모두의 화면에서 사라져요).
@@ -4710,7 +4871,18 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const tid=msg.tabId||"main";
     const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
     await storeSet(key,{...msg,text:JSON.stringify({...d,closed:true})},true);
+    await storeDelete(`choicenotice:${room.id}`,true);   // 걸린 공지 기록도 함께 정리
   };
+  // 다 골라서 공지가 끝나면 기록을 지워둡니다. (다음에 들어왔을 때 헛되이 되살아나지 않도록)
+  useEffect(()=>{
+    if(!isGM||!stickyChoice||!noticeRefDoc?.msgId)return;
+    if(noticeRefDoc.msgId!==stickyChoice.id)return;
+    let d=null; try{d=JSON.parse(stickyChoice.text);}catch{return;}
+    if(!d?.options)return;
+    if(d.closed||d.options.every(o=>d.picked?.[o])){
+      storeDelete(`choicenotice:${room.id}`,true);
+    }
+  },[stickyChoice,noticeRefDoc?.msgId,isGM,room.id]); // eslint-disable-line
   const myLatestDialogueRef=useRef(null);
   const othersLatestDialogueRef=useRef(null);
 
@@ -5186,7 +5358,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                       <input type="checkbox" checked={!!editInviteSelection[code]}
                         onChange={e=>setEditInviteSelection(prev=>({...prev,[code]:e.target.checked}))}
                         style={{width:13,height:13,cursor:"pointer"}}/>
-                      {code}
+                      {displayNameOf(code)}
                     </label>
                   ))}
                 </div>
@@ -5228,7 +5400,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                     <input type="checkbox" checked={!!inviteSelection[code]}
                       onChange={e=>setInviteSelection(prev=>({...prev,[code]:e.target.checked}))}
                       style={{width:13,height:13,cursor:"pointer"}}/>
-                    {code} 초대
+                    {displayNameOf(code)} 초대
                   </label>
                 ))}
               </div>
@@ -5253,7 +5425,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         const total=data.options.length;
         const done=data.options.filter(o=>data.picked?.[o]).length;
         return(
-          <div className="choice-notice">
+          <div className="choice-notice" ref={noticeRef}>
             <div onClick={()=>setChoiceNoticeFolded(v=>!v)}
               style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",cursor:"pointer",flexShrink:0}}>
               <Bell size={13} color="var(--accent-deep)" style={{flexShrink:0}}/>
@@ -5300,7 +5472,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         );
       })()}
 
-        <div ref={msgListRef} onScroll={onMsgListScroll} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5,fontSize:chatFontSize}}>
+        <div ref={msgListRef} onScroll={onMsgListScroll} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",paddingTop:pinnedChoice?noticeH+16:10,display:"flex",flexDirection:"column",gap:5,fontSize:chatFontSize}}>
           {groups.length===0&&(
             <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
               <MessageCircle size={20} style={{marginBottom:7,opacity:0.5}}/><br/>아직 기록이 없습니다. 첫 문장을 남겨보세요.
@@ -5477,10 +5649,18 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <div style={{padding:"10px 2px"}}/>
         ):(
           <>
+            {/* 입력창 위쪽 손잡이 — 위로 끌면 입력창이 커지고(채팅방이 좁아지고),
+                아래로 끌면 작아집니다. 크기는 이 기기에 기억됩니다. */}
+            <div onPointerDown={onInputResizeDown} onPointerMove={onInputResizeMove}
+              onPointerUp={onInputResizeUp} onPointerCancel={onInputResizeUp}
+              title="위아래로 끌어서 입력창 크기 조절"
+              style={{height:12,cursor:"ns-resize",touchAction:"none",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <div style={{width:34,height:3,borderRadius:2,background:"var(--border)"}}/>
+            </div>
             <div style={{display:"flex",gap:7}}>
-              <textarea ref={inputRef} className="coc-input" rows={2} value={text}
+              <textarea ref={inputRef} className="coc-input" value={text}
                 onChange={e=>setText(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder={placeholder()} style={{flex:1,resize:"none",fontSize:12.5}}/>
+                placeholder={placeholder()} style={{flex:1,resize:"none",fontSize:12.5,height:inputHeight}}/>
               <button type="button" className="coc-btn" style={{flexShrink:0,alignSelf:"flex-end",padding:"10px 14px"}} onClick={send}><Send size={13}/></button>
             </div>
           </>
@@ -5507,20 +5687,27 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
           onSendText={markup=>doSend("narrate",markup,"","")}
           diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
-        {showStatAdjust&&<StatAdjustPanel onClose={()=>setShowStatAdjust(false)}
+        {showStatAdjust&&<StatAdjustPanel onClose={()=>setShowStatAdjust(false)} displayNameOf={displayNameOf}
           participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
           statAdjustTarget={statAdjustTarget} setStatAdjustTarget={setStatAdjustTarget}
           statAdjustCategory={statAdjustCategory} setStatAdjustCategory={setStatAdjustCategory}
           statAdjustKey={statAdjustKey} setStatAdjustKey={setStatAdjustKey}
           statAdjustAmount={statAdjustAmount} setStatAdjustAmount={setStatAdjustAmount}
+          statAdjustSign={statAdjustSign} setStatAdjustSign={setStatAdjustSign}
           statAdjustPublic={statAdjustPublic} setStatAdjustPublic={setStatAdjustPublic}
           onApplyStatAdjust={applyStatAdjust}/>}
         </>
       )}
-      {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants} onClose={()=>setShowHandoutManager(false)}/>}
-      {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
+      {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants}
+        onClose={()=>setShowHandoutManager(false)} onPreview={openHandout} displayNameOf={displayNameOf}/>}
+      {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode} displayNameOf={displayNameOf}
         onClose={()=>setShowMadnessModal(false)} onSend={saveMadness}/>}
-      {popupHandout&&<HandoutFloatingDetail handout={popupHandout} onClose={()=>setPopupHandout(null)}/>}
+      {openHandoutIds.map((id,i)=>{
+        // 받은 것 중에 없으면(=GM이 관리 창에서 미리보기로 연 것) 전체 목록에서 찾습니다.
+        const h=myHandouts.find(x=>x.id===id)||handouts.find(x=>x.id===id);
+        if(!h) return null;
+        return <HandoutFloatingDetail key={id} handout={h} index={i} onClose={()=>closeHandout(id)}/>;
+      })}
       {popupMadness&&(
         <div className="coc-modal-backdrop" onClick={()=>setPopupMadness(null)}>
           <div className="coc-modal" style={{width:360,height:440,display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
@@ -5541,7 +5728,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         </div>
       )}
       {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}
-        onSelect={h=>{setPopupHandout(h);setShowHandoutViewer(false);}}/>}
+        onSelect={h=>openHandout(h)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
         onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
       {showCharSheet&&char&&<DicePanel char={char} onRollToChat={sendDice} roomId={room.id} onClose={()=>setShowCharSheet(false)}/>}
