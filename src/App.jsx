@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import {
   Dice5, LogOut, Plus, Send, Pencil, ArrowLeft, Sparkles,
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
@@ -693,6 +693,50 @@ function rollAmountExpression(raw){
   const sum=rolls.reduce((a,b)=>a+b,0)+bonus;
   const detail=`${count}d${faces}${bonus?(bonus>0?"+"+bonus:bonus):""} → ${rolls.join("+")}${bonus?(bonus>0?"+"+bonus:bonus):""} = ${sum}`;
   return {value:sign*sum,detail};
+}
+
+// ── 떠 있는 창(패널) 공통 도우미 ──────────────────────────────
+// 옮긴 자리와 조절한 크기를 이 기기에 기억해서, 창을 닫았다 열거나 설정 화면에
+// 다녀와도(=창이 다시 그려져도) 그대로 유지되도록 합니다.
+function loadPanelBox(key){
+  try{ const r=localStorage.getItem("heartEmojiPanelBox:"+key); return r?JSON.parse(r):null; }
+  catch{ return null; }
+}
+function savePanelBox(key,box){
+  try{ localStorage.setItem("heartEmojiPanelBox:"+key,JSON.stringify(box)); }catch{}
+}
+// 접을 때 창의 "왼쪽 위"가 아니라 접기 버튼이 있는 "오른쪽 위" 근처에 작은 바가
+// 생기도록 자리를 맞춰줍니다. (그냥 두면 창을 접을 때 바가 왼쪽으로 훌쩍 옮겨간 것처럼 보여요.)
+function useFoldAnchor(wrapRef,folded,setPos){
+  const keepRef=useRef(null);
+  // 접기 버튼을 누르는 순간의 오른쪽 끝·위 좌표를 기억해둡니다.
+  const rememberFoldAnchor=()=>{
+    const el=wrapRef.current;
+    if(el){ const r=el.getBoundingClientRect(); keepRef.current={right:r.right,top:r.top}; }
+  };
+  // 접힌 바가 그려진 직후, 그 바의 오른쪽 끝을 기억해둔 위치에 맞춥니다.
+  useLayoutEffect(()=>{
+    if(!folded||!keepRef.current)return;
+    const el=wrapRef.current;
+    if(!el)return;
+    const {right,top}=keepRef.current;
+    keepRef.current=null;
+    const w=el.offsetWidth||160, h=el.offsetHeight||36;
+    setPos({
+      x:Math.max(4,Math.min(window.innerWidth-w-4,right-w)),
+      y:Math.max(4,Math.min(window.innerHeight-h-4,top)),
+    });
+  },[folded]); // eslint-disable-line
+  return rememberFoldAnchor;
+}
+
+// 여러 창이 겹쳐 있을 때, 누른 창이 맨 앞으로 오도록 공용 카운터를 씁니다.
+// (창마다 z 값을 따로 갖고, 누를 때마다 지금까지 중 가장 큰 값을 새로 받습니다.)
+let panelZTop=40;
+function usePanelFront(){
+  const [z,setZ]=useState(()=>++panelZTop);
+  const bringToFront=()=>setZ(prev=>prev===panelZTop?prev:++panelZTop);
+  return [z,bringToFront];
 }
 
 // 이미지 원본 가로/세로 픽셀 크기를 얻습니다. 레이어를 추가할 때 원본 비율대로 박스 크기를 잡기 위해 씁니다.
@@ -2252,13 +2296,16 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
 const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
 function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
   const [folded,setFolded]=useState(false);
+  const [z,bringToFront]=usePanelFront();
+  const savedBox=loadPanelBox("decorate");
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState(()=>currentThemeColor("--accent-deep","#c0392b"));
   const [code,setCode]=useState("");
   const wrapRef=useRef(null);
   const codeRef=useRef(null);
-  const [pos,setPos]=useState(null);
-  const [size,setSize]=useState({w:460,h:520});
+  const [pos,setPos]=useState(savedBox&&Number.isFinite(savedBox.x)?{x:savedBox.x,y:savedBox.y}:null);
+  const [size,setSize]=useState(savedBox&&savedBox.w?{w:savedBox.w,h:savedBox.h}:{w:460,h:520});
+  const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
 
@@ -2284,6 +2331,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
   const onPointerUp=()=>{
     const wasMoved=drag.current.moved;
     drag.current.on=false;
+    if(wasMoved) setPos(p=>{ if(p) savePanelBox("decorate",{x:p.x,y:p.y,w:size.w,h:size.h}); return p; });
     return wasMoved;
   };
   // 접힌 바: 끌면 이동, 그냥 누르면 다시 펼치기
@@ -2304,7 +2352,10 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
       h:Math.max(300,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
     });
   };
-  const onResizePointerUp=()=>{ resizeDrag.current.on=false; };
+  const onResizePointerUp=()=>{
+    if(resizeDrag.current.on) savePanelBox("decorate",{x:pos?.x,y:pos?.y,w:size.w,h:size.h});
+    resizeDrag.current.on=false;
+  };
 
   // 코드 칸에서 드래그로 선택한 부분만 감싸서 서식을 적용합니다 (강조하기 버튼과 같은 원리).
   const wrapSelection=(before,after)=>{
@@ -2334,20 +2385,20 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
   const anchor=pos ? {position:"fixed",left:pos.x,top:pos.y} : {position:"fixed",left:76,top:80};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
-        cursor:"grab",zIndex:30,touchAction:"none",fontSize:12.5,fontWeight:600}}>
+        cursor:"grab",zIndex:z,touchAction:"none",fontSize:12.5,fontWeight:600}}>
       <Brush size={14}/> 꾸미기
     </div>
   );
 
   return(
-    <div ref={wrapRef}
+    <div ref={wrapRef} onPointerDownCapture={bringToFront}
       style={{...anchor,width:size.w,height:size.h,display:"flex",flexDirection:"column",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
-        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
 
       {/* 제목 줄 — 여기를 잡고 끌면 창이 움직입니다 */}
       <div {...dragProps}
@@ -2355,7 +2406,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
           background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
         <Brush size={14} color="var(--accent-deep)"/>
         <span style={{flex:1,fontSize:13,fontWeight:700,color:"var(--accent-deep)"}}>꾸미기</span>
-        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>setFolded(true)}
+        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>{rememberFoldAnchor();setFolded(true);}}
           style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
             color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <Minus size={13}/>
@@ -2568,6 +2619,8 @@ function MapSettingsPanel({onClose,
   pos,setPos}){
   const wrapRef=useRef(null);
   const [folded,setFolded]=useState(false);
+  const [z,bringToFront]=usePanelFront();
+  const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const [tab,setTab]=useState("scene"); // scene | layer | scenes | decorate
   const [showCocoSetup,setShowCocoSetup]=useState(false);
   const [cocoJsonFile,setCocoJsonFile]=useState(null);
@@ -2608,11 +2661,11 @@ function MapSettingsPanel({onClose,
     :{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)"};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
-        cursor:"grab",zIndex:30,touchAction:"none",fontSize:12.5,fontWeight:600}}>
+        cursor:"grab",zIndex:z,touchAction:"none",fontSize:12.5,fontWeight:600}}>
       <Layers size={14}/> 맵세팅
     </div>
   );
@@ -2620,15 +2673,15 @@ function MapSettingsPanel({onClose,
   const TABS=[["scene","배경",ImageIcon],["layer","레이어",Layers],["scenes","장면",Clapperboard]];
 
   return(
-    <div ref={wrapRef} style={{...anchor,width:"min(94vw, 280px)",maxHeight:"78vh",display:"flex",flexDirection:"column",
+    <div ref={wrapRef} onPointerDownCapture={bringToFront} style={{...anchor,width:"min(94vw, 280px)",maxHeight:"78vh",display:"flex",flexDirection:"column",
       background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
-      boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+      boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
       <div {...dragProps}
         style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
           background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
         <Layers size={14} color="var(--accent-deep)"/>
         <span style={{flex:1,fontSize:13,fontWeight:700,color:"var(--accent-deep)"}}>맵세팅</span>
-        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>setFolded(true)}
+        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>{rememberFoldAnchor();setFolded(true);}}
           style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
             color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <Minus size={13}/>
@@ -2780,10 +2833,13 @@ function MapSettingsPanel({onClose,
 // 닫히는 대신 제목이 적힌 투명도 80%의 작은 알약 바로 줄어들어 어디든 둘 수 있으며, 그 바를
 // 다시 누르면 펼쳐집니다. "닫기"(X)를 눌러야 완전히 사라집니다.
 // 시트·핸드아웃·맵세팅·꾸미기·수치조정·광기 창이 전부 이 껍데기를 함께 씁니다.
-function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 330px)",maxHeight="78vh",children}){
+function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 330px)",maxHeight="78vh",storageKey,children}){
   const wrapRef=useRef(null);
   const [folded,setFolded]=useState(false);
-  const [pos,setPos]=useState(null);
+  const [z,bringToFront]=usePanelFront();
+  const saved=storageKey?loadPanelBox(storageKey):null;
+  const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:null);
+  const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const clamp=(x,y)=>{
     const el=wrapRef.current;
@@ -2804,7 +2860,12 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
     if(!d.moved)return;
     setPos(clamp(d.ox+dx,d.oy+dy));
   };
-  const onPointerUp=()=>{ const moved=drag.current.moved; drag.current.on=false; return moved; };
+  const onPointerUp=()=>{
+    const moved=drag.current.moved;
+    drag.current.on=false;
+    if(moved&&storageKey) setPos(p=>{ if(p) savePanelBox(storageKey,{x:p.x,y:p.y}); return p; });
+    return moved;
+  };
   // 접힌 바: 끌면 이동, 그냥 누르면 펼치기
   const onFoldedBarUp=()=>{ if(!onPointerUp()) setFolded(false); };
   const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
@@ -2823,28 +2884,28 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
     color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
-        cursor:"grab",zIndex:30,touchAction:"none",fontSize:12.5,fontWeight:600}}>
+        cursor:"grab",zIndex:z,touchAction:"none",fontSize:12.5,fontWeight:600}}>
       {Icon&&<Icon size={13}/>}
       <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</span>
     </div>
   );
 
   return(
-    <div ref={wrapRef}
+    <div ref={wrapRef} onPointerDownCapture={bringToFront}
       style={{...anchor,width,maxHeight,display:"flex",flexDirection:"column",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
-        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
       <div {...dragProps}
         style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
           background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
         {Icon&&<Icon size={14} color="var(--accent-deep)"/>}
         <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"var(--accent-deep)",
           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</span>
-        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>setFolded(true)} style={iconBtn}>
+        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>{rememberFoldAnchor();setFolded(true);}} style={iconBtn}>
           <Minus size={13}/>
         </button>
         <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose} style={iconBtn}>
@@ -2864,7 +2925,7 @@ function StatAdjustPanel({onClose,displayNameOf,
   statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,statAdjustSign,setStatAdjustSign,
   statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
   return(
-    <FloatingPanel title="수치 조정" icon={Sliders} onClose={onClose} width="min(94vw, 320px)"
+    <FloatingPanel storageKey="statadjust" title="수치 조정" icon={Sliders} onClose={onClose} width="min(94vw, 320px)"
       defaultAnchor={{position:"fixed",left:76,top:80}}>
         <div className="coc-label" style={{marginBottom:6}}>대상</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
@@ -3029,7 +3090,7 @@ function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSen
   const [name,setName]=useState("");
   const [note,setNote]=useState("");
   return(
-    <FloatingPanel title="광기 부여" icon={AlertTriangle} onClose={onClose} width="min(94vw, 330px)"
+    <FloatingPanel storageKey="madness" title="광기 부여" icon={AlertTriangle} onClose={onClose} width="min(94vw, 330px)"
       defaultAnchor={{position:"fixed",left:120,top:110}}>
           <div className="coc-label" style={{marginBottom:6}}>대상</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
@@ -3112,7 +3173,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,on
   };
 
   return(
-    <FloatingPanel title="핸드아웃 관리" icon={Folder} onClose={onClose} width="min(94vw, 360px)"
+    <FloatingPanel storageKey="handout-manager" title="핸드아웃 관리" icon={Folder} onClose={onClose} width="min(94vw, 360px)"
       defaultAnchor={{position:"fixed",left:164,top:140}}>
           {assigning?(
             <div>
@@ -3192,7 +3253,7 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,on
 
 function HandoutViewerModal({handouts,onClose,onSelect}){
   return(
-    <FloatingPanel title="핸드아웃" icon={Folder} onClose={onClose} width="min(94vw, 330px)"
+    <FloatingPanel storageKey="handout-viewer" title="핸드아웃" icon={Folder} onClose={onClose} width="min(94vw, 330px)"
       defaultAnchor={{position:"fixed",left:164,top:140}}>
       {handouts.length===0?(
         <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
@@ -3217,13 +3278,32 @@ function HandoutViewerModal({handouts,onClose,onSelect}){
 function HandoutFloatingDetail({handout,onClose,index=0}){
   const wrapRef=useRef(null);
   const [folded,setFolded]=useState(false);
-  const [pos,setPos]=useState(null);
-  // 사진이 큰 핸드아웃도 편히 보도록 우측 하단 손잡이로 창 크기를 조절할 수 있습니다.
-  const [size,setSize]=useState({w:340,h:420});
+  // 사진이 있는 핸드아웃은 배경/테두리를 없애서 PNG의 투명한 부분이 그대로 비쳐 보이게 합니다.
+  const hasImg=!!handout.image;
+  // 옮긴 자리와 크기는 핸드아웃별로 이 기기에 기억됩니다.
+  // (설정 화면에 다녀오면 창이 다시 그려지는데, 예전엔 그때마다 위치가 처음으로 돌아갔어요.)
+  const [z,bringToFront]=usePanelFront();
+  const posKey=`handout:${handout.id}`;
+  const saved=loadPanelBox(posKey);
+  const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:null);
+  // 사진이 잘 보이도록 가로는 넉넉하게 잡고, 세로는 내용 길이에 맞춰 자동으로 정합니다.
+  // (예전엔 세로가 고정값이라 사진이나 글이 짧으면 아래에 빈 공간이 남았어요.)
+  // 손잡이로 직접 조절하면 그때부터는 정한 크기를 그대로 씁니다.
+  const [size,setSize]=useState(saved&&saved.w?{w:saved.w,h:saved.h||560}:{w:460,h:560});
+  const [autoHeight,setAutoHeight]=useState(!(saved&&saved.h));
+  const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
+  const saveBox=(nextPos,nextSize)=>{
+    const p2=nextPos||pos, s2=nextSize||size;
+    savePanelBox(posKey,{x:p2?.x,y:p2?.y,w:s2.w,h:autoHeight?undefined:s2.h});
+  };
   const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
   const onResizePointerDown=e=>{
     e.stopPropagation();
-    resizeDrag.current={on:true,sx:e.clientX,sy:e.clientY,ow:size.w,oh:size.h};
+    // 직접 조절하기 시작하면 자동 높이를 끄고, 지금 보이는 높이에서 이어서 조절합니다.
+    const cur=wrapRef.current?.offsetHeight||size.h;
+    setAutoHeight(false);
+    setSize(sz=>({...sz,h:cur}));
+    resizeDrag.current={on:true,sx:e.clientX,sy:e.clientY,ow:size.w,oh:cur};
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onResizePointerMove=e=>{
@@ -3234,7 +3314,10 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
       h:Math.max(160,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
     });
   };
-  const onResizePointerUp=()=>{ resizeDrag.current.on=false; };
+  const onResizePointerUp=()=>{
+    if(resizeDrag.current.on) saveBox(null,size);   // 조절한 크기 기억
+    resizeDrag.current.on=false;
+  };
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const clamp=(x,y)=>{
     const el=wrapRef.current;
@@ -3278,29 +3361,34 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
     :{position:"fixed",right:18+step,top:70+step};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
-        cursor:"grab",zIndex:30,touchAction:"none"}}>
+        cursor:"grab",zIndex:z,touchAction:"none"}}>
       <Mail size={13}/>
       <span style={{fontSize:12.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{handout.title}</span>
     </div>
   );
 
   return(
-    <div ref={wrapRef}
-      style={{...anchor,width:Math.min(size.w,window.innerWidth-16),height:size.h,maxHeight:"92vh",
+    <div ref={wrapRef} onPointerDownCapture={bringToFront}
+      style={{...anchor,width:Math.min(size.w,window.innerWidth-16),
+        height:autoHeight?"auto":size.h,maxHeight:"92vh",
         display:"flex",flexDirection:"column",
-        background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
-        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+        background:hasImg?"transparent":"var(--surface)",
+        border:hasImg?"none":"1px solid var(--border)",borderRadius:14,
+        boxShadow:hasImg?"none":"0 10px 36px rgba(0,0,0,0.24)",
+        zIndex:z,overflow:"hidden",touchAction:"none"}}>
       <div {...dragProps}
         style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
-          background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
+          background:hasImg?"var(--glass)":"var(--bg-panel)",backdropFilter:hasImg?"blur(6px)":undefined,
+          borderRadius:hasImg?10:0,marginBottom:hasImg?6:0,
+          borderBottom:hasImg?"none":"1px solid var(--border-soft)",flexShrink:0}}>
         <Mail size={14} color="var(--accent-deep)"/>
         <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"var(--accent-deep)",
           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{handout.title}</span>
-        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>setFolded(true)}
+        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>{rememberFoldAnchor();setFolded(true);}}
           style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
             color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <Minus size={13}/>
@@ -3311,9 +3399,16 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
           <X size={13}/>
         </button>
       </div>
-      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
-        {handout.image&&<img src={handout.image} style={{width:"100%",borderRadius:8,border:"1px solid var(--border)",marginBottom:10}}/>}
-        {handout.text&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}>{handout.text}</div>}
+      <div className="coc-scroll" style={{flex:autoHeight?"0 1 auto":1,minHeight:0,overflowY:"auto",
+        padding:hasImg?0:"12px 14px 14px",touchAction:"pan-y"}}>
+        {handout.image&&<img src={handout.image} alt=""
+          style={{width:"100%",display:"block",marginBottom:handout.text?8:0}}/>}
+        {handout.text&&(
+          <div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6,
+            ...(hasImg?{background:"var(--glass)",backdropFilter:"blur(6px)",borderRadius:10,padding:"10px 12px",margin:"0 2px 2px"}:{})}}>
+            {handout.text}
+          </div>
+        )}
       </div>
 
       {/* 우측 하단 손잡이 — 끌면 창 크기가 바뀝니다 */}
@@ -3329,13 +3424,15 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
   // 접기를 누르면 닫히는 게 아니라, 내 캐릭터 이름이 적힌 투명도 80%의 작은 바로 줄어들어
   // 무대 어디에든 둘 수 있고, 그 바를 다시 누르면 펼쳐집니다. 닫기(X)를 눌러야 완전히 사라져요.
   const [folded,setFolded]=useState(false);
+  const [z,bringToFront]=usePanelFront();
+  const savedBox=loadPanelBox("sheet");
   const [sheetDraft,setSheetDraft]=useState(char);
   const [saving,setSaving]=useState(false);
   const wrapRef=useRef(null);
   // 창 크기(가로·세로). 기본은 기능치 2열이 딱 들어가는 폭입니다. 이보다 좁히면 내용이
   // 찌그러지는 대신 아래에 가로 스크롤 바가 생겨서, 옆으로 밀어 나머지를 볼 수 있어요.
   const SHEET_MIN_CONTENT=440; // 이 폭 아래로는 내용을 줄이지 않고 가로 스크롤로 넘깁니다.
-  const [size,setSize]=useState({w:470,h:560});
+  const [size,setSize]=useState(savedBox&&savedBox.w?{w:savedBox.w,h:savedBox.h}:{w:470,h:560});
   const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
   const onResizePointerDown=e=>{
     e.stopPropagation();
@@ -3350,10 +3447,14 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
       h:Math.max(240,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
     });
   };
-  const onResizePointerUp=()=>{ resizeDrag.current.on=false; };
+  const onResizePointerUp=()=>{
+    if(resizeDrag.current.on) savePanelBox("sheet",{w:size.w,h:size.h});
+    resizeDrag.current.on=false;
+  };
 
   // 위치는 이 기기(브라우저)에 기억됩니다.
   const [pos,setPos]=useState(()=>loadHeartPos());
+  const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
 
   useEffect(()=>{ setSheetDraft(char); },[char]);
@@ -3422,11 +3523,11 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
     : {position:"fixed",right:18,top:70};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
-        cursor:"grab",zIndex:30,touchAction:"none"}}>
+        cursor:"grab",zIndex:z,touchAction:"none"}}>
       <Sparkles size={13}/>
       <span style={{fontSize:12.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
         {char?.name||"탐사자 시트"}
@@ -3435,11 +3536,11 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
   );
 
   return(
-    <div ref={wrapRef}
+    <div ref={wrapRef} onPointerDownCapture={bringToFront}
       style={{...anchor,width:Math.min(size.w,window.innerWidth-16),height:size.h,maxHeight:"90vh",
         display:"flex",flexDirection:"column",position:"fixed",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
-        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
 
       {/* 제목 줄 — 여기를 잡고 끌면 창이 움직입니다 */}
       <div {...dragProps}
@@ -3452,7 +3553,7 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
         </span>
         <button type="button" title="접기"
           onPointerDown={e=>e.stopPropagation()}
-          onClick={()=>setFolded(true)}
+          onClick={()=>{rememberFoldAnchor();setFolded(true);}}
           style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
             color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <Minus size={13}/>
@@ -3812,23 +3913,36 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // 핸드아웃·광기를 받으면 받은 사람 화면에 고정 크기 창으로 자동으로 떠요.
   // "이미 본 적 있는지"를 기억해뒀다가, 새로 생긴 것만 팝업으로 띄웁니다.
-  const [seenHandoutIds,setSeenHandoutIds]=useState(null); // null=아직 초기화 전
   // 핸드아웃은 여러 장을 동시에 띄워둘 수 있습니다. 열어둔 것들의 id 목록이에요.
-  // (예전엔 하나만 담을 수 있어서, 새로 열면 보고 있던 게 닫혀버렸습니다.)
   const [openHandoutIds,setOpenHandoutIds]=useState([]);
   const openHandout=h=>setOpenHandoutIds(ids=>ids.includes(h.id)?ids:[...ids,h.id]);
   const closeHandout=id=>setOpenHandoutIds(ids=>ids.filter(x=>x!==id));
+
+  // "이미 받아본 핸드아웃"을 이 기기에 저장해둡니다.
+  // 예전에는 화면에 처음 그려질 때 있던 것만 "본 것"으로 쳤는데, 그 시점엔 서버 응답이
+  // 아직 안 와서 목록이 비어 있었어요. 그래서 잠시 뒤 기록이 도착하면 전부 새 것으로
+  // 오인해, 재접속할 때마다 안 열어본 핸드아웃까지 몽땅 튀어나왔습니다.
+  const seenHandoutKey=`heartEmojiSeenHandouts:${room.id}`;
+  const seenHandoutRef=useRef(null);
+  if(seenHandoutRef.current===null){
+    try{ const raw=localStorage.getItem(seenHandoutKey); seenHandoutRef.current=raw?JSON.parse(raw):null; }
+    catch{ seenHandoutRef.current=null; }
+  }
+  // 방에 막 들어온 직후 도착하는 건 "원래 있던 것"으로 봅니다. 이 시각 이후에 새로 생긴 것만 띄워요.
+  const handoutReadyAtRef=useRef(Date.now()+1500);
   useEffect(()=>{
-    const ids=myHandouts.map(h=>h.id);
-    if(seenHandoutIds===null){ setSeenHandoutIds(ids); return; } // 첫 로드시엔 팝업 없이 조용히 "이미 본 것"으로
-    const newOnes=myHandouts.filter(h=>!seenHandoutIds.includes(h.id));
-    if(newOnes.length>0){
-      // 새로 받은 게 여러 장이면 전부 띄웁니다.
+    if(myHandouts.length===0)return;
+    const seen=seenHandoutRef.current||[];
+    const newOnes=myHandouts.filter(h=>!seen.includes(h.id));
+    if(newOnes.length===0)return;
+    // 아직 "정착" 전이거나 이 방을 처음 여는 경우엔 조용히 본 것으로만 기록합니다.
+    const quiet=Date.now()<handoutReadyAtRef.current||seenHandoutRef.current===null;
+    if(!quiet){
       setOpenHandoutIds(prev=>[...prev,...newOnes.map(h=>h.id).filter(id=>!prev.includes(id))]);
-      setSeenHandoutIds(ids);
-    }else if(ids.length!==seenHandoutIds.length){
-      setSeenHandoutIds(ids);
     }
+    const merged=[...seen,...newOnes.map(h=>h.id)];
+    seenHandoutRef.current=merged;
+    try{ localStorage.setItem(seenHandoutKey,JSON.stringify(merged)); }catch{}
   },[myHandouts]); // eslint-disable-line
 
   // 입력창 높이 — 위쪽 손잡이를 끌어서 조절합니다. 입력창이 커지면 그만큼 채팅 목록이
@@ -4181,7 +4295,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [sceneUrl,setSceneUrl]=useState("");
   const [showDecorate,setShowDecorate]=useState(false);
   const [showStatAdjust,setShowStatAdjust]=useState(false);
-  const [gmBarPos,setGmBarPos]=useState(null); // 맵세팅 패널 위치(끌어서 옮긴 뒤 자리)
+  // 맵세팅 패널 위치 — 옮긴 자리를 이 기기에 기억합니다.
+  const [gmBarPos,setGmBarPos]=useState(()=>{
+    const b=loadPanelBox("mapsettings");
+    return b&&Number.isFinite(b.x)?{x:b.x,y:b.y}:null;
+  });
+  useEffect(()=>{ if(gmBarPos) savePanelBox("mapsettings",{x:gmBarPos.x,y:gmBarPos.y}); },[gmBarPos]);
   const [showMapSettings,setShowMapSettings]=useState(false);
   const sceneInputRef=useRef(null);
   useEffect(()=>{
