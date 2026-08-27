@@ -4680,14 +4680,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   },[stageMsgs,diceCutins]); // eslint-disable-line
 
   // 재생 중인 게 없으면 대기열에서 하나 꺼내 재생하고, 끝나면 비워서 다음 것으로 넘어갑니다.
+  // ⚠️ 타이머를 useEffect의 정리 함수(return ()=>clearTimeout)로 지우면 안 됩니다.
+  // 여기서 상태를 바꾸면 곧바로 다시 렌더 → 정리 함수가 먼저 실행되면서 방금 건 타이머를
+  // 취소해버려요. 그러면 playingCutin이 영원히 안 비워져서 두 번째 컷인부터 아예 안 뜹니다.
+  // 그래서 타이머는 ref에 담아두고, 화면을 떠날 때만 정리합니다.
+  const cutinTimerRef=useRef(null);
   useEffect(()=>{
     if(playingCutin||cutinQueue.length===0) return;
     const next=cutinQueue[0];
     setCutinQueue(q=>q.slice(1));
     setPlayingCutin(next);
-    const t=setTimeout(()=>setPlayingCutin(null),CUTIN_MS);
-    return()=>clearTimeout(t);
+    clearTimeout(cutinTimerRef.current);
+    cutinTimerRef.current=setTimeout(()=>setPlayingCutin(null),CUTIN_MS);
   },[playingCutin,cutinQueue]);
+  useEffect(()=>()=>clearTimeout(cutinTimerRef.current),[]);
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
     background:active?"var(--accent)":"var(--surface)",
