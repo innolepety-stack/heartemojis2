@@ -393,33 +393,46 @@ input[type=number] { -moz-appearance: textfield; }
 .choice-bar::before { top: 0; }
 .choice-bar::after { bottom: 0; }
 
-/* 무대 위(배경 그림 위) — 밝은 글씨에 반투명 유리 느낌 */
-.choice-bar-stage { color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.55); backdrop-filter: blur(2px); }
+/* 무대 위(배경 그림 위) — 테마색이 가운데서 진하고 양 끝으로 갈수록 투명해집니다.
+   글씨는 어떤 배경 그림 위에서도 읽히도록 흰색 + 그림자로 둡니다. */
+.choice-bar-stage { color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.5); backdrop-filter: blur(2px); }
 .choice-bar-stage {
-  background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.13) 16%,
-    rgba(255,255,255,0.19) 50%, rgba(255,255,255,0.13) 84%, transparent 100%);
+  background: linear-gradient(to right, transparent 0%,
+    color-mix(in srgb, var(--accent) 32%, transparent) 16%,
+    color-mix(in srgb, var(--accent) 48%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 32%, transparent) 84%, transparent 100%);
 }
 .choice-bar-stage::before, .choice-bar-stage::after {
-  background: linear-gradient(to right, transparent, rgba(255,255,255,0.7) 22%,
-    rgba(255,255,255,0.7) 78%, transparent);
+  background: linear-gradient(to right, transparent,
+    color-mix(in srgb, var(--accent) 85%, transparent) 22%,
+    color-mix(in srgb, var(--accent) 85%, transparent) 78%, transparent);
 }
 .choice-bar-stage:hover:not(.picked) {
-  background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.26) 14%,
-    rgba(255,255,255,0.36) 50%, rgba(255,255,255,0.26) 86%, transparent 100%);
+  background: linear-gradient(to right, transparent 0%,
+    color-mix(in srgb, var(--accent) 55%, transparent) 14%,
+    color-mix(in srgb, var(--accent) 75%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 55%, transparent) 86%, transparent 100%);
 }
 .choice-bar-stage.picked { color: rgba(255,255,255,0.5); text-decoration: line-through; cursor: default; }
 
-/* 채팅창 공지 안 — 밝은 배경이라 테마색 글씨로 */
-.choice-bar-chat { color: var(--accent-deep); font-size: 13px; padding: 9px 16px; width: 100%; }
+/* 채팅창 안의 선택지 막대 — 밝은 배경이라 테마색 글씨로 */
+.choice-bar-chat { color: var(--accent-deep); font-size: 0.92em; padding: 9px 16px; width: 100%; }
 .choice-bar-chat {
-  background: linear-gradient(to right, transparent 0%, var(--surface) 12%,
-    var(--surface) 88%, transparent 100%);
+  background: linear-gradient(to right, transparent 0%,
+    color-mix(in srgb, var(--accent) 12%, transparent) 12%,
+    color-mix(in srgb, var(--accent) 18%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 12%, transparent) 88%, transparent 100%);
 }
 .choice-bar-chat::before, .choice-bar-chat::after {
   background: linear-gradient(to right, transparent, var(--accent-soft) 20%,
     var(--accent-soft) 80%, transparent);
 }
-.choice-bar-chat:hover:not(.picked) { color: var(--accent); }
+.choice-bar-chat:hover:not(.picked) {
+  background: linear-gradient(to right, transparent 0%,
+    color-mix(in srgb, var(--accent) 24%, transparent) 10%,
+    color-mix(in srgb, var(--accent) 34%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 24%, transparent) 90%, transparent 100%);
+}
 .choice-bar-chat.picked { color: var(--text-faint); text-decoration: line-through; opacity: 0.65; cursor: default; }
 
 /* 판정: 화면 중앙에 뜨는 짧은 팝업 (서술과 구분되는 느낌) */
@@ -2098,36 +2111,27 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
     let data=null; try{data=JSON.parse(items[0].text);}catch{}
     if(!data) return null;
     return(
-      <div style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
-        <div style={{position:"relative",maxWidth:"92%",border:"1.5px solid var(--accent)",borderRadius:14,background:"var(--bg-panel)",padding:"12px 14px",textAlign:"center"}}>
+      <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",padding:"6px 4px"}}>
           {isGM&&isMine&&(
             <button type="button" onClick={()=>onDelete(items[0])}
-              style={{position:"absolute",top:6,right:6,background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex"}}>
+              style={{alignSelf:"flex-end",background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex"}}>
               <Trash2 size={ico(10)}/>
             </button>
           )}
-          <div style={{display:"flex",flexWrap:"wrap",gap:7,justifyContent:"center"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:7,width:"100%"}}>
             {data.options.map(opt=>{
               const picked=data.picked?.[opt];
               const lockedOut=!picked&&data.multi===false&&Object.keys(data.picked||{}).length>0;
               const disabled=!!picked||lockedOut;
               return(
                 <button key={opt} type="button" disabled={disabled} onClick={()=>onPickChoice(group,opt)}
-                  style={{
-                    padding:"0.5em 1em",borderRadius:999,cursor:disabled?"default":"pointer",
-                    border:"1.5px solid "+(disabled?"var(--border)":"var(--accent)"),
-                    background:picked?"var(--surface)":lockedOut?"var(--bg-panel)":"var(--accent)",
-                    color:disabled?"var(--text-faint)":"#fff",
-                    fontSize:"0.89em",fontWeight:600,
-                    textDecoration:picked?"line-through":"none",
-                    opacity:lockedOut?0.55:1,
-                  }}>
+                  className={"choice-bar choice-bar-chat"+(disabled?" picked":"")}
+                  style={lockedOut?{opacity:0.55}:undefined}>
                   {opt}
                 </button>
               );
             })}
           </div>
-        </div>
       </div>
     );
   }
@@ -3428,7 +3432,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setNpcBookmarks(next);
     await storeSet(`npcbookmarks:${room.id}`,{list:next},true);
   };
-  const [judgeTargets,setJudgeTargets]=useState([]); // 판정 대상으로 고른 참가자 code 목록
   const [judgeSkill,setJudgeSkill]=useState("");
   const [char,setChar]=useState(null);
   const [showCharMenu,setShowCharMenu]=useState(false);
@@ -4525,16 +4528,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   };
 
   // 참가자 code로 화면에 보여줄 캐릭터 이름을 찾습니다 (본인은 char, 그 외엔 presence 기록).
-  const nameOfParticipant=code=>code===userCode?(char?.name||"GM"):(presenceMap[code]?.charName||code);
 
   // 판정 요청 조합: 대상(전원/개별 선택) + 기능치 이름을 테마색으로, "판정"은 기본색으로 맨 뒤에 자동 붙입니다.
   // var(--accent-deep)를 쓰기 때문에 보는 사람마다 자기 테마색으로 보여요.
   const sendJudgeRequest=async()=>{
-    if(judgeTargets.length===0||!judgeSkill.trim())return;
-    const names=judgeTargets.length===participantsList.length?"전원":judgeTargets.map(nameOfParticipant).join(", ");
-    const markup=`<span style="color:var(--accent-deep);font-weight:700">${names}</span>, <span style="color:var(--accent-deep);font-weight:700">${judgeSkill.trim()}</span> 판정`;
+    if(!judgeSkill.trim())return;
+    // 대상을 따로 고르지 않고 항상 전원에게 요청합니다.
+    const markup=`<span style="color:var(--accent-deep);font-weight:700">전원</span>, <span style="color:var(--accent-deep);font-weight:700">${judgeSkill.trim()}</span> 판정`;
     const ok=await doSend("judge",markup,"","");
-    if(ok){setJudgeTargets([]);setJudgeSkill("");}
+    if(ok) setJudgeSkill("");
   };
 
   // 이미지 메시지 전송 공통 로직 (파일 업로드든 외부 링크든 동일하게 처리)
@@ -4724,7 +4726,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
   const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
   // 선택지를 고른 결과도 판정처럼 화면 중앙에 짧게 팝업으로 뜹니다 (대사창이 아니라).
-  const activeChoiceResult=latestOverallMsg&&latestOverallMsg.speaker==="choicepick"?latestOverallMsg:null;
   // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는 공용 이펙트입니다.
   // 두 사람이 거의 동시에 굴리면 예전에는 "가장 최근 것" 하나만 뜨고 앞 사람 컷인이 통째로
   // 묻히거나 겹쳐 보였어요. 이제는 새로 도착한 주사위를 대기열에 쌓아두고, 앞 컷인이 끝나면
@@ -5021,9 +5022,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           {activeJudge&&(
             <div className="vn-judge-popup"><FormattedText text={activeJudge.text}/></div>
           )}
-          {activeChoiceResult&&(
-            <div className="vn-judge-popup"><FormattedText text={activeChoiceResult.text}/></div>
-          )}
         </div>
 
         {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 (절대 위치로 무대 위에 얹힘) */}
@@ -5124,56 +5122,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         </div>
       </div>
 
-      {/* 선택지 공지 — 여러 개 고르는 선택지를 채팅 위에 고정해 둡니다.
-          카카오톡 공지사항처럼 눌러서 접었다 펼 수 있고, 여기서 바로 고를 수도 있어요. */}
-      {pinnedChoice&&(()=>{
-        const {msg,data}=pinnedChoice;
-        const total=data.options.length;
-        const done=data.options.filter(o=>data.picked?.[o]).length;
-        return(
-          <div style={{border:"1px solid var(--accent-soft)",background:"var(--bg-panel)",borderRadius:10,
-            marginBottom:6,flexShrink:0,overflow:"hidden"}}>
-            <div onClick={()=>setChoiceNoticeFolded(v=>!v)}
-              style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",cursor:"pointer"}}>
-              <Bell size={13} color="var(--accent-deep)" style={{flexShrink:0}}/>
-              <span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>선택지</span>
-              <span className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)",flexShrink:0}}>{done}/{total}</span>
-              {choiceNoticeFolded&&(
-                <span style={{fontSize:11.5,color:"var(--text-faint)",flex:1,minWidth:0,
-                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {data.options.filter(o=>!data.picked?.[o]).join(" · ")}
-                </span>
-              )}
-              <span style={{flex:choiceNoticeFolded?"0 0 auto":1}}/>
-              {isGM&&(
-                <button type="button" title="공지 내리기"
-                  onClick={e=>{e.stopPropagation();closeChoiceNotice();}}
-                  style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex",flexShrink:0}}>
-                  <X size={13}/>
-                </button>
-              )}
-              {choiceNoticeFolded?<ChevronDown size={13} color="var(--text-faint)" style={{flexShrink:0}}/>
-                :<ChevronUp size={13} color="var(--text-faint)" style={{flexShrink:0}}/>}
-            </div>
-            {!choiceNoticeFolded&&(
-              <div style={{display:"flex",flexDirection:"column",gap:7,padding:"0 10px 10px"}}>
-                {data.options.map(opt=>{
-                  const picked=data.picked?.[opt];
-                  return(
-                    <button key={opt} type="button" disabled={!!picked}
-                      className={"choice-bar choice-bar-chat"+(picked?" picked":"")}
-                      onClick={()=>!picked&&handlePickChoice({items:[msg]},opt)}
-                      title={picked?`${picked.charName} 선택함`:"누르면 선택돼요"}>
-                      {opt}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
       {/* 채팅 탭바 */}
       <div className="chat-tab-bar">
         {visibleTabs.map(t=>(
@@ -5249,6 +5197,63 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           이 영역 크기는 항상 일정하게 유지됩니다. 화면에 다 안 들어가면
           이 영역 안이 아니라 페이지 전체가 스크롤됩니다. */}
       <div style={{position:"relative",flex:"1 1 auto",minHeight:150,display:"flex",flexDirection:"column"}}>
+        {/* 선택지 공지 — 카카오톡 공지사항처럼 메시지 목록 "위에 떠서" 보입니다.
+            (자리를 차지하지 않아서 채팅창 크기에 영향을 주지 않아요.)
+            눌러서 접었다 펼 수 있고, 여기서 바로 고를 수도 있습니다. */}
+      {pinnedChoice&&(()=>{
+        const {msg,data}=pinnedChoice;
+        const total=data.options.length;
+        const done=data.options.filter(o=>data.picked?.[o]).length;
+        return(
+          <div style={{position:"absolute",top:8,left:8,right:8,zIndex:8,
+            border:"1px solid var(--accent-soft)",background:"var(--glass)",backdropFilter:"blur(8px)",
+            borderRadius:10,overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
+            <div onClick={()=>setChoiceNoticeFolded(v=>!v)}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",cursor:"pointer"}}>
+              <Bell size={13} color="var(--accent-deep)" style={{flexShrink:0}}/>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>선택지</span>
+              <span className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)",flexShrink:0}}>{done}/{total}</span>
+              {choiceNoticeFolded&&(
+                <span style={{fontSize:11.5,color:"var(--text-faint)",flex:1,minWidth:0,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {data.options.filter(o=>!data.picked?.[o]).join(" · ")}
+                </span>
+              )}
+              <span style={{flex:choiceNoticeFolded?"0 0 auto":1}}/>
+              {isGM&&(
+                <button type="button" title="공지 내리기"
+                  onClick={e=>{e.stopPropagation();closeChoiceNotice();}}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex",flexShrink:0}}>
+                  <X size={13}/>
+                </button>
+              )}
+              {choiceNoticeFolded?<ChevronDown size={13} color="var(--text-faint)" style={{flexShrink:0}}/>
+                :<ChevronUp size={13} color="var(--text-faint)" style={{flexShrink:0}}/>}
+            </div>
+            {!choiceNoticeFolded&&(
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,padding:"0 10px 10px"}}>
+                {data.options.map(opt=>{
+                  const picked=data.picked?.[opt];
+                  return(
+                    <button key={opt} type="button" disabled={!!picked}
+                      onClick={()=>!picked&&handlePickChoice({items:[msg]},opt)}
+                      title={picked?`${picked.charName} 선택함`:"누르면 선택돼요"}
+                      style={{fontSize:12,fontWeight:600,padding:"5px 12px",borderRadius:999,
+                        border:"1.5px solid "+(picked?"var(--border)":"var(--accent)"),
+                        background:picked?"var(--surface)":"var(--accent)",
+                        color:picked?"var(--text-faint)":"#fff",
+                        textDecoration:picked?"line-through":"none",opacity:picked?0.6:1,
+                        cursor:picked?"default":"pointer"}}>
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
         <div ref={msgListRef} onScroll={onMsgListScroll} className="coc-card coc-scroll msg-list-area" style={{flex:"1 1 auto",overflowY:"auto",padding:"10px 10px 26px",display:"flex",flexDirection:"column",gap:5,fontSize:chatFontSize}}>
           {groups.length===0&&(
             <div style={{margin:"auto",color:"var(--text-faint)",fontSize:13,textAlign:"center"}}>
@@ -5426,32 +5431,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <div style={{padding:"10px 2px"}}/>
         ):isGM&&speaker==="gm"&&gmTab==="judge"?(
           <div style={{padding:"4px 2px"}}>
-            <div className="coc-label" style={{marginBottom:6}}>판정 대상</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-              <button type="button" className="coc-btn small"
-                onClick={()=>setJudgeTargets(judgeTargets.length===participantsList.length?[]:[...participantsList])}
-                style={{background:judgeTargets.length===participantsList.length&&participantsList.length>0?"var(--accent)":"var(--surface)",
-                  color:judgeTargets.length===participantsList.length&&participantsList.length>0?"#fff":"var(--text-dim)",
-                  border:"1px solid "+(judgeTargets.length===participantsList.length&&participantsList.length>0?"var(--accent)":"var(--border)")}}>
-                전원
-              </button>
-              {participantsList.map(code=>{
-                const active=judgeTargets.includes(code);
-                return(
-                  <button key={code} type="button" className="coc-btn small"
-                    onClick={()=>setJudgeTargets(t=>active?t.filter(c=>c!==code):[...t,code])}
-                    style={{background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
-                    {nameOfParticipant(code)}
-                  </button>
-                );
-              })}
-            </div>
             <div className="coc-label" style={{marginBottom:6}}>판정할 기능치</div>
             <div style={{display:"flex",gap:7,marginBottom:8}}>
               <input className="coc-input" value={judgeSkill} onChange={e=>setJudgeSkill(e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();sendJudgeRequest();}}}
                 placeholder="예: 이성, 백병전..." style={{flex:1}}/>
-              <button type="button" className="coc-btn" style={{flexShrink:0}} disabled={judgeTargets.length===0||!judgeSkill.trim()} onClick={sendJudgeRequest}><Send size={13}/></button>
+              <button type="button" className="coc-btn" style={{flexShrink:0}} disabled={!judgeSkill.trim()} onClick={sendJudgeRequest}><Send size={13}/></button>
             </div>
           </div>
         ):(
