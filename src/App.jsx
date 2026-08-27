@@ -4621,23 +4621,46 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
   // 선택지를 고른 결과도 판정처럼 화면 중앙에 짧게 팝업으로 뜹니다 (대사창이 아니라).
   const activeChoiceResult=latestOverallMsg&&latestOverallMsg.speaker==="choicepick"?latestOverallMsg:null;
-  // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는
-  // 공용 이펙트라, "지금 진짜로 가장 최근"인 주사위일 때만 뜨도록 별도로 둡니다.
-  const activeDiceCutin=latestOverallMsg&&latestOverallMsg.speaker==="dice"?latestOverallMsg:null;
-  // 컷인은 계속 떠 있지 않고, 새로 뜬 그 순간에만 "한 번 슥" 재생되고 자동으로 사라집니다.
-  // (활성 상태로만 두면 다음 메시지가 올 때까지 계속 화면에 남아있게 됩니다.)
-  const [playingCutinId,setPlayingCutinId]=useState(null);
-  const seenCutinIdRef=useRef(null);
+  // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는 공용 이펙트입니다.
+  // 두 사람이 거의 동시에 굴리면 예전에는 "가장 최근 것" 하나만 뜨고 앞 사람 컷인이 통째로
+  // 묻히거나 겹쳐 보였어요. 이제는 새로 도착한 주사위를 대기열에 쌓아두고, 앞 컷인이 끝나면
+  // 다음 것이 이어서 재생됩니다.
+  const CUTIN_MS=1700;
+  const [cutinQueue,setCutinQueue]=useState([]);   // 아직 재생 안 된 것들 [{id,url}]
+  const [playingCutin,setPlayingCutin]=useState(null); // 지금 재생 중인 것 {id,url}
+  const seenCutinIdsRef=useRef(new Set());
+  const cutinInitedRef=useRef(false);
+
+  // 새로 도착한 주사위 메시지를 대기열에 넣습니다.
   useEffect(()=>{
-    if(!activeDiceCutin){ seenCutinIdRef.current=null; return; }
-    if(seenCutinIdRef.current===activeDiceCutin.id) return; // 이미 재생한 건 다시 트리거하지 않음
-    seenCutinIdRef.current=activeDiceCutin.id;
-    let d=null; try{d=JSON.parse(activeDiceCutin.text);}catch{}
-    if(!d||!diceCutins[d.label]) return; // 그 등급용 컷인 이미지가 없으면 재생하지 않음
-    setPlayingCutinId(activeDiceCutin.id);
-    const t=setTimeout(()=>setPlayingCutinId(id=>id===activeDiceCutin.id?null:id),1700);
+    const diceMsgs=stageMsgs.filter(m=>m.speaker==="dice");
+    if(!cutinInitedRef.current){
+      // 방에 처음 들어왔을 때 이미 있던 주사위 기록은 "이미 본 것"으로 처리합니다.
+      // (안 그러면 입장하자마자 과거 컷인이 우르르 재생돼요.)
+      diceMsgs.forEach(m=>seenCutinIdsRef.current.add(m.id));
+      cutinInitedRef.current=true;
+      return;
+    }
+    const fresh=[];
+    for(const m of diceMsgs){
+      if(seenCutinIdsRef.current.has(m.id)) continue;
+      seenCutinIdsRef.current.add(m.id);
+      let d=null; try{d=JSON.parse(m.text);}catch{}
+      const url=d&&diceCutins[d.label];
+      if(url) fresh.push({id:m.id,url}); // 그 등급용 컷인 이미지가 있을 때만 재생
+    }
+    if(fresh.length) setCutinQueue(q=>[...q,...fresh]);
+  },[stageMsgs,diceCutins]); // eslint-disable-line
+
+  // 재생 중인 게 없으면 대기열에서 하나 꺼내 재생하고, 끝나면 비워서 다음 것으로 넘어갑니다.
+  useEffect(()=>{
+    if(playingCutin||cutinQueue.length===0) return;
+    const next=cutinQueue[0];
+    setCutinQueue(q=>q.slice(1));
+    setPlayingCutin(next);
+    const t=setTimeout(()=>setPlayingCutin(null),CUTIN_MS);
     return()=>clearTimeout(t);
-  },[activeDiceCutin?.id,diceCutins]); // eslint-disable-line
+  },[playingCutin,cutinQueue]);
   const embedUrl=ytEmbedUrl(bgmUrl);
   const speakerBtnStyle=active=>({
     background:active?"var(--accent)":"var(--surface)",
@@ -4882,19 +4905,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           );
         })()}
 
-        {/* 다이스 컷인: 무대(stage-panel) 안에서만 어두워지도록, stage-panel의 닫는 태그 전에 둡니다. */}
-        {activeDiceCutin&&playingCutinId===activeDiceCutin.id&&(()=>{
-          let d=null;try{d=JSON.parse(activeDiceCutin.text);}catch{}
-          if(!d)return null;
-          const cutin=diceCutins[d.label];
-          if(!cutin)return null;
-          return(
-            <>
-              <div className="vn-cutin-backdrop"/>
-              <img key={activeDiceCutin.id} src={cutin} className="vn-dice-cutin" alt=""/>
-            </>
-          );
-        })()}
+        {/* 다이스 컷인: 무대(stage-panel) 안에서만 어두워지도록, stage-panel의 닫는 태그 전에 둡니다.
+            여러 개가 겹치면 대기열에 쌓였다가 하나씩 순서대로 재생됩니다. */}
+        {playingCutin&&(
+          <>
+            <div key={`bd-${playingCutin.id}`} className="vn-cutin-backdrop"/>
+            <img key={playingCutin.id} src={playingCutin.url} className="vn-dice-cutin" alt=""/>
+          </>
+        )}
       </div>
     <div ref={chatResizeRef} className="chat-resize-handle" onMouseDown={startChatResize} title="드래그해서 채팅창 폭 조절"/>
     <div className="chat-font" style={{maxWidth:740,margin:"0 auto",display:"flex",flexDirection:"column",height:"calc(100dvh - 16px)"}}>
