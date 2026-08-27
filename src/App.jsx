@@ -297,6 +297,8 @@ input[type=number] { -moz-appearance: textfield; }
 .chat-icon-btn.danger:hover { border-color: #e0507a; color: #e0507a; }
 .chat-icon-btn .dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: #e0507a; border: 1.5px solid var(--surface); }
 .rail-title { display: flex; flex-direction: column; gap: 1px; margin-right: 4px; flex-shrink: 0; }
+/* 레일 버튼 옆에 뜨는 작은 창(BGM 등): 모바일에선 버튼 아래, PC에선 버튼 오른쪽에 붙습니다. */
+.rail-popover { position: absolute; top: calc(100% + 6px); left: 0; z-index: 32; }
 .rail-participants-flyout { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); padding: 10px; }
 
 @media (min-width: 1024px) {
@@ -309,6 +311,7 @@ input[type=number] { -moz-appearance: textfield; }
   .chat-icon-rail .rail-spacer { display: block; flex: 1; }
   .chat-icon-btn { width: 42px; height: 42px; }
   .rail-title { display: none; } /* 넓은 무대 쪽에 오버레이로 따로 표시 */
+  .rail-popover { top: 0; left: calc(100% + 8px); }
   .rail-participants-flyout { top: 0; left: calc(100% + 8px); right: auto; }
   .stage-title-overlay {
     position: absolute; top: 12px; left: 12px; z-index: 8;
@@ -2450,7 +2453,7 @@ function StageToken({layer,zIndex,onUpdate,onCommit,canEdit,selected,onSelect,vi
 // 자유롭게 옮길 수 있는 떠있는 바입니다. (시트·꾸미기 창이랑 같은 드래그 방식)
 // "맵세팅": 배경/레이어/장면/꾸미기를 탭 하나로 모은 떠있는 패널입니다.
 // 접기 버튼을 누르면 닫히는 게 아니라 "맵세팅"이라 적힌 작은(투명도 80%) 바로 줄어들어
-// 무대 어디에든 둘 수 있고, 그 바를 더블클릭하면 다시 펼쳐집니다. 닫기(X)를 눌러야 완전히 사라집니다.
+// 무대 어디에든 둘 수 있고, 그 바를 누르면 다시 펼쳐집니다. 닫기(X)를 눌러야 완전히 사라집니다.
 function MapSettingsPanel({onClose,
   sceneUrl,onSceneClick,onClearScene,sceneInputRef,onSceneFileChange,
   layers,layerFileInputRef,onLayerFileChange,
@@ -2492,16 +2495,16 @@ function MapSettingsPanel({onClose,
     drag.current.on=false;
     return wasMoved;
   };
-  // 접힌 바: 끌면 이동, 더블클릭하면 펼치기
-  const onFoldedBarUp=()=>{ onPointerUp(); };
+  // 접힌 바: 끌면 이동, 그냥 누르면 펼치기 (시트·핸드아웃·꾸미기 패널과 동일한 방식)
+  const onFoldedBarUp=()=>{ if(!onPointerUp()) setFolded(false); };
   const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
   // 위치를 아직 한 번도 안 옮겼으면(=pos가 없으면), 화면 중앙 상단이 기본 자리입니다.
   const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}
     :{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)"};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onDoubleClick={()=>setFolded(false)}
-      title="더블클릭하면 펼쳐져요 · 끌어서 위치 옮기기"
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+      title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
         cursor:"grab",zIndex:30,touchAction:"none",fontSize:12.5,fontWeight:600}}>
@@ -2668,18 +2671,19 @@ function MapSettingsPanel({onClose,
 
 // GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는, 독립적으로
 // 떠있는 창. 배부 창에서 분리되어 GM 도구 바에서 바로 열립니다.
-function StatAdjustPanel({onClose,
-  participantsList,presenceMap,userCode,
-  statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
-  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,
-  statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
+// 무대 위에 떠 있는 공용 패널 껍데기입니다. 제목줄을 잡고 끌어서 옮기고, "접기"를 누르면
+// 닫히는 대신 제목이 적힌 투명도 80%의 작은 알약 바로 줄어들어 어디든 둘 수 있으며, 그 바를
+// 다시 누르면 펼쳐집니다. "닫기"(X)를 눌러야 완전히 사라집니다.
+// 시트·핸드아웃·맵세팅·꾸미기·수치조정·광기 창이 전부 이 껍데기를 함께 씁니다.
+function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 330px)",maxHeight="78vh",children}){
   const wrapRef=useRef(null);
+  const [folded,setFolded]=useState(false);
   const [pos,setPos]=useState(null);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const clamp=(x,y)=>{
     const el=wrapRef.current;
     const w=el?el.offsetWidth:320;
-    const h=el?el.offsetHeight:460;
+    const h=el?el.offsetHeight:300;
     return { x:Math.max(4,Math.min(window.innerWidth-w-4,x)), y:Math.max(4,Math.min(window.innerHeight-h-4,y)) };
   };
   const onPointerDown=e=>{
@@ -2695,27 +2699,68 @@ function StatAdjustPanel({onClose,
     if(!d.moved)return;
     setPos(clamp(d.ox+dx,d.oy+dy));
   };
-  const onPointerUp=()=>{ drag.current.on=false; };
-  const base=pos;
-  // 기본 자리는 왼쪽 아이콘 바 바로 옆(버튼 옆)입니다. 끌어서 원하는 데로 옮길 수 있어요.
-  const anchor=base?{position:"fixed",left:base.x,top:base.y}:{position:"fixed",left:76,top:80};
+  const onPointerUp=()=>{ const moved=drag.current.moved; drag.current.on=false; return moved; };
+  // 접힌 바: 끌면 이동, 그냥 누르면 펼치기
+  const onFoldedBarUp=()=>{ if(!onPointerUp()) setFolded(false); };
+  const dragProps={onPointerDown,onPointerMove,onPointerUp,onPointerCancel:onPointerUp};
+
+  useEffect(()=>{
+    const fix=()=>setPos(p=>p?clamp(p.x,p.y):p);
+    const t=setTimeout(fix,0);
+    window.addEventListener("resize",fix);
+    return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
+  },[folded]); // eslint-disable-line
+
+  const anchor=pos?{position:"fixed",left:pos.x,top:pos.y}
+    :(defaultAnchor||{position:"fixed",left:76,top:80});
+
+  const iconBtn={width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+    color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0};
+
+  if(folded) return(
+    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp}
+      title="눌러서 펼치기 · 끌어서 위치 옮기기"
+      style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
+        background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
+        cursor:"grab",zIndex:30,touchAction:"none",fontSize:12.5,fontWeight:600}}>
+      {Icon&&<Icon size={13}/>}
+      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</span>
+    </div>
+  );
 
   return(
-    <div ref={wrapRef} style={{...anchor,width:"min(94vw, 320px)",maxHeight:"82vh",display:"flex",flexDirection:"column",
-      background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
-      boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
-      <div onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+    <div ref={wrapRef}
+      style={{...anchor,width,maxHeight,display:"flex",flexDirection:"column",
+        background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:31,overflow:"hidden",touchAction:"none"}}>
+      <div {...dragProps}
         style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
           background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
-        <Sliders size={14} color="var(--accent-deep)"/>
-        <span style={{flex:1,fontSize:13,fontWeight:700,color:"var(--accent-deep)"}}>수치 조정</span>
-        <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose}
-          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
-            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        {Icon&&<Icon size={14} color="var(--accent-deep)"/>}
+        <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"var(--accent-deep)",
+          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</span>
+        <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>setFolded(true)} style={iconBtn}>
           <Minus size={13}/>
         </button>
+        <button type="button" title="닫기" onPointerDown={e=>e.stopPropagation()} onClick={onClose} style={iconBtn}>
+          <X size={13}/>
+        </button>
       </div>
-      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"14px 16px",touchAction:"pan-y"}}>
+      <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",padding:"12px 14px 14px",touchAction:"pan-y"}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function StatAdjustPanel({onClose,
+  participantsList,presenceMap,userCode,
+  statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
+  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,
+  statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
+  return(
+    <FloatingPanel title="수치 조정" icon={Sliders} onClose={onClose} width="min(94vw, 320px)"
+      defaultAnchor={{position:"fixed",left:76,top:80}}>
         <div className="coc-label" style={{marginBottom:6}}>대상</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
           {participantsList.filter(c=>c!==userCode).map(code=>{
@@ -2776,8 +2821,7 @@ function StatAdjustPanel({onClose,
           onClick={onApplyStatAdjust}>
           적용
         </button>
-      </div>
-    </div>
+    </FloatingPanel>
   );
 }
 
@@ -2864,13 +2908,8 @@ function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSen
   const [name,setName]=useState("");
   const [note,setNote]=useState("");
   return(
-    <div className="coc-modal-backdrop" onClick={onClose}>
-      <div className="coc-modal" onClick={e=>e.stopPropagation()}>
-        <div style={{padding:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>광기 부여</div>
-            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
-          </div>
+    <FloatingPanel title="광기 부여" icon={AlertTriangle} onClose={onClose} width="min(94vw, 330px)"
+      defaultAnchor={{position:"fixed",left:120,top:110}}>
           <div className="coc-label" style={{marginBottom:6}}>대상</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
             {participantsList.filter(c=>c!==userCode).map(code=>{
@@ -2906,9 +2945,7 @@ function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSen
             onClick={()=>{onSend(target,{name:name.trim(),term,note});onClose();}}>
             전송
           </button>
-        </div>
-      </div>
-    </div>
+    </FloatingPanel>
   );
 }
 
@@ -2945,14 +2982,8 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
   };
 
   return(
-    <div className="coc-modal-backdrop" onClick={onClose}>
-      <div className="coc-modal" onClick={e=>e.stopPropagation()}>
-        <div style={{padding:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>핸드아웃 관리</div>
-            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
-          </div>
-
+    <FloatingPanel title="핸드아웃 관리" icon={Folder} onClose={onClose} width="min(94vw, 360px)"
+      defaultAnchor={{position:"fixed",left:164,top:140}}>
           {assigning?(
             <div>
               <button className="coc-btn ghost small" onClick={()=>setAssigning(null)} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
@@ -3018,39 +3049,28 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose}){
               )}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+    </FloatingPanel>
   );
 }
 
 function HandoutViewerModal({handouts,onClose,onSelect}){
   return(
-    <div className="coc-modal-backdrop" onClick={onClose}>
-      <div className="coc-modal" onClick={e=>e.stopPropagation()}>
-        <div style={{padding:20}}>
-          <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>핸드아웃</div>
-              <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
+    <FloatingPanel title="핸드아웃" icon={Folder} onClose={onClose} width="min(94vw, 330px)"
+      defaultAnchor={{position:"fixed",left:164,top:140}}>
+      {handouts.length===0?(
+        <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {handouts.map(h=>(
+            <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>onSelect(h)}>
+              {h.image?<img src={h.image} style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
+                <div style={{width:44,height:44,borderRadius:8,background:"var(--bg-panel)",flexShrink:0}}/>}
+              <div style={{fontSize:14,fontWeight:600}}>{h.title}</div>
             </div>
-            {handouts.length===0?(
-              <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
-            ):(
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {handouts.map(h=>(
-                  <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>onSelect(h)}>
-                    {h.image?<img src={h.image} style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
-                      <div style={{width:44,height:44,borderRadius:8,background:"var(--bg-panel)",flexShrink:0}}/>}
-                    <div style={{fontSize:14,fontWeight:600}}>{h.title}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          ))}
         </div>
-      </div>
-    </div>
+      )}
+    </FloatingPanel>
   );
 }
 
@@ -3377,6 +3397,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [bgmUrl,setBgmUrl]=useState("");
   const [bgmInput,setBgmInput]=useState("");
   const [showBgm,setShowBgm]=useState(false);
+  const bgmPopoverRef=useRef(null);
+  useEffect(()=>{
+    if(!showBgm)return;
+    const onDocClick=e=>{ if(bgmPopoverRef.current&&!bgmPopoverRef.current.contains(e.target)) setShowBgm(false); };
+    document.addEventListener("mousedown",onDocClick);
+    return()=>document.removeEventListener("mousedown",onDocClick);
+  },[showBgm]);
   // 볼륨은 방(Firestore)에 저장하지 않고 이 기기(브라우저)에만 개인적으로 저장합니다.
   const [bgmVolume,setBgmVolume]=useState(()=>{
     try{
@@ -4700,10 +4727,46 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
         <div className="rail-divider"/>
 
-        <button type="button" className={"chat-icon-btn"+(bgmUrl?" on":"")} onClick={()=>setShowBgm(v=>!v)}
-          title={bgmUrl?(bgmStarted?"BGM 재생 중":"BGM 탭 필요"):"BGM 없음"}>
-          <Music size={18}/>
-        </button>
+        {/* BGM: 버튼 바로 옆에서 링크를 입력하고 볼륨을 조절합니다.
+            (예전에는 채팅창 위쪽에 끼어들어서 채팅 영역이 밀렸어요.) */}
+        <div style={{position:"relative"}} ref={bgmPopoverRef}>
+          <button type="button" className={"chat-icon-btn"+(bgmUrl?" on":"")} onClick={()=>setShowBgm(v=>!v)}
+            title={bgmUrl?(bgmStarted?"BGM 재생 중":"BGM 탭 필요"):"BGM 없음"}>
+            <Music size={18}/>
+          </button>
+          {showBgm&&(
+            <div className="rail-popover" style={{width:250,background:"var(--surface)",border:"1px solid var(--border)",
+              borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.16)",padding:11}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div className="coc-label">BGM</div>
+                <button type="button" onClick={()=>setShowBgm(false)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2}}><X size={13}/></button>
+              </div>
+              {bgmUrl&&!bgmStarted&&(
+                <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>setBgmStarted(true)}>
+                  ▶ 탭해서 재생 시작
+                </button>
+              )}
+              {bgmUrl&&bgmStarted&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <div style={{flex:1,minWidth:0,fontSize:12,color:"var(--text-dim)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bgmUrl}</div>
+                <button type="button" className="coc-btn ghost small" onClick={handleStopBgm}>정지</button>
+              </div>}
+              {bgmUrl&&bgmStarted&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:11.5,color:"var(--text-dim)",flexShrink:0}}>내 볼륨</span>
+                <input type="range" min={0} max={100} value={bgmVolume}
+                  onChange={e=>setBgmVolume(Number(e.target.value))}
+                  style={{flex:1,minWidth:0,accentColor:"var(--accent)"}}/>
+                <span className="coc-mono" style={{fontSize:11,color:"var(--text-faint)",width:24,textAlign:"right",flexShrink:0}}>{bgmVolume}</span>
+              </div>}
+              {isGM&&<div style={{display:"flex",gap:6}}>
+                <input className="coc-input" value={bgmInput} onChange={e=>setBgmInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleSetBgm();}}}
+                  placeholder="YouTube 링크" style={{flex:1,minWidth:0,fontSize:12}}/>
+                <button type="button" className="coc-btn small" onClick={handleSetBgm} disabled={!bgmInput.trim()}>설정</button>
+              </div>}
+              {!isGM&&!bgmUrl&&<div style={{fontSize:12,color:"var(--text-faint)"}}>GM이 BGM을 설정하면 자동으로 재생됩니다.</div>}
+            </div>
+          )}
+        </div>
 
         {isGM&&(
           <>
@@ -4977,36 +5040,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       </div>
 
       {/* BGM 패널 */}
-      {showBgm&&(
-        <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:10,padding:"11px 13px",marginBottom:8,flexShrink:0}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-            <div className="coc-label">BGM</div>
-            <button type="button" onClick={()=>setShowBgm(false)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2}}><X size={13}/></button>
-          </div>
-          {bgmUrl&&!bgmStarted&&(
-            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>setBgmStarted(true)}>
-              ▶ 탭해서 재생 시작
-            </button>
-          )}
-          {bgmUrl&&bgmStarted&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <div style={{flex:1,fontSize:12.5,color:"var(--text-dim)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bgmUrl}</div>
-            <button type="button" className="coc-btn ghost small" onClick={handleStopBgm}>정지</button>
-          </div>}
-          {bgmUrl&&bgmStarted&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{fontSize:12,color:"var(--text-dim)",flexShrink:0}}>내 볼륨</span>
-            <input type="range" min={0} max={100} value={bgmVolume}
-              onChange={e=>setBgmVolume(Number(e.target.value))}
-              style={{flex:1,accentColor:"var(--accent)"}}/>
-            <span className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)",width:26,textAlign:"right",flexShrink:0}}>{bgmVolume}</span>
-          </div>}
-          {isGM&&<div style={{display:"flex",gap:7}}>
-            <input className="coc-input" value={bgmInput} onChange={e=>setBgmInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleSetBgm();}}} placeholder="YouTube 링크를 붙여넣으세요" style={{flex:1}}/>
-            <button type="button" className="coc-btn small" onClick={handleSetBgm} disabled={!bgmInput.trim()}>설정</button>
-          </div>}
-          {!isGM&&!bgmUrl&&<div style={{fontSize:13,color:"var(--text-faint)"}}>GM이 BGM을 설정하면 자동으로 재생됩니다.</div>}
-        </div>
-      )}
-
       {/* 채팅 탭바 */}
       <div className="chat-tab-bar">
         {visibleTabs.map(t=>(
