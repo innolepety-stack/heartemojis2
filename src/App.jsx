@@ -1665,7 +1665,7 @@ function RoomsTab({userCode,onEnterRoom,theme}){
         onSaved={()=>setEditing(null)}
         onDeleted={()=>setEditing(null)}
         userCode={userCode}/>}
-      {exportingRoom&&<ExportModal room={exportingRoom} theme={theme} onClose={()=>setExportingRoom(null)}/>}
+      {exportingRoom&&<ExportModal room={exportingRoom} theme={theme} userCode={userCode} onClose={()=>setExportingRoom(null)}/>}
     </div>
   );
 }
@@ -1714,7 +1714,7 @@ function chatTextToHtml(text,theme){
   if(last<text.length) out+=escapeHtmlExport(text.slice(last));
   return out.replace(/\n/g,"<br>");
 }
-async function fetchRoomTranscript(room){
+async function fetchRoomTranscript(room,viewerCode){
   const [msgEntries,tabsData]=await Promise.all([
     storeListValues(`chat:${room.id}:`,true),
     storeGet(`tabs:${room.id}`,true),
@@ -1723,6 +1723,12 @@ async function fetchRoomTranscript(room){
   const labelOf={};tabs.forEach(t=>labelOf[t.id]=t.label);
   const byTab={};
   msgEntries.forEach(({value:m})=>{
+    // 귓속말은 보낸 사람과 받은 사람의 기록에만 남깁니다.
+    // (이 걸러내기가 없으면 전문 보기·내보내기로 남의 귓속말이 다 보여요.)
+    if(m.whisperTo&&m.whisperTo.length){
+      if(!viewerCode)return;
+      if(m.userCode!==viewerCode&&!m.whisperTo.includes(viewerCode))return;
+    }
     const tid=m.tabId||"main";
     (byTab[tid]=byTab[tid]||[]).push(m);
   });
@@ -1853,12 +1859,12 @@ function openInNewTab(content,mime){
 }
 
 // GM뿐 아니라 참가자 누구나 자기 방 채팅 기록을 HTML로 내보낼 수 있는 간단한 모달
-function ExportModal({room,theme,onClose}){
+function ExportModal({room,theme,onClose,userCode}){
   const [exporting,setExporting]=useState(false);
   const doExport=async()=>{
     setExporting(true);
     try{
-      const transcript=await fetchRoomTranscript(room);
+      const transcript=await fetchRoomTranscript(room,userCode);
       const base=safeFileName(room.title)+"_"+(room.date||"session");
       downloadFile(base+".html", buildHtmlExport(room,transcript,theme), "text/html;charset=utf-8");
     }catch(err){
@@ -1894,7 +1900,6 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
   const [error,setError]=useState("");
   const [regenerating,setRegenerating]=useState(false);
   const [copied,setCopied]=useState(false);
-
 
   const submit=async()=>{
     const t=title.trim();if(!t)return;
@@ -2092,9 +2097,11 @@ function groupMessages(msgs){
   const groups=[];
   for(const m of msgs){
     const last=groups[groups.length-1];
-    const sameBlock=last&&m.speaker!=="choice"&&m.speaker!=="judge"&&m.speaker!=="choicepick"&&last.speaker===m.speaker&&last.userCode===m.userCode&&last.characterName===m.characterName&&m.timestamp-last.lastTimestamp<60000;
+    // 귓속말은 "누구에게 보냈는지"가 다르면 같은 묶음으로 합치지 않습니다.
+    const sameWhisper=(last?(last.whisperTo||[]).join(","):"")===((m.whisperTo||[]).join(","));
+    const sameBlock=last&&m.speaker!=="choice"&&m.speaker!=="judge"&&m.speaker!=="choicepick"&&last.speaker===m.speaker&&last.userCode===m.userCode&&last.characterName===m.characterName&&sameWhisper&&m.timestamp-last.lastTimestamp<60000;
     if(sameBlock){last.lines.push(m.text);last.items.push(m);last.lastTimestamp=m.timestamp;}
-    else groups.push({id:m.id,speaker:m.speaker,userCode:m.userCode,characterName:m.characterName,nameColor:m.nameColor,avatar:m.avatar,timestamp:m.timestamp,lastTimestamp:m.timestamp,lines:[m.text],items:[m]});
+    else groups.push({id:m.id,speaker:m.speaker,userCode:m.userCode,characterName:m.characterName,nameColor:m.nameColor,avatar:m.avatar,whisperTo:m.whisperTo,timestamp:m.timestamp,lastTimestamp:m.timestamp,lines:[m.text],items:[m]});
   }
   return groups;
 }
@@ -2174,7 +2181,8 @@ function FormattedText({text,style={},maxChars}){
 function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=1}){
   // 아이콘은 size가 숫자라 em을 못 써서, 채팅 글자 크기 배율(scale)을 직접 곱해줍니다.
   const ico=n=>Math.round(n*scale);
-  const{speaker,characterName,nameColor,avatar,timestamp,lines,items}=group;
+  const{speaker,characterName,nameColor,avatar,timestamp,lines,items,whisperTo}=group;
+  const isWhisper=!!(whisperTo&&whisperTo.length);
   const nameCol=safeNameColor(nameColor)||"var(--accent-deep)";
   // "judge"(판정)는 없어진 기능이지만, 예전 세션에 남아있는 기록이 그대로 보이도록
   // 표시 경로는 남겨둡니다. (새로 만들 수는 없어요)
@@ -2259,7 +2267,8 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
   }
 
   return(
-    <div style={{display:"flex",gap:"0.64em",padding:"0.43em 0"}}>
+    <div style={{display:"flex",gap:"0.64em",padding:"0.43em 0",
+      ...(isWhisper?{background:"var(--bg-panel)",borderRadius:10,paddingLeft:"0.5em",paddingRight:"0.5em"}:{})}}>
       <div style={{width:"2em",height:"2em",borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:"0.07em",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={ico(11)} color="var(--accent-soft)"/>}
       </div>
@@ -2269,6 +2278,12 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
           {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:nameCol,fontWeight:600,fontSize:"0.86em"}}>{characterName}</span>}
           {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:"0.86em"}}>{characterName} <span className="coc-mono" style={{fontSize:"0.68em"}}>OOC</span></span>}
           <span className="coc-mono" style={{fontSize:"0.71em",color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
+          {isWhisper&&(
+            <span style={{fontSize:"0.64em",fontWeight:700,color:"var(--accent-deep)",
+              background:"var(--accent-soft)",borderRadius:999,padding:"1px 7px",flexShrink:0}}>
+              귓속말
+            </span>
+          )}
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:"0.5em"}}>
           {lines.map((line,i)=>{
@@ -3278,8 +3293,7 @@ function HandoutViewerModal({handouts,onClose,onSelect}){
 function HandoutFloatingDetail({handout,onClose,index=0}){
   const wrapRef=useRef(null);
   const [folded,setFolded]=useState(false);
-  // 사진이 있는 핸드아웃은 배경/테두리를 없애서 PNG의 투명한 부분이 그대로 비쳐 보이게 합니다.
-  const hasImg=!!handout.image;
+
   // 옮긴 자리와 크기는 핸드아웃별로 이 기기에 기억됩니다.
   // (설정 화면에 다녀오면 창이 다시 그려지는데, 예전엔 그때마다 위치가 처음으로 돌아갔어요.)
   const [z,bringToFront]=usePanelFront();
@@ -3376,15 +3390,14 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
       style={{...anchor,width:Math.min(size.w,window.innerWidth-16),
         height:autoHeight?"auto":size.h,maxHeight:"92vh",
         display:"flex",flexDirection:"column",
-        background:hasImg?"transparent":"var(--surface)",
-        border:hasImg?"none":"1px solid var(--border)",borderRadius:14,
-        boxShadow:hasImg?"none":"0 10px 36px rgba(0,0,0,0.24)",
+        background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
+        boxShadow:"0 10px 36px rgba(0,0,0,0.24)",
+
         zIndex:z,overflow:"hidden",touchAction:"none"}}>
       <div {...dragProps}
         style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px 9px 13px",cursor:"grab",
-          background:hasImg?"var(--glass)":"var(--bg-panel)",backdropFilter:hasImg?"blur(6px)":undefined,
-          borderRadius:hasImg?10:0,marginBottom:hasImg?6:0,
-          borderBottom:hasImg?"none":"1px solid var(--border-soft)",flexShrink:0}}>
+          background:"var(--bg-panel)",borderBottom:"1px solid var(--border-soft)",flexShrink:0}}>
+
         <Mail size={14} color="var(--accent-deep)"/>
         <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"var(--accent-deep)",
           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{handout.title}</span>
@@ -3400,15 +3413,11 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
         </button>
       </div>
       <div className="coc-scroll" style={{flex:autoHeight?"0 1 auto":1,minHeight:0,overflowY:"auto",
-        padding:hasImg?0:"12px 14px 14px",touchAction:"pan-y"}}>
+        padding:"12px 14px 14px",touchAction:"pan-y"}}>
         {handout.image&&<img src={handout.image} alt=""
-          style={{width:"100%",display:"block",marginBottom:handout.text?8:0}}/>}
-        {handout.text&&(
-          <div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6,
-            ...(hasImg?{background:"var(--glass)",backdropFilter:"blur(6px)",borderRadius:10,padding:"10px 12px",margin:"0 2px 2px"}:{})}}>
-            {handout.text}
-          </div>
-        )}
+          style={{width:"100%",display:"block",borderRadius:8,border:"1px solid var(--border)",marginBottom:handout.text?10:0}}/>}
+        {handout.text&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}>{handout.text}</div>}
+
       </div>
 
       {/* 우측 하단 손잡이 — 끌면 창 크기가 바뀝니다 */}
@@ -3705,7 +3714,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const viewFullTranscript=async()=>{
     setLoadingFullTranscript(true);
     try{
-      const transcript=await fetchRoomTranscript(room);
+      const transcript=await fetchRoomTranscript(room,userCode);
       const themeForExport=dark?toDarkTheme(deriveThemeFromColor(customColor)):deriveThemeFromColor(customColor);
       openInNewTab(buildHtmlExport(room,transcript,themeForExport,{interactive:true}),"text/html;charset=utf-8");
     }catch(err){
@@ -3944,6 +3953,21 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     seenHandoutRef.current=merged;
     try{ localStorage.setItem(seenHandoutKey,JSON.stringify(merged)); }catch{}
   },[myHandouts]); // eslint-disable-line
+
+  // 귓속말: 고른 사람에게만 보이는 메시지. 플레이어는 GM에게만, GM은 아무에게나 보낼 수 있어요.
+  const [whisperTo,setWhisperTo]=useState([]);
+  const [showWhisperPick,setShowWhisperPick]=useState(false);
+  const whisperPickRef=useRef(null);
+  useEffect(()=>{
+    if(!showWhisperPick)return;
+    const h=e=>{ if(whisperPickRef.current&&!whisperPickRef.current.contains(e.target)) setShowWhisperPick(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[showWhisperPick]);
+  // 플레이어가 고를 수 있는 대상은 GM뿐, GM은 방의 다른 참가자 전원.
+  const whisperCandidates=isGM
+    ? participantsList.filter(c=>c!==userCode)
+    : (room.creatorCode&&room.creatorCode!==userCode?[room.creatorCode]:[]);
 
   // 입력창 높이 — 위쪽 손잡이를 끌어서 조절합니다. 입력창이 커지면 그만큼 채팅 목록이
   // 좁아지고, 줄이면 채팅 목록이 넓어져요. (채팅 영역은 남는 공간을 채우는 구조라 자동입니다)
@@ -4402,7 +4426,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     document.addEventListener("mouseup",onUp);
   };
 
-
   // 주사위 컷인: 판정 결과 등급(대성공/실패 등)별로 GM이 미리 넣어둔 APNG/이미지이 그 결과가
   // 나왔을 때 무대에 자동으로 뜹니다. 방 전체에 동기화됩니다. Cloudflare에 올리고 URL만
   // 저장하기 때문에, 큰 APNG여도 용량 걱정이나 조각내기가 필요 없습니다.
@@ -4718,7 +4741,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     document.addEventListener("mouseup",onUp);
   };
 
-
   // 내 캐릭터 문서를 실시간으로 구독합니다. GM이 광기를 부여하는 등 외부에서
   // 캐릭터 정보가 바뀌면, 방을 나갔다 들어올 필요 없이 바로 반영됩니다.
   useEffect(()=>{
@@ -4774,7 +4796,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     await storeSet(`tabs:${room.id}`,next,true);
   };
 
-  const doSend=useCallback(async(sp,msgText,charName,av,tabId,nameColor)=>{
+  const doSend=useCallback(async(sp,msgText,charName,av,tabId,nameColor,whisperTo)=>{
     // 공백(스페이스, 　 같은 전각 공백 포함)만 있는 메시지도 여백용으로 보낼 수 있게,
     // trim해서 비었는지 검사하지 않고 원문 길이만 확인합니다. (내용은 trim하지 않고 그대로 저장)
     if(!msgText||msgText.length===0)return false;
@@ -4783,6 +4805,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const msgId=newId();
     const key=tid==="main"?`chat:${room.id}:${msgId}`:`chat:${room.id}:${tid}:${msgId}`;
     const msg={id:msgId,roomId:room.id,userCode,tabId:tid,speaker:sp,characterName:charName,avatar:av||"",nameColor:safeNameColor(nameColor),text:t,timestamp:Date.now()};
+    // 귓속말: 받는 사람 목록을 함께 저장합니다. 보낸 사람과 받는 사람 화면에만 보여요.
+    if(whisperTo&&whisperTo.length) msg.whisperTo=whisperTo;
     const nextMap=new Map(tabMsgMapsRef.current[tid]||new Map()).set(msg.id,msg);
     tabMsgMapsRef.current={...tabMsgMapsRef.current,[tid]:nextMap};
     setTabMsgMaps(prev=>({...prev,[tid]:nextMap}));
@@ -4798,14 +4822,16 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const raw=text;
     if(!raw||raw.length===0)return;
     const t=resolveInlineDice(raw);
+    // 귓속말 대상이 골라져 있으면 그 사람에게만 가는 메시지로 보냅니다.
+    const wt=whisperTo.length?whisperTo:undefined;
     let ok=false;
     if(isGM&&speaker==="gm"){
       const name=gmTab==="npc"?(npcName.trim()||"NPC"):(profile.name||userCode);
       const avatar=gmTab==="npc"?(npcAvatar||profile.avatar):profile.avatar;
-      ok=await doSend(gmTab,t,name,avatar,undefined,gmTab==="npc"?npcNameColor:"");
+      ok=await doSend(gmTab,t,name,avatar,undefined,gmTab==="npc"?npcNameColor:"",wt);
     }else{
       if(!char){ setCreatingChar(true); return; } // 캐릭터가 아직 없으면 만들기 창부터 열어줍니다.
-      ok=await doSend("ic",t,char.name,char.avatar,undefined,char.nameColor);
+      ok=await doSend("ic",t,char.name,char.avatar,undefined,char.nameColor,wt);
     }
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
   };
@@ -4889,8 +4915,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setShowChoiceCreator(false);
   };
 
-
-  const currentMsgs=Array.from((tabMsgMaps[activeTab]||new Map()).values()).sort((a,b)=>a.timestamp-b.timestamp);
+  // 귓속말은 보낸 사람과 받는 사람에게만 보입니다. 나머지 사람 화면에서는 아예 걸러냅니다.
+  // (그래서 서로 다른 귓속말을 받았다면 각자 자기 것만 보게 됩니다.)
+  const canSeeMsg=m=>!m.whisperTo||m.userCode===userCode||m.whisperTo.includes(userCode);
+  const currentMsgs=Array.from((tabMsgMaps[activeTab]||new Map()).values()).filter(canSeeMsg).sort((a,b)=>a.timestamp-b.timestamp);
   const groups=groupMessages(currentMsgs);
   // 채팅창엔 최근 것들(묶음 기준) 몇 개만 보여줘서, 대화가 많이 쌓여도 화면이 무거워지지 않게 합니다.
   const visibleGroups=groups.slice(-CHAT_DISPLAY_LIMIT);
@@ -4907,7 +4935,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     },CHAT_FETCH_LIMIT);
     return()=>unsub();
   },[room.id,activeTab]);
-  const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].sort((a,b)=>a.timestamp-b.timestamp);
+  const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].filter(canSeeMsg).sort((a,b)=>a.timestamp-b.timestamp);
 
   // 여러 개 선택 가능한 선택지는 "공지"처럼 계속 붙잡아 둡니다.
   // 하나 고를 때마다 결과 메시지가 쌓여서 원래 선택지가 화면 위로 밀려나 버리는데,
@@ -5673,6 +5701,47 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             )}
           </div>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
+
+          {/* 귓속말 — 고른 사람에게만 보이는 메시지를 보냅니다.
+              플레이어는 캐릭터 버튼 옆에서 GM에게만, GM은 GM 버튼 옆에서 아무에게나 보낼 수 있어요. */}
+          {whisperCandidates.length>0&&(
+            <div style={{position:"relative",display:"flex"}} ref={whisperPickRef}>
+              <button type="button" className="coc-btn small"
+                style={speakerBtnStyle(whisperTo.length>0)}
+                title={whisperTo.length?`귓속말: ${whisperTo.map(displayNameOf).join(", ")}`:"귓속말 보낼 사람 고르기"}
+                onClick={()=>setShowWhisperPick(v=>!v)}>
+                <Mail size={11}/> {whisperTo.length?`귓 ${whisperTo.length}`:"귓"}
+              </button>
+              {showWhisperPick&&(
+                <div style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,zIndex:32,minWidth:150,
+                  background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,
+                  boxShadow:"0 8px 24px rgba(0,0,0,0.16)",padding:8}}>
+                  <div className="coc-label" style={{marginBottom:6}}>귓속말 대상</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:190,overflowY:"auto"}}>
+                    {whisperCandidates.map(code=>{
+                      const on=whisperTo.includes(code);
+                      return(
+                        <label key={code} style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,
+                          color:"var(--text-dim)",cursor:"pointer",padding:"4px 6px",borderRadius:6,
+                          background:on?"var(--bg-panel)":"transparent"}}>
+                          <input type="checkbox" checked={on} style={{cursor:"pointer"}}
+                            onChange={e=>setWhisperTo(w=>e.target.checked?[...w,code]:w.filter(c=>c!==code))}/>
+                          {displayNameOf(code)}{code===room.creatorCode?" (GM)":""}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {whisperTo.length>0&&(
+                    <button type="button" className="coc-btn ghost small"
+                      style={{width:"100%",justifyContent:"center",marginTop:7}}
+                      onClick={()=>{setWhisperTo([]);setShowWhisperPick(false);}}>
+                      귓속말 끄기
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 글자 크기 조절 — 캐릭터/GM 버튼 맞은편(오른쪽 끝)에 동그랗게 */}
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
