@@ -261,7 +261,9 @@ input[type=number] { -moz-appearance: textfield; }
   .chat-resize-handle:hover::after, .chat-resize-handle.dragging::after { background: var(--accent); }
 }
 /* 배경은 stage-panel이 그리므로, 이 층은 꾸미기 버튼·선택지만 얹는 투명한 공간입니다. */
-.stage-scene { flex: 1; position: relative; min-height: 0; }
+/* container-type을 주면 안쪽에서 cqw(무대 가로폭의 1%) 단위를 쓸 수 있습니다.
+   선택지 막대가 무대 크기에 맞춰 같이 줄어들고 커지도록 하기 위한 것입니다. */
+.stage-scene { flex: 1; position: relative; min-height: 0; container-type: inline-size; }
 /* 무대: 배경과 레이어가 놓이는 곳입니다. 코코포리아처럼 무대는 하나뿐이고, 배경이 무대를
    꽉 채우고(cover) 그 위에 레이어가 놓이며, 넘치는 부분은 무대 가장자리에서 잘립니다.
    (예전에는 가운데 65% 크기의 "작은 무대"를 따로 두고 그 바깥을 블러로 채웠는데, 그러면
@@ -373,7 +375,7 @@ input[type=number] { -moz-appearance: textfield; }
 /* 선택지: 화면 중앙에 테마색 알약이 세로로 쌓인 형태 */
 .vn-choice-center {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  display: flex; flex-direction: column; gap: 12px; align-items: center; z-index: 5;
+  display: flex; flex-direction: column; gap: clamp(5px, 1.4cqw, 10px); align-items: center; z-index: 5;
   width: 100%; pointer-events: none;
 }
 .vn-choice-center > * { pointer-events: auto; }
@@ -386,6 +388,13 @@ input[type=number] { -moz-appearance: textfield; }
   text-align: center; font-family: inherit; font-size: 16px; font-weight: 600;
   letter-spacing: 0.02em; cursor: pointer; user-select: none;
   transition: color .18s, background .18s;
+}
+/* 무대 위 막대는 무대 폭(cqw)에 비례해 커지고 작아집니다. 채팅창 폭을 늘려 무대를
+   좁히면 글씨와 여백이 같이 줄어들어요. clamp로 너무 작아지거나 커지지 않게 잡아둡니다. */
+.choice-bar-stage {
+  width: min(460px, 72cqw);
+  font-size: clamp(11px, 2.5cqw, 15px);
+  padding: clamp(6px, 1.7cqw, 11px) clamp(10px, 3cqw, 20px);
 }
 .choice-bar::before, .choice-bar::after {
   content: ""; position: absolute; left: 0; right: 0; height: 1px; pointer-events: none;
@@ -568,6 +577,18 @@ input[type="color"]::-moz-color-swatch { border: none; border-radius: inherit; }
 .chat-tab { font-size: 13px; font-weight:600; padding:7px 13px; cursor:pointer; color:var(--text-faint); border-bottom:2px solid transparent; white-space:nowrap; flex-shrink:0; }
 .chat-tab.active { color:var(--accent-deep); border-bottom-color:var(--accent); }
 `;
+
+// <input type="color">는 CSS 변수를 못 받고 실제 색상값(#rrggbb)만 받습니다.
+// 그래서 지금 화면에 적용된 테마색을 직접 읽어와 기본값으로 씁니다.
+// (테마 변수는 .coc-root에 걸려 있어요.)
+function currentThemeColor(varName="--accent", fallback="#d96fa0"){
+  try{
+    const root=document.querySelector(".coc-root");
+    if(!root) return fallback;
+    const v=getComputedStyle(root).getPropertyValue(varName).trim();
+    return /^#[0-9a-f]{3,8}$/i.test(v) ? v : fallback;
+  }catch{ return fallback; }
+}
 
 // 테마 CSS 변수를 인라인 style 객체로 반환합니다.
 // dark(다크 모드 여부)와 vnAlpha(대사창 투명도, 0~1)까지 함께 받아서
@@ -1042,7 +1063,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
             <div className="coc-label" style={{marginBottom:3}}>이름 색깔</div>
             <div style={{display:"flex",alignItems:"center",gap:5}}>
               <label style={{position:"relative",width:30,height:30,borderRadius:7,overflow:"hidden",border:"1.5px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-                <input type="color" value={sheet.nameColor||"#d96fa0"}
+                <input type="color" value={sheet.nameColor||currentThemeColor()}
                   onChange={e=>setSheet({...sheet,nameColor:e.target.value})}
                   style={{position:"absolute",top:-6,left:-6,width:44,height:44,border:"none",padding:0,cursor:"pointer"}}/>
               </label>
@@ -1096,7 +1117,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
         <div className="coc-label" style={{marginBottom:5}}>이름 색깔</div>
         <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <label style={{position:"relative",width:38,height:38,borderRadius:9,overflow:"hidden",border:"2px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-            <input type="color" value={sheet.nameColor||"#d96fa0"}
+            <input type="color" value={sheet.nameColor||currentThemeColor()}
               onChange={e=>setSheet({...sheet,nameColor:e.target.value})}
               style={{position:"absolute",top:-6,left:-6,width:52,height:52,border:"none",padding:0,cursor:"pointer"}}/>
           </label>
@@ -2208,7 +2229,7 @@ const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성
 function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
   const [folded,setFolded]=useState(false);
   const [fontSize,setFontSize]=useState(16);
-  const [color,setColor]=useState("#c0392b");
+  const [color,setColor]=useState(()=>currentThemeColor("--accent-deep","#c0392b"));
   const [code,setCode]=useState("");
   const wrapRef=useRef(null);
   const codeRef=useRef(null);
@@ -4643,18 +4664,40 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 하나 고를 때마다 결과 메시지가 쌓여서 원래 선택지가 화면 위로 밀려나 버리는데,
   // 조사 스팟처럼 여러 번 고르라고 만든 기능이라 그러면 쓰기가 어려워요.
   // 그래서 (1) 다 고르거나 (2) GM이 내릴 때까지 계속 보이게 합니다.
-  const pinnedChoice=(()=>{
+  // 서버에서는 최근 메시지 몇 개만 받아옵니다. 그래서 선택지 뒤로 대화가 쌓이면 선택지
+  // 메시지가 그 범위 밖으로 밀려나 목록에서 통째로 사라지고, 공지와 무대 선택지도 같이
+  // 없어져 버렸어요. 그래서 한 번 잡은 공지는 따로 붙들어 두고(stickyChoice), 그 메시지만
+  // 개별로 구독해서 선택 현황·내리기 여부를 계속 따라갑니다.
+  const [stickyChoice,setStickyChoice]=useState(null);
+  useEffect(()=>{
     for(let i=stageMsgs.length-1;i>=0;i--){
       const m=stageMsgs[i];
       if(m.speaker!=="choice") continue;
       let d=null; try{d=JSON.parse(m.text);}catch{ continue; }
-      if(!d?.options) continue;
-      if(d.multi===false) return null;                       // 하나만 고르는 건 기존처럼 잠깐만
-      if(d.closed) return null;                              // GM이 내린 공지
-      if(d.options.every(o=>d.picked?.[o])) return null;     // 다 골랐으면 끝
-      return {msg:m,data:d};
+      if(!d?.options||d.multi===false) return;   // 여러 개 고르는 선택지만 공지로 붙듭니다
+      setStickyChoice(prev=>(prev&&prev.id===m.id)?prev:m);
+      return;
     }
-    return null;
+  },[stageMsgs]);
+  // 붙들어 둔 공지가 목록 밖으로 밀려나도 최신 상태를 알 수 있도록 그 문서만 따로 구독합니다.
+  useEffect(()=>{
+    if(!stickyChoice) return;
+    const tid=stickyChoice.tabId||"main";
+    const key=tid==="main"?`chat:${room.id}:${stickyChoice.id}`:`chat:${room.id}:${tid}:${stickyChoice.id}`;
+    const unsub=storeListenDoc(key,doc=>{
+      if(!doc){ setStickyChoice(null); return; }  // 지워진 선택지
+      setStickyChoice(doc);
+    });
+    return()=>unsub();
+  },[stickyChoice?.id,room.id]); // eslint-disable-line
+
+  const pinnedChoice=(()=>{
+    if(!stickyChoice) return null;
+    let d=null; try{d=JSON.parse(stickyChoice.text);}catch{ return null; }
+    if(!d?.options||d.multi===false) return null;
+    if(d.closed) return null;                            // GM이 내린 공지
+    if(d.options.every(o=>d.picked?.[o])) return null;   // 다 골랐으면 끝
+    return {msg:stickyChoice,data:d};
   })();
   const [choiceNoticeFolded,setChoiceNoticeFolded]=useState(false);
   // 새 공지가 뜨면 접힘 상태를 풀어줍니다.
@@ -4744,22 +4787,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [cutinQueue,setCutinQueue]=useState([]);   // 아직 재생 안 된 것들 [{id,url}]
   const [playingCutin,setPlayingCutin]=useState(null); // 지금 재생 중인 것 {id,url}
   const seenCutinIdsRef=useRef(new Set());
-  const cutinInitedRef=useRef(false);
+  // 방에 들어온 시각. 이 시각보다 "먼저 찍힌" 주사위는 지난 기록이므로 재생하지 않습니다.
+  // 예전에는 "첫 번째 렌더에 있던 것만 지난 기록"으로 처리했는데, 그 시점엔 서버 응답이
+  // 아직 안 와서 목록이 비어 있었어요. 그래서 잠시 뒤 기록이 통째로 도착하면 전부
+  // "새 주사위"로 오인해 입장하자마자 옛 컷인이 우르르 재생됐습니다.
+  const cutinSinceRef=useRef(Date.now());
 
   // 새로 도착한 주사위 메시지를 대기열에 넣습니다.
   useEffect(()=>{
-    const diceMsgs=stageMsgs.filter(m=>m.speaker==="dice");
-    if(!cutinInitedRef.current){
-      // 방에 처음 들어왔을 때 이미 있던 주사위 기록은 "이미 본 것"으로 처리합니다.
-      // (안 그러면 입장하자마자 과거 컷인이 우르르 재생돼요.)
-      diceMsgs.forEach(m=>seenCutinIdsRef.current.add(m.id));
-      cutinInitedRef.current=true;
-      return;
-    }
     const fresh=[];
-    for(const m of diceMsgs){
+    for(const m of stageMsgs){
+      if(m.speaker!=="dice") continue;
       if(seenCutinIdsRef.current.has(m.id)) continue;
       seenCutinIdsRef.current.add(m.id);
+      if(!(m.timestamp>cutinSinceRef.current)) continue; // 입장 전에 굴린 건 건너뜁니다
       let d=null; try{d=JSON.parse(m.text);}catch{}
       const url=d&&diceCutins[d.label];
       if(url) fresh.push({id:m.id,url}); // 그 등급용 컷인 이미지가 있을 때만 재생
@@ -5389,7 +5430,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="이름 (미입력 시 NPC로 출력됩니다.)" style={{flex:1}}/>
             {/* NPC 이름 색깔 */}
             <label title="NPC 이름 색깔" style={{position:"relative",width:34,height:34,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-              <input type="color" value={npcNameColor||"#d96fa0"} onChange={e=>setNpcNameColor(e.target.value)}
+              <input type="color" value={npcNameColor||currentThemeColor()} onChange={e=>setNpcNameColor(e.target.value)}
                 style={{position:"absolute",top:-6,left:-6,width:48,height:48,border:"none",padding:0,cursor:"pointer"}}/>
             </label>
             {npcNameColor&&<button type="button" className="coc-btn ghost small" title="이름 색 기본값으로" onClick={()=>setNpcNameColor("")} style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:3}}>색<RotateCcw size={10}/></button>}
