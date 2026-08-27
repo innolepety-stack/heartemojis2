@@ -2178,7 +2178,7 @@ function FormattedText({text,style={},maxChars}){
   );
 }
 
-function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=1}){
+function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=1,nameOf=(c=>c)}){
   // 아이콘은 size가 숫자라 em을 못 써서, 채팅 글자 크기 배율(scale)을 직접 곱해줍니다.
   const ico=n=>Math.round(n*scale);
   const{speaker,characterName,nameColor,avatar,timestamp,lines,items,whisperTo}=group;
@@ -2279,9 +2279,12 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
           {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:"0.86em"}}>{characterName} <span className="coc-mono" style={{fontSize:"0.68em"}}>OOC</span></span>}
           <span className="coc-mono" style={{fontSize:"0.71em",color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
           {isWhisper&&(
-            <span style={{fontSize:"0.64em",fontWeight:700,color:"var(--accent-deep)",
-              background:"var(--accent-soft)",borderRadius:999,padding:"1px 7px",flexShrink:0}}>
-              귓속말
+            <span title={whisperTo.map(nameOf).join(", ")}
+              style={{fontSize:"0.64em",fontWeight:700,color:"var(--accent-deep)",
+                background:"var(--accent-soft)",borderRadius:999,padding:"1px 8px",
+                marginLeft:"auto",flexShrink:0,maxWidth:"55%",
+                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {isMine ? whisperTo.map(nameOf).join(", ") : "나에게"}
             </span>
           )}
         </div>
@@ -5058,9 +5061,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   //   오래돼서 밀려나 있으면 판단할 근거가 아예 안 보여서 대사창이 사라지는 문제가
   //   있었습니다. 마지막으로 확인된 값을 ref에 기억해뒀다가, 지금 가져온 범위 안에서
   //   새로 판단할 근거가 없을 때는 그 기억해둔 값을 그대로 씁니다.
+  // 귓속말은 무대 대사창에 띄우지 않습니다. 무대는 모두가 함께 보는 화면이라,
+  // 몰래 주고받은 말이 여기 뜨면 귓속말인 의미가 없어요. (채팅 목록에서만 보입니다.)
+  const notWhisper=m=>!(m.whisperTo&&m.whisperTo.length);
   const foundMy=[...stageMsgs].reverse().find(m=>
-    m.speaker==="narrate"||m.speaker==="system"||
-    (m.userCode===userCode&&["ic","npc","dice"].includes(m.speaker))
+    notWhisper(m)&&(
+      m.speaker==="narrate"||m.speaker==="system"||
+      (m.userCode===userCode&&["ic","npc","dice"].includes(m.speaker))
+    )
   );
   if(foundMy) myLatestDialogueRef.current=foundMy;
   const myLatestDialogue=foundMy||myLatestDialogueRef.current;
@@ -5068,6 +5076,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   let othersLatestDialogue=null, othersDecided=false;
   for(let i=stageMsgs.length-1;i>=0;i--){
     const m=stageMsgs[i];
+    if(!notWhisper(m)) continue;   // 귓속말은 무대에 띄우지 않고 지나칩니다
     if(m.speaker==="narrate"||m.speaker==="system"){ othersDecided=true; break; } // 서술을 먼저 만나면 상단은 비운 채로 멈춤
     if(m.userCode!==userCode&&["ic","npc","dice"].includes(m.speaker)){ othersLatestDialogue=m; othersDecided=true; break; }
     // 그 외(선택지·판정·내 대사 등)는 건너뛰고 계속 거슬러 올라갑니다
@@ -5647,7 +5656,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               {loadingFullTranscript?"불러오는 중...":"전문 보기 (새 탭)"}
             </button>
           )}
-          {visibleGroups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice} scale={chatFontSize/14}/>)}
+          {visibleGroups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice} scale={chatFontSize/14} nameOf={displayNameOf}/>)}
         </div>
         {/* "OO님이 입력 중..." 표시 전용 자리. 항상 이 자리가 고정으로 있고 텍스트만 나타났다 사라져서,
             떴다 안 떴다 할 때 채팅창이나 아래 탭이 밀리지 않습니다. */}
