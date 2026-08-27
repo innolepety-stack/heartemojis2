@@ -3811,6 +3811,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [scenesList,setScenesList]=useState([{id:"legacy",name:"장면 1"}]);
   const [activeSceneId,setActiveSceneId]=useState("legacy");
   const sceneRoomId=activeSceneId==="legacy"?room.id:`${room.id}:${activeSceneId}`;
+  // 장면별로 한 번 받아온 배경·레이어 정보를 기억해둡니다. 같은 장면으로 다시 돌아올 때
+  // 서버 응답을 기다리지 않고 곧바로 화면을 그리기 위해서예요. (응답이 도착하면 최신 내용으로
+  // 자연스럽게 갱신됩니다.) 로딩이 걸리는 것처럼 보이던 게 대부분 이 대기 시간이었어요.
+  const sceneCacheRef=useRef({});
   useEffect(()=>{
     const unsub1=storeListenDoc(`scenelist:${room.id}`,d=>{
       if(d?.scenes?.length) setScenesList(d.scenes);
@@ -3820,6 +3824,42 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     });
     return()=>{unsub1();unsub2();};
   },[room.id]);
+  // 지금 보고 있지 않은 장면들도 백그라운드에서 미리 한 번 받아와 캐시에 채우고, 이미지도
+  // 미리 내려받아 둡니다. 그래서 장면을 처음 전환할 때도 거의 기다림 없이 바로 뜹니다.
+  // (한가할 때 조용히 도는 작업이라 지금 화면에는 영향을 주지 않아요.)
+  useEffect(()=>{
+    let cancelled=false;
+    const warm=url=>{ if(url){ const im=new Image(); im.src=url; } };
+    const run=async()=>{
+      for(const s of scenesList){
+        const rid=s.id==="legacy"?room.id:`${room.id}:${s.id}`;
+        if(cancelled) return;
+        if(rid===sceneRoomId) continue;              // 지금 보는 장면은 이미 구독 중
+        if(sceneCacheRef.current[rid]) {             // 이미 받아둔 장면은 이미지만 데워둡니다
+          warm(sceneCacheRef.current[rid].sceneUrl);
+          Object.values(sceneCacheRef.current[rid].layerDataMap||{}).forEach(l=>warm(l?.url));
+          continue;
+        }
+        try{
+          const manifest=await storeGet(`scene:${rid}`,true);
+          const orderDoc=await storeGet(`layerorder:${rid}`,true);
+          const order=orderDoc?.order||[];
+          const map={};
+          for(const layerId of order){
+            const d=await storeGet(`layerdata:${rid}:${layerId}`,true);
+            if(d) map[layerId]=d;
+          }
+          if(cancelled) return;
+          sceneCacheRef.current[rid]={sceneUrl:manifest?.url||"",layerOrder:order,layerDataMap:map};
+          warm(manifest?.url);
+          Object.values(map).forEach(l=>warm(l?.url));
+        }catch{ /* 미리 받기는 실패해도 그냥 넘어갑니다 — 전환할 때 정상적으로 다시 받아와요 */ }
+      }
+    };
+    const t=setTimeout(run,1200); // 방에 막 들어온 직후에는 채팅 로딩을 방해하지 않도록 조금 기다립니다
+    return()=>{cancelled=true;clearTimeout(t);};
+  },[room.id,scenesList,sceneRoomId]);
+
   const addScene=async()=>{
     const id=newId();
     const name=`장면 ${scenesList.length+1}`;
@@ -3861,8 +3901,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [showMapSettings,setShowMapSettings]=useState(false);
   const sceneInputRef=useRef(null);
   useEffect(()=>{
+    // 먼저 기억해둔 값으로 즉시 그리고(없으면 비웁니다), 서버 응답이 오면 갱신합니다.
+    setSceneUrl(sceneCacheRef.current[sceneRoomId]?.sceneUrl||"");
     const unsub=storeListenDoc(`scene:${sceneRoomId}`,manifest=>{
-      setSceneUrl(manifest?.url||"");
+      const url=manifest?.url||"";
+      sceneCacheRef.current[sceneRoomId]={...sceneCacheRef.current[sceneRoomId],sceneUrl:url};
+      setSceneUrl(url);
     });
     return()=>unsub();
   },[sceneRoomId]);
@@ -3982,11 +4026,20 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [seenOnlineIds,setSeenOnlineIds]=useState([]); // 참가자 온라인 알림 점: 확인하면 사라지도록
   const layerFileInputRef=useRef(null);
   useEffect(()=>{
-    const unsubOrder=storeListenDoc(`layerorder:${sceneRoomId}`,d=>{ setLayerOrder(d?.order||[]); });
+    // 배경과 마찬가지로, 기억해둔 레이어를 먼저 그려서 전환이 바로 되는 것처럼 보이게 합니다.
+    const cached=sceneCacheRef.current[sceneRoomId];
+    setLayerOrder(cached?.layerOrder||[]);
+    setLayerDataMap(cached?.layerDataMap||{});
+    const unsubOrder=storeListenDoc(`layerorder:${sceneRoomId}`,d=>{
+      const order=d?.order||[];
+      sceneCacheRef.current[sceneRoomId]={...sceneCacheRef.current[sceneRoomId],layerOrder:order};
+      setLayerOrder(order);
+    });
     const prefix=`layerdata:${sceneRoomId}:`;
     const unsubData=storeListenPrefix(prefix,list=>{
       const map={};
       list.forEach(item=>{ if(item.value) map[item.key.slice(prefix.length)]=item.value; });
+      sceneCacheRef.current[sceneRoomId]={...sceneCacheRef.current[sceneRoomId],layerDataMap:map};
       setLayerDataMap(map);
     });
     return()=>{unsubOrder();unsubData();};
@@ -4049,22 +4102,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return!(res&&res.ok===false);
   };
   // markers/items/foreground를 한데 모아 위치를 계산하고, 레이어로 "지정한 장면"에 저장합니다.
-  const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName)=>{
+  // 한 장면이 차지하는 범위(코코포리아 좌표 기준)를 계산합니다. 배치 배율을 정할 때 씁니다.
+  const computeSceneBBox=(source,fileByName)=>{
+    const {items,markers,foregroundUrl,fieldWidth,fieldHeight}=source;
     const combined={...(items||{}),...(markers||{})};
     const fw=fieldWidth||100, fh=fieldHeight||100;
-    const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>it.order||it.z||0));
-    // 필드(코코포리아가 실제로 보여주는 영역) 자체도 "아이템 하나"처럼 범위 계산에 포함시킵니다.
-    // 예전엔 전경만 필드 크기로 고정하고 다른 장식 아이템들은 "아이템 전체 범위" 기준으로
-    // 계산해서, 서로 기준이 달라 액자 장식과 전경이 어긋나 보이는 문제가 있었습니다. 이제는
-    // 전경도 다른 아이템들과 똑같은 계산식을 타서, 서로 정확한 비율로 맞물립니다.
-    // (__field__는 그려지지 않고 범위 계산에만 참여합니다.)
-    const fieldRect={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
-    combined["__field__"]=fieldRect;
-    if(foregroundUrl&&fileByName[foregroundUrl]){
-      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,order:maxOrder+1};
-    }
-    const sorted=Object.entries(combined).filter(([k])=>k!=="__field__").map(([,v])=>v)
-      .sort((a,b)=>(b.order??b.z??0)-(a.order??a.z??0));
+    combined["__field__"]={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
+    if(foregroundUrl&&fileByName[foregroundUrl]) combined["__fg__"]={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
     let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
     for(const it of Object.values(combined)){
       const w=it.width||10,h=it.height||10;
@@ -4075,13 +4119,32 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       minX=Math.min(minX,cx-halfW);maxX=Math.max(maxX,cx+halfW);
       minY=Math.min(minY,cy-halfH);maxY=Math.max(maxY,cy+halfH);
     }
-    const boundW=Math.max(1,maxX-minX), boundH=Math.max(1,maxY-minY);
+    return {minX,minY,boundW:Math.max(1,maxX-minX),boundH:Math.max(1,maxY-minY)};
+  };
+
+  // frame(기준 범위)을 밖에서 받아서, 여러 장면이 "같은 배율"로 배치되도록 합니다.
+  // 코코포리아처럼, 이 기준보다 큰 컷인 같은 건 무대 밖으로 넘쳐서 잘립니다.
+  const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName,frame)=>{
+    const combined={...(items||{}),...(markers||{})};
+    const fw=fieldWidth||100, fh=fieldHeight||100;
+    const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>it.order||it.z||0));
+    const fieldRect={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
+    if(foregroundUrl&&fileByName[foregroundUrl]){
+      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,order:maxOrder+1};
+    }
+    const sorted=Object.entries(combined).map(([,v])=>v)
+      .sort((a,b)=>(b.order??b.z??0)-(a.order??a.z??0));
+    const {minX,minY,boundW,boundH}=frame||computeSceneBBox({items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName);
     const stageEl=document.querySelector(".stage-scene");
     const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
     const stageRatio=(sr.width||16)/(sr.height||9);
     const fieldRatio=boundW/boundH;
-    const fitW=fieldRatio>=stageRatio?1:fieldRatio/stageRatio;
-    const fitH=fieldRatio>=stageRatio?stageRatio/fieldRatio:1;
+    // 배경(.stage-inner-bg)은 background-size:cover 로 작은 무대를 꽉 채우고 넘치는 부분은
+    // 잘라냅니다. 예전엔 마커만 "contain"(전부 안에 들어가게 축소)으로 맞춰서, 배경은 꽉 찼는데
+    // 마커만 가운데 작게 모이고 양옆에 여백이 생겼어요. 코코포리아는 둘이 같은 기준이므로,
+    // 마커도 배경과 똑같이 cover로 맞춥니다. (그래서 padX/padY가 음수가 되어 밖으로 넘칩니다.)
+    const fitW=fieldRatio>=stageRatio?fieldRatio/stageRatio:1;
+    const fitH=fieldRatio>=stageRatio?1:stageRatio/fieldRatio;
     const padX=(1-fitW)/2*100, padY=(1-fitH)/2*100;
     const newIds=[];
     let missing=0;
@@ -4122,20 +4185,33 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const fileByName={};
     imageFiles.forEach(f=>{ fileByName[f.name]=f; });
 
-    // 지금 보고 있는(활성) 장면에는 "메인" 배치를 그대로 넣습니다. (replace가 켜져 있으면
-    // 기존 레이어를 먼저 지웁니다 — importItemsIntoScene은 항상 order를 통째로 새로 쓰기
-    // 때문에, replace가 꺼져 있으면 기존 것들의 데이터 문서가 남아 있도록 주의합니다.)
-    if(!replace){
-      // 기존 레이어를 유지하려면, 새로 추가되는 것들의 id만 앞에 붙여야 하므로
-      // importItemsIntoScene 대신 기존 로직을 그대로 사용합니다.
-    }
-    if(cocoRoom.backgroundUrl&&fileByName[cocoRoom.backgroundUrl]){
-      await uploadScene(fileByName[cocoRoom.backgroundUrl]);
+    // 코코포리아 파일에 장면 목록이 들어있으면, 그 첫 장면을 "지금 보고 있는 장면"에 그대로
+    // 채웁니다. 예전에는 방의 현재 상태를 활성 장면에 넣고 장면들을 전부 새로 만들어서,
+    // 장면이 3개인 파일을 넣으면 빈 장면 1이 남아 4개가 되곤 했어요. 이제 3개면 3개가 됩니다.
+    const cocoScenes=data?.entities?.scenes;
+    const sceneEntries=cocoScenes?Object.values(cocoScenes).sort((a,b)=>(a.order||0)-(b.order||0)):[];
+    // 활성 장면에 넣을 원본: 장면 목록이 있으면 그 첫 장면, 없으면 방의 현재 상태
+    const firstSrc=sceneEntries.length>0?sceneEntries[0]:cocoRoom;
+
+    // 코코포리아는 "필드"를 화면에 맞추고, 그보다 큰 컷인 같은 건 화면 밖으로 잘라냅니다.
+    // 예전 우리 코드는 장면마다 "모든 마커를 포함한 전체 범위"를 무대에 욱여넣어서,
+    // 화면을 덮는 큰 컷인이 하나만 있어도 그 장면의 배경·소품이 확 쪼그라들고 장면마다
+    // 크기가 널뛰었어요. 이제는 모든 장면의 범위를 재서 그중 "중간값"을 기준 배율로 삼습니다.
+    // 이러면 컷인이 없는 보통 장면들이 무대를 꽉 채우고, 컷인은 코코포리아처럼 넘쳐서 잘립니다.
+    // (중간값이라 컷인 있는 장면 하나 때문에 끌려가지도, 텅 빈 장면 하나 때문에 확대되지도 않아요.)
+    const allSources=sceneEntries.length>0
+      ? sceneEntries.map(sc=>({items,markers:sc.markers,foregroundUrl:sc.foregroundUrl,fieldWidth:sc.fieldWidth,fieldHeight:sc.fieldHeight}))
+      : [{items,markers:cocoRoom.markers,foregroundUrl:cocoRoom.foregroundUrl,fieldWidth:cocoRoom.fieldWidth,fieldHeight:cocoRoom.fieldHeight}];
+    const boxes=allSources.map(s=>computeSceneBBox(s,fileByName)).sort((a,b)=>a.boundW*a.boundH-b.boundW*b.boundH);
+    const sharedFrame=boxes[Math.floor((boxes.length-1)/2)];
+
+    if(firstSrc.backgroundUrl&&fileByName[firstSrc.backgroundUrl]){
+      await uploadScene(fileByName[firstSrc.backgroundUrl]);
     }
     if(replace){
       for(const oldId of layerOrder){ await deleteLayerData(oldId); }
     }
-    const{added,missing}=await importItemsIntoScene(sceneRoomId,{items,markers:cocoRoom.markers,foregroundUrl:cocoRoom.foregroundUrl,fieldWidth:cocoRoom.fieldWidth,fieldHeight:cocoRoom.fieldHeight},fileByName);
+    const{added,missing}=await importItemsIntoScene(sceneRoomId,{items,markers:firstSrc.markers,foregroundUrl:firstSrc.foregroundUrl,fieldWidth:firstSrc.fieldWidth,fieldHeight:firstSrc.fieldHeight},fileByName,sharedFrame);
     if(!replace&&added>0){
       // 기존 레이어 뒤에 이어붙입니다(importItemsIntoScene이 방금 order를 새 것들로만 썼으므로, 합쳐서 다시 씁니다).
       const justWritten=await storeGet(`layerorder:${sceneRoomId}`,true);
@@ -4147,29 +4223,30 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       setLayerOrder(justWritten?.order||[]);
     }
 
-    // entities.scenes에 여러 장면이 들어있으면, 장면마다 우리 쪽에 새 장면을 만들어서
-    // 각자의 배경·전경·markers를 그 안에 채워 넣습니다. (같은 방에 공통으로 있는 items도
-    // 함께 넣어서, 장면이 바뀌어도 공통 소품은 계속 보이도록 합니다.)
-    const cocoScenes=data?.entities?.scenes;
+    // 두 번째 장면부터는 우리 쪽에 새 장면을 만들어서 각자의 배경·전경·markers를 채워 넣습니다.
+    // (같은 방에 공통으로 있는 items도 함께 넣어서, 장면이 바뀌어도 공통 소품은 계속 보이도록 합니다.)
     let addedScenes=0;
-    if(cocoScenes&&Object.keys(cocoScenes).length>0){
-      let curScenesList=scenesList;
-      for(const sc of Object.values(cocoScenes).sort((a,b)=>(a.order||0)-(b.order||0))){
+    if(sceneEntries.length>0){
+      // 활성 장면의 이름도 코코포리아 쪽 이름으로 맞춰줍니다.
+      let curScenesList=scenesList.map(s=>
+        s.id===activeSceneId?{...s,name:firstSrc.name||s.name}:s);
+      for(const sc of sceneEntries.slice(1)){
         const newSceneId=newId();
         const newTargetRoomId=`${room.id}:${newSceneId}`;
         if(sc.backgroundUrl&&fileByName[sc.backgroundUrl]){
           await uploadSceneInto(newTargetRoomId,fileByName[sc.backgroundUrl]);
         }
-        await importItemsIntoScene(newTargetRoomId,{items,markers:sc.markers,foregroundUrl:sc.foregroundUrl,fieldWidth:sc.fieldWidth,fieldHeight:sc.fieldHeight},fileByName);
-        curScenesList=[...curScenesList,{id:newSceneId,name:`장면 ${curScenesList.length+1}`}];
+        await importItemsIntoScene(newTargetRoomId,{items,markers:sc.markers,foregroundUrl:sc.foregroundUrl,fieldWidth:sc.fieldWidth,fieldHeight:sc.fieldHeight},fileByName,sharedFrame);
+        curScenesList=[...curScenesList,{id:newSceneId,name:sc.name||`장면 ${curScenesList.length+1}`}];
         addedScenes++;
       }
       setScenesList(curScenesList);
       await storeSet(`scenelist:${room.id}`,{scenes:curScenesList},true);
     }
 
-    if(missing>0) alert(`레이어는 넣었는데, 이미지 ${missing}개는 첨부 파일 중에서 못 찾아서 건너뛰었어요.`+(addedScenes>0?` (장면 ${addedScenes}개도 새로 만들었어요.)`:""));
-    else if(addedScenes>0) alert(`장면 ${addedScenes}개를 새로 만들어서 각각 배치했어요.`);
+    const totalScenes=sceneEntries.length;
+    if(missing>0) alert(`레이어는 넣었는데, 이미지 ${missing}개는 첨부 파일 중에서 못 찾아서 건너뛰었어요.`+(totalScenes>0?` (장면 ${totalScenes}개를 배치했어요.)`:""));
+    else if(totalScenes>0) alert(`장면 ${totalScenes}개를 배치했어요.`+(addedScenes>0?` (지금 보던 장면에 첫 장면을 넣고, ${addedScenes}개를 새로 만들었어요.)`:""));
   };
   // 드래그·리사이즈 도중(마우스 움직이는 동안)에는 로컬 상태만 바꿔서 부드럽게 보이도록 합니다.
   const updateLayerLocal=(id,patch)=>setLayerDataMap(m=>({...m,[id]:{...m[id],...patch}}));
