@@ -120,8 +120,8 @@ const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
 // 방에 채팅이 아무리 쌓여도 접속할 때마다 그 전부를 다시 내려받지 않도록, 서버에서
 // 가져오는 개수 자체를 최근 것들로만 제한합니다(로딩 속도 개선). 화면에는 그중에서도
 // 최근 몇 개의 "묶음"(같은 사람 연속 메시지는 하나로 묶임)만 보여줍니다.
-const CHAT_FETCH_LIMIT = 15;
-const CHAT_DISPLAY_LIMIT = 15;
+const CHAT_FETCH_LIMIT = 20;
+const CHAT_DISPLAY_LIMIT = 20;
 const CHAR_LABEL = {
   STR: "근력", CON: "건강", SIZ: "크기", DEX: "민첩",
   APP: "외모", INT: "지능", POW: "정신", EDU: "교육",
@@ -3873,6 +3873,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const lastTypingBeatRef=useRef(0);
   useEffect(()=>{
     const key=`typing:${room.id}:${activeTab}:${userCode}`;
+    // 귓속말을 쓰는 중에는 "입력 중..." 표시를 내보내지 않습니다.
+    // (누구에게 몰래 말하는지 다른 사람이 눈치채면 귓속말이 아니니까요.)
+    if(whisperTo.length>0){
+      lastTypingBeatRef.current=0;
+      storeDelete(key,true);
+      return;
+    }
     if(text.trim().length>0){
       const now=Date.now();
       if(now-lastTypingBeatRef.current>2500){
@@ -3884,7 +3891,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       lastTypingBeatRef.current=0;
       storeDelete(key,true);
     }
-  },[text,room.id,activeTab,userCode,char?.name,profile.name,isGM,speaker]);
+  },[text,room.id,activeTab,userCode,char?.name,profile.name,isGM,speaker,whisperTo.length]);
   useEffect(()=>()=>{ storeDelete(`typing:${room.id}:${activeTab}:${userCode}`,true); },[room.id,activeTab,userCode]);
 
   const [typingMap,setTypingMap]=useState({});
@@ -4149,10 +4156,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       const incoming=new Map();
       for(const{value:m}of filtered)incoming.set(m.id,m);
       const prevMap=tabMsgMapsRef.current[activeTab]||new Map();
+      // ⚠️ 여기 들어오는 목록에는 남의 귓속말도 섞여 있습니다(서버에서 통째로 받아오므로).
+      // 알림·소리를 그대로 울리면 볼 수 없는 귓속말까지 알림이 뜨고, 심지어 팝업 본문에
+      // 그 내용이 그대로 보입니다. 그래서 "내가 볼 수 있는 메시지"만 세어야 합니다.
+      const visibleToMe=m=>!m.whisperTo||m.userCode===userCode||m.whisperTo.includes(userCode);
       let hasNewMsg=false;
       let hasNewFromOthers=false;
       incoming.forEach((m,id)=>{
-        if(!prevMap.has(id)){
+        if(!prevMap.has(id)&&visibleToMe(m)){
           hasNewMsg=true;
           if(m.userCode!==userCode) hasNewFromOthers=true;
         }
@@ -4168,7 +4179,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       // 새로 도착한 메시지 중 내가 보낸 게 아니고, 탭이 백그라운드이고, 알림 토글이 켜져있을 때만 알립니다.
       if(firstLoad.current[activeTab]&&"Notification" in window&&Notification.permission==="granted"&&document.visibilityState==="hidden"&&popupEnabled){
         incoming.forEach((m,id)=>{
-          if(!prevMap.has(id)&&m.userCode!==userCode){
+          if(!prevMap.has(id)&&m.userCode!==userCode&&visibleToMe(m)){
             try{
               const body=m.speaker==="image"?"이미지를 보냈어요"
                 :m.speaker==="dice"?"주사위를 굴렸어요"
@@ -4828,7 +4839,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(isGM&&speaker==="gm"){
       const name=gmTab==="npc"?(npcName.trim()||"NPC"):(profile.name||userCode);
       const avatar=gmTab==="npc"?(npcAvatar||profile.avatar):profile.avatar;
-      ok=await doSend(gmTab,t,name,avatar,undefined,gmTab==="npc"?npcNameColor:"",wt);
+      // GM이 귓속말을 보낼 때는 서술(이름 없는 글)이 아니라 GM 이름으로 나가야 합니다.
+      // (서술 탭 상태 그대로 보내면 누가 보낸 귓속말인지 알 수가 없어요.
+      //  NPC 탭이면 그 NPC 이름 그대로 귓속말을 보냅니다.)
+      const sp=wt?"npc":gmTab;
+      ok=await doSend(sp,t,name,avatar,undefined,gmTab==="npc"?npcNameColor:"",wt);
     }else{
       if(!char){ setCreatingChar(true); return; } // 캐릭터가 아직 없으면 만들기 창부터 열어줍니다.
       ok=await doSend("ic",t,char.name,char.avatar,undefined,char.nameColor,wt);
