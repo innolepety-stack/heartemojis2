@@ -373,17 +373,54 @@ input[type=number] { -moz-appearance: textfield; }
 /* 선택지: 화면 중앙에 테마색 알약이 세로로 쌓인 형태 */
 .vn-choice-center {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  display: flex; flex-direction: column; gap: 10px; align-items: center; z-index: 5;
+  display: flex; flex-direction: column; gap: 12px; align-items: center; z-index: 5;
+  width: 100%; pointer-events: none;
 }
-.vn-choice-pill {
-  border: 1.5px solid var(--accent); border-radius: 999px; padding: 12px 34px;
-  font-size: 16px; font-weight: 600; color: var(--accent);
-  background: var(--glass); backdrop-filter: blur(4px);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.1); min-width: 200px; text-align: center;
-  cursor: pointer; transition: background .15s;
+.vn-choice-center > * { pointer-events: auto; }
+
+/* 선택지: 가로로 긴 막대. 양 끝이 배경으로 스르륵 사라지고, 위아래 얇은 선도 같이 흐려집니다.
+   (비주얼노벨 선택지 느낌 — 알약 모양 대신 세로로 하나씩 쌓입니다.) */
+.choice-bar {
+  position: relative; display: block; width: min(560px, 78%);
+  padding: 13px 22px; border: none; background: none;
+  text-align: center; font-family: inherit; font-size: 16px; font-weight: 600;
+  letter-spacing: 0.02em; cursor: pointer; user-select: none;
+  transition: color .18s, background .18s;
 }
-.vn-choice-pill:hover:not(.picked) { background: var(--accent); color: #fff; }
-.vn-choice-pill.picked { color: var(--text-faint); border-color: var(--border); text-decoration: line-through; opacity: 0.6; cursor: default; }
+.choice-bar::before, .choice-bar::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 1px; pointer-events: none;
+}
+.choice-bar::before { top: 0; }
+.choice-bar::after { bottom: 0; }
+
+/* 무대 위(배경 그림 위) — 밝은 글씨에 반투명 유리 느낌 */
+.choice-bar-stage { color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.55); backdrop-filter: blur(2px); }
+.choice-bar-stage {
+  background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.13) 16%,
+    rgba(255,255,255,0.19) 50%, rgba(255,255,255,0.13) 84%, transparent 100%);
+}
+.choice-bar-stage::before, .choice-bar-stage::after {
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.7) 22%,
+    rgba(255,255,255,0.7) 78%, transparent);
+}
+.choice-bar-stage:hover:not(.picked) {
+  background: linear-gradient(to right, transparent 0%, rgba(255,255,255,0.26) 14%,
+    rgba(255,255,255,0.36) 50%, rgba(255,255,255,0.26) 86%, transparent 100%);
+}
+.choice-bar-stage.picked { color: rgba(255,255,255,0.5); text-decoration: line-through; cursor: default; }
+
+/* 채팅창 공지 안 — 밝은 배경이라 테마색 글씨로 */
+.choice-bar-chat { color: var(--accent-deep); font-size: 13px; padding: 9px 16px; width: 100%; }
+.choice-bar-chat {
+  background: linear-gradient(to right, transparent 0%, var(--surface) 12%,
+    var(--surface) 88%, transparent 100%);
+}
+.choice-bar-chat::before, .choice-bar-chat::after {
+  background: linear-gradient(to right, transparent, var(--accent-soft) 20%,
+    var(--accent-soft) 80%, transparent);
+}
+.choice-bar-chat:hover:not(.picked) { color: var(--accent); }
+.choice-bar-chat.picked { color: var(--text-faint); text-decoration: line-through; opacity: 0.65; cursor: default; }
 
 /* 판정: 화면 중앙에 뜨는 짧은 팝업 (서술과 구분되는 느낌) */
 .vn-judge-popup {
@@ -4569,6 +4606,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setShowChoiceCreator(false);
   };
 
+
   const currentMsgs=Array.from((tabMsgMaps[activeTab]||new Map()).values()).sort((a,b)=>a.timestamp-b.timestamp);
   const groups=groupMessages(currentMsgs);
   // 채팅창엔 최근 것들(묶음 기준) 몇 개만 보여줘서, 대화가 많이 쌓여도 화면이 무거워지지 않게 합니다.
@@ -4587,6 +4625,36 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>unsub();
   },[room.id,activeTab]);
   const stageMsgs=activeTab==="main"?currentMsgs:[...mainMsgsExtra].sort((a,b)=>a.timestamp-b.timestamp);
+
+  // 여러 개 선택 가능한 선택지는 "공지"처럼 계속 붙잡아 둡니다.
+  // 하나 고를 때마다 결과 메시지가 쌓여서 원래 선택지가 화면 위로 밀려나 버리는데,
+  // 조사 스팟처럼 여러 번 고르라고 만든 기능이라 그러면 쓰기가 어려워요.
+  // 그래서 (1) 다 고르거나 (2) GM이 내릴 때까지 계속 보이게 합니다.
+  const pinnedChoice=(()=>{
+    for(let i=stageMsgs.length-1;i>=0;i--){
+      const m=stageMsgs[i];
+      if(m.speaker!=="choice") continue;
+      let d=null; try{d=JSON.parse(m.text);}catch{ continue; }
+      if(!d?.options) continue;
+      if(d.multi===false) return null;                       // 하나만 고르는 건 기존처럼 잠깐만
+      if(d.closed) return null;                              // GM이 내린 공지
+      if(d.options.every(o=>d.picked?.[o])) return null;     // 다 골랐으면 끝
+      return {msg:m,data:d};
+    }
+    return null;
+  })();
+  const [choiceNoticeFolded,setChoiceNoticeFolded]=useState(false);
+  // 새 공지가 뜨면 접힘 상태를 풀어줍니다.
+  useEffect(()=>{ if(pinnedChoice) setChoiceNoticeFolded(false); },[pinnedChoice?.msg?.id]);
+  // GM이 공지를 내립니다(모두의 화면에서 사라져요).
+  const closeChoiceNotice=async()=>{
+    const msg=pinnedChoice?.msg;
+    if(!msg)return;
+    let d=null; try{d=JSON.parse(msg.text);}catch{return;}
+    const tid=msg.tabId||"main";
+    const key=tid==="main"?`chat:${room.id}:${msg.id}`:`chat:${room.id}:${tid}:${msg.id}`;
+    await storeSet(key,{...msg,text:JSON.stringify({...d,closed:true})},true);
+  };
   const myLatestDialogueRef=useRef(null);
   const othersLatestDialogueRef=useRef(null);
 
@@ -4647,7 +4715,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 선택지: 정말로 "지금 가장 최근"인 메시지가 선택지일 때만 화면 중앙에 세로로 띄웁니다.
   // (다른 메시지가 그 뒤에 더 오면 자연스럽게 사라져요.)
   const latestOverallMsg=stageMsgs[stageMsgs.length-1];
-  const activeChoice=latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null;
+  // 여러 개 고르는 선택지는 공지로 붙잡아 둔 것(pinnedChoice)을 무대에도 계속 띄웁니다.
+  // 예전엔 하나 고르면 그 결과 메시지가 최신이 되면서 무대에서 선택지가 사라져버렸어요.
+  // 하나만 고르는 선택지는 기존처럼 "가장 최근"일 때만 잠깐 뜹니다.
+  const activeChoice=pinnedChoice?pinnedChoice.msg
+    :(latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null);
   // 판정은 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
   // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
   const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
@@ -4935,10 +5007,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                 {data.options.map(opt=>{
                   const picked=data.picked?.[opt];
                   return (
-                    <div key={opt} className={"vn-choice-pill"+(picked?" picked":"")}
+                    <button key={opt} type="button" disabled={!!picked}
+                      className={"choice-bar choice-bar-stage"+(picked?" picked":"")}
+                      title={picked?`${picked.charName} 선택함`:"누르면 선택돼요"}
                       onClick={()=>!picked&&handlePickChoice({items:[activeChoice]},opt)}>
                       {opt}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -5050,7 +5124,56 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         </div>
       </div>
 
-      {/* BGM 패널 */}
+      {/* 선택지 공지 — 여러 개 고르는 선택지를 채팅 위에 고정해 둡니다.
+          카카오톡 공지사항처럼 눌러서 접었다 펼 수 있고, 여기서 바로 고를 수도 있어요. */}
+      {pinnedChoice&&(()=>{
+        const {msg,data}=pinnedChoice;
+        const total=data.options.length;
+        const done=data.options.filter(o=>data.picked?.[o]).length;
+        return(
+          <div style={{border:"1px solid var(--accent-soft)",background:"var(--bg-panel)",borderRadius:10,
+            marginBottom:6,flexShrink:0,overflow:"hidden"}}>
+            <div onClick={()=>setChoiceNoticeFolded(v=>!v)}
+              style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",cursor:"pointer"}}>
+              <Bell size={13} color="var(--accent-deep)" style={{flexShrink:0}}/>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>선택지</span>
+              <span className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)",flexShrink:0}}>{done}/{total}</span>
+              {choiceNoticeFolded&&(
+                <span style={{fontSize:11.5,color:"var(--text-faint)",flex:1,minWidth:0,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {data.options.filter(o=>!data.picked?.[o]).join(" · ")}
+                </span>
+              )}
+              <span style={{flex:choiceNoticeFolded?"0 0 auto":1}}/>
+              {isGM&&(
+                <button type="button" title="공지 내리기"
+                  onClick={e=>{e.stopPropagation();closeChoiceNotice();}}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex",flexShrink:0}}>
+                  <X size={13}/>
+                </button>
+              )}
+              {choiceNoticeFolded?<ChevronDown size={13} color="var(--text-faint)" style={{flexShrink:0}}/>
+                :<ChevronUp size={13} color="var(--text-faint)" style={{flexShrink:0}}/>}
+            </div>
+            {!choiceNoticeFolded&&(
+              <div style={{display:"flex",flexDirection:"column",gap:7,padding:"0 10px 10px"}}>
+                {data.options.map(opt=>{
+                  const picked=data.picked?.[opt];
+                  return(
+                    <button key={opt} type="button" disabled={!!picked}
+                      className={"choice-bar choice-bar-chat"+(picked?" picked":"")}
+                      onClick={()=>!picked&&handlePickChoice({items:[msg]},opt)}
+                      title={picked?`${picked.charName} 선택함`:"누르면 선택돼요"}>
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* 채팅 탭바 */}
       <div className="chat-tab-bar">
         {visibleTabs.map(t=>(
