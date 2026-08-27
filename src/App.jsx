@@ -1922,18 +1922,19 @@ function calcDiceResult(roll,value){
 }
 
 function DiceCard({line}){
+  // 크기를 em으로 두어, 채팅창 글자 크기를 조절하면 주사위 카드도 같이 커지고 작아집니다.
   let data=null;
-  try{data=JSON.parse(line);}catch{return <div style={{fontSize:13.5,color:"var(--text-dim)"}}>{line}</div>;}
+  try{data=JSON.parse(line);}catch{return <div style={{fontSize:"0.96em",color:"var(--text-dim)"}}>{line}</div>;}
   const{skillName,value,roll,label,color,bg}=data;
   return(
-    <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",gap:4,width:"fit-content",minWidth:76,border:"1.5px solid "+color,borderRadius:8,background:bg,padding:"9px 12px",marginTop:3}}>
-      <div style={{width:40,height:40,borderRadius:6,background:color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <span className="coc-mono" style={{fontSize:17,fontWeight:700,color:"#fff"}}>{roll}</span>
+    <div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",gap:"0.29em",width:"fit-content",minWidth:"5.4em",border:"1.5px solid "+color,borderRadius:8,background:bg,padding:"0.64em 0.86em",marginTop:"0.21em"}}>
+      <div style={{width:"2.86em",height:"2.86em",borderRadius:6,background:color,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span className="coc-mono" style={{fontSize:"1.21em",fontWeight:700,color:"#fff"}}>{roll}</span>
       </div>
-      <div style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",textAlign:"center",whiteSpace:"nowrap"}}>
-        {skillName} <span className="coc-mono" style={{fontSize:11.5,color:"var(--text-faint)"}}>/{value}</span>
+      <div style={{fontSize:"0.86em",fontWeight:600,color:"var(--text-dim)",textAlign:"center",whiteSpace:"nowrap"}}>
+        {skillName} <span className="coc-mono" style={{fontSize:"0.96em",color:"var(--text-faint)"}}>/{value}</span>
       </div>
-      <div style={{fontSize:13.5,fontWeight:700,color:color,textAlign:"center"}}>{label}</div>
+      <div style={{fontSize:"0.96em",fontWeight:700,color:color,textAlign:"center"}}>{label}</div>
     </div>
   );
 }
@@ -2022,7 +2023,9 @@ function FormattedText({text,style={},maxChars}){
   );
 }
 
-function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
+function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=1}){
+  // 아이콘은 size가 숫자라 em을 못 써서, 채팅 글자 크기 배율(scale)을 직접 곱해줍니다.
+  const ico=n=>Math.round(n*scale);
   const{speaker,characterName,nameColor,avatar,timestamp,lines,items}=group;
   const nameCol=safeNameColor(nameColor)||"var(--accent-deep)";
   const isAnon=speaker==="narrate"||speaker==="judge"||speaker==="system"||speaker==="choicepick";
@@ -2066,7 +2069,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
           {isGM&&isMine&&(
             <button type="button" onClick={()=>onDelete(items[0])}
               style={{position:"absolute",top:6,right:6,background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,display:"flex"}}>
-              <Trash2 size={10}/>
+              <Trash2 size={ico(10)}/>
             </button>
           )}
           <div style={{display:"flex",flexWrap:"wrap",gap:7,justifyContent:"center"}}>
@@ -2077,11 +2080,11 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
               return(
                 <button key={opt} type="button" disabled={disabled} onClick={()=>onPickChoice(group,opt)}
                   style={{
-                    padding:"7px 14px",borderRadius:999,cursor:disabled?"default":"pointer",
+                    padding:"0.5em 1em",borderRadius:999,cursor:disabled?"default":"pointer",
                     border:"1.5px solid "+(disabled?"var(--border)":"var(--accent)"),
                     background:picked?"var(--surface)":lockedOut?"var(--bg-panel)":"var(--accent)",
                     color:disabled?"var(--text-faint)":"#fff",
-                    fontSize:12.5,fontWeight:600,
+                    fontSize:"0.89em",fontWeight:600,
                     textDecoration:picked?"line-through":"none",
                     opacity:lockedOut?0.55:1,
                   }}>
@@ -2104,7 +2107,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
       <div className="anon-msg" style={{display:"flex",justifyContent:"center",padding:"6px 4px"}}>
         <div style={{position:"relative",display:"inline-block",textAlign:"center",lineHeight:1.8}}>
           {lines.map((line,i)=>(
-            <div key={i} style={{fontSize:14,color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?6:0,cursor:canEdit?"pointer":"default"}}
+            <div key={i} style={{fontSize:"1em",color:"var(--text)",whiteSpace:"pre-wrap",marginTop:i>0?"0.43em":0,cursor:canEdit?"pointer":"default"}}
               onClick={withDoubleTap(()=>canEdit&&onEdit(items[i]))}>
               <FormattedText text={line}/>
             </div>
@@ -2115,18 +2118,18 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice}){
   }
 
   return(
-    <div style={{display:"flex",gap:9,padding:"6px 0"}}>
-      <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:1}}>
-        {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={11} color="var(--accent-soft)" style={{margin:8}}/>}
+    <div style={{display:"flex",gap:"0.64em",padding:"0.43em 0"}}>
+      <div style={{width:"2em",height:"2em",borderRadius:"50%",overflow:"hidden",background:"var(--bg-panel)",flexShrink:0,border:"1px solid var(--border)",marginTop:"0.07em",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {avatar?<img src={avatar} style={{width:"100%",height:"100%"}} className="coc-avatar"/>:<Sparkles size={ico(11)} color="var(--accent-soft)"/>}
       </div>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:3}}>
+        <div style={{display:"flex",gap:"0.5em",alignItems:"center",marginBottom:"0.21em"}}>
           {/* NPC도 일반 캐릭터와 동일하게 */}
-          {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:nameCol,fontWeight:600,fontSize:12}}>{characterName}</span>}
-          {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:12}}>{characterName} <span className="coc-mono" style={{fontSize:9.5}}>OOC</span></span>}
-          <span className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
+          {(speaker==="ic"||speaker==="npc"||isDice)&&<span style={{color:nameCol,fontWeight:600,fontSize:"0.86em"}}>{characterName}</span>}
+          {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:"0.86em"}}>{characterName} <span className="coc-mono" style={{fontSize:"0.68em"}}>OOC</span></span>}
+          <span className="coc-mono" style={{fontSize:"0.71em",color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:7}}>
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5em"}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
             const editable=isMine&&!isDice;
@@ -5073,7 +5076,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               {loadingFullTranscript?"불러오는 중...":"전문 보기 (새 탭)"}
             </button>
           )}
-          {visibleGroups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice}/>)}
+          {visibleGroups.map(g=><MessageBlock key={g.id} group={g} myUserCode={userCode} isGM={isGM} onEdit={startEdit} onDelete={deleteMsg} onPickChoice={handlePickChoice} scale={chatFontSize/14}/>)}
         </div>
         {/* "OO님이 입력 중..." 표시 전용 자리. 항상 이 자리가 고정으로 있고 텍스트만 나타났다 사라져서,
             떴다 안 떴다 할 때 채팅창이나 아래 탭이 밀리지 않습니다. */}
