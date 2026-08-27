@@ -435,14 +435,27 @@ input[type=number] { -moz-appearance: textfield; }
 }
 .choice-bar-chat.picked { color: var(--text-faint); text-decoration: line-through; opacity: 0.65; cursor: default; }
 
-/* 판정: 화면 중앙에 뜨는 짧은 팝업 (서술과 구분되는 느낌) */
-.vn-judge-popup {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  background: rgba(10,10,14,0.82); color: #fff; border: 2px solid var(--accent);
-  border-radius: 14px; padding: 16px 30px; font-size: 19px; font-weight: 700;
-  text-align: center; box-shadow: 0 10px 32px rgba(0,0,0,0.35); z-index: 6;
-  max-width: 80%; letter-spacing: 0.02em;
+/* 선택지 공지: 카카오톡 공지처럼 메시지 목록 위에 떠 있습니다.
+   자리를 차지하지 않아 채팅창 크기에 영향을 주지 않고, PC·모바일 모두 같은 방식으로 동작합니다. */
+.choice-notice {
+  position: absolute; top: 8px; left: 8px; right: 8px; z-index: 8;
+  border: 1px solid var(--accent-soft); background: var(--glass);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  display: flex; flex-direction: column;
+  /* 선택지가 많아도 메시지를 통째로 가리지 않도록 높이를 제한합니다.
+     모바일처럼 화면이 짧을 때 특히 중요해요. */
+  max-height: 55%;
 }
+.choice-notice-opts {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 0 10px 10px;
+  overflow-y: auto; min-height: 0;
+}
+@media (max-width: 600px) {
+  .choice-notice { top: 6px; left: 6px; right: 6px; max-height: 48%; }
+  .choice-notice-opts { gap: 4px; padding: 0 8px 8px; }
+}
+
 /* 주사위 컷인: 해당 등급용 이미지(APNG 등)가 있으면 예전 다이스 팝업 정도 크기로 뜹니다.
    주사위 값·결과 텍스트는 하단 대사창에 뜹니다. 화면이 살짝 어두워지면서 한 번 슥 지나가듯
    나타났다가 사라지는 연출입니다. */
@@ -1939,7 +1952,6 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved}){
 
 const GM_TABS=[
   {key:"narrate",label:"서술",short:"서술",placeholder:"......."},
-  {key:"judge",label:"판정",short:"판정",placeholder:"@@ 판정이라 입력하세요."},
   {key:"npc",label:"대사",short:"대사",placeholder:"......."},
   {key:"choice",label:"선택지",short:"선택",placeholder:""},
 ];
@@ -2075,6 +2087,8 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
   const ico=n=>Math.round(n*scale);
   const{speaker,characterName,nameColor,avatar,timestamp,lines,items}=group;
   const nameCol=safeNameColor(nameColor)||"var(--accent-deep)";
+  // "judge"(판정)는 없어진 기능이지만, 예전 세션에 남아있는 기록이 그대로 보이도록
+  // 표시 경로는 남겨둡니다. (새로 만들 수는 없어요)
   const isAnon=speaker==="narrate"||speaker==="judge"||speaker==="system"||speaker==="choicepick";
   const isDice=speaker==="dice";
   const isImg=speaker==="image";
@@ -2315,6 +2329,11 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
           <button type="button" onClick={()=>wrapSelection("*","*")} style={{...btnStyle,fontStyle:"italic"}}>I</button>
           <button type="button" onClick={()=>wrapSelection("__","__")} style={{...btnStyle,textDecoration:"underline"}}>U</button>
           <button type="button" onClick={()=>wrapSelection("~~","~~")} style={{...btnStyle,textDecoration:"line-through"}}>S</button>
+          {/* 강조: 지금 쓰고 있는 테마색 + 굵게. var(--accent-deep)로 넣어두면 테마를 바꿔도
+              따라가고, HTML로 내보낼 때도 그 색으로 알아서 바뀝니다. */}
+          <button type="button" title="강조 (테마색 + 굵게)"
+            onClick={()=>wrapSelection('<span style="color:var(--accent-deep);font-weight:700">',"</span>")}
+            style={{...btnStyle,color:"var(--accent-deep)"}}>강조</button>
           <input type="color" value={color} onChange={e=>setColor(e.target.value)} style={{width:34,height:34,border:"1px solid var(--border)",borderRadius:6,padding:0,cursor:"pointer"}}/>
           <button type="button" onClick={()=>wrapSelection(`<span style="color:${color}">`,"</span>")} style={btnStyle}>색 적용</button>
           <input type="number" value={fontSize} min={10} max={60} onChange={e=>setFontSize(Number(e.target.value)||16)}
@@ -3432,7 +3451,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setNpcBookmarks(next);
     await storeSet(`npcbookmarks:${room.id}`,{list:next},true);
   };
-  const [judgeSkill,setJudgeSkill]=useState("");
   const [char,setChar]=useState(null);
   const [showCharMenu,setShowCharMenu]=useState(false);
   const [creatingChar,setCreatingChar]=useState(false);
@@ -4531,13 +4549,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // 판정 요청 조합: 대상(전원/개별 선택) + 기능치 이름을 테마색으로, "판정"은 기본색으로 맨 뒤에 자동 붙입니다.
   // var(--accent-deep)를 쓰기 때문에 보는 사람마다 자기 테마색으로 보여요.
-  const sendJudgeRequest=async()=>{
-    if(!judgeSkill.trim())return;
-    // 대상을 따로 고르지 않고 항상 전원에게 요청합니다.
-    const markup=`<span style="color:var(--accent-deep);font-weight:700">전원</span>, <span style="color:var(--accent-deep);font-weight:700">${judgeSkill.trim()}</span> 판정`;
-    const ok=await doSend("judge",markup,"","");
-    if(ok) setJudgeSkill("");
-  };
 
   // 이미지 메시지 전송 공통 로직 (파일 업로드든 외부 링크든 동일하게 처리)
   const postImageMsg=(dataUrlOrLink)=>{
@@ -4724,7 +4735,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     :(latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null);
   // 판정은 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
   // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
-  const activeJudge=latestOverallMsg&&latestOverallMsg.speaker==="judge"?latestOverallMsg:null;
   // 선택지를 고른 결과도 판정처럼 화면 중앙에 짧게 팝업으로 뜹니다 (대사창이 아니라).
   // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는 공용 이펙트입니다.
   // 두 사람이 거의 동시에 굴리면 예전에는 "가장 최근 것" 하나만 뜨고 앞 사람 컷인이 통째로
@@ -5019,9 +5029,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               </div>
             );
           })()}
-          {activeJudge&&(
-            <div className="vn-judge-popup"><FormattedText text={activeJudge.text}/></div>
-          )}
         </div>
 
         {/* 무대 하단: 내 대사/서술/주사위가 뜨는 대사창 (절대 위치로 무대 위에 얹힘) */}
@@ -5205,11 +5212,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         const total=data.options.length;
         const done=data.options.filter(o=>data.picked?.[o]).length;
         return(
-          <div style={{position:"absolute",top:8,left:8,right:8,zIndex:8,
-            border:"1px solid var(--accent-soft)",background:"var(--glass)",backdropFilter:"blur(8px)",
-            borderRadius:10,overflow:"hidden",boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
+          <div className="choice-notice">
             <div onClick={()=>setChoiceNoticeFolded(v=>!v)}
-              style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",cursor:"pointer"}}>
+              style={{display:"flex",alignItems:"center",gap:6,padding:"7px 10px",cursor:"pointer",flexShrink:0}}>
               <Bell size={13} color="var(--accent-deep)" style={{flexShrink:0}}/>
               <span style={{fontSize:12,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>선택지</span>
               <span className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)",flexShrink:0}}>{done}/{total}</span>
@@ -5231,7 +5236,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                 :<ChevronUp size={13} color="var(--text-faint)" style={{flexShrink:0}}/>}
             </div>
             {!choiceNoticeFolded&&(
-              <div style={{display:"flex",flexWrap:"wrap",gap:5,padding:"0 10px 10px"}}>
+              <div className="choice-notice-opts">
                 {data.options.map(opt=>{
                   const picked=data.picked?.[opt];
                   return(
@@ -5429,16 +5434,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         )}
         {isGM&&speaker==="gm"&&gmTab==="choice"?(
           <div style={{padding:"10px 2px"}}/>
-        ):isGM&&speaker==="gm"&&gmTab==="judge"?(
-          <div style={{padding:"4px 2px"}}>
-            <div className="coc-label" style={{marginBottom:6}}>판정할 기능치</div>
-            <div style={{display:"flex",gap:7,marginBottom:8}}>
-              <input className="coc-input" value={judgeSkill} onChange={e=>setJudgeSkill(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();sendJudgeRequest();}}}
-                placeholder="예: 이성, 백병전..." style={{flex:1}}/>
-              <button type="button" className="coc-btn" style={{flexShrink:0}} disabled={!judgeSkill.trim()} onClick={sendJudgeRequest}><Send size={13}/></button>
-            </div>
-          </div>
         ):(
           <>
             <div style={{display:"flex",gap:7}}>
