@@ -3869,6 +3869,28 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // "입력 중..." 표시: 텍스트를 칠 때마다 매번 저장하면 낭비가 심해서, 최소 2.5초 간격으로만
   // 신호를 보내고, 메시지를 보내거나 입력창을 비우면 즉시 지웁니다. 다른 사람 화면에서는
   // 그 신호가 최근 것(4초 이내)일 때만 "입력 중" 으로 표시합니다.
+  const participantsList=(()=>{
+    const set=new Set([userCode]);
+    if(room.creatorCode) set.add(room.creatorCode);
+    roomParticipants.forEach(c=>set.add(c));
+    return Array.from(set).sort((a,b)=>(a===room.creatorCode?-1:b===room.creatorCode?1:0));
+  })();
+
+  // 귓속말: 고른 사람에게만 보이는 메시지. 플레이어는 GM에게만, GM은 아무에게나 보낼 수 있어요.
+  const [whisperTo,setWhisperTo]=useState([]);
+  const [showWhisperPick,setShowWhisperPick]=useState(false);
+  const whisperPickRef=useRef(null);
+  useEffect(()=>{
+    if(!showWhisperPick)return;
+    const h=e=>{ if(whisperPickRef.current&&!whisperPickRef.current.contains(e.target)) setShowWhisperPick(false); };
+    document.addEventListener("mousedown",h);
+    return()=>document.removeEventListener("mousedown",h);
+  },[showWhisperPick]);
+  // 플레이어가 고를 수 있는 대상은 GM뿐, GM은 방의 다른 참가자 전원.
+  const whisperCandidates=isGM
+    ? participantsList.filter(c=>c!==userCode)
+    : (room.creatorCode&&room.creatorCode!==userCode?[room.creatorCode]:[]);
+
   const TYPING_THRESHOLD_MS=4000;
   const lastTypingBeatRef=useRef(0);
   useEffect(()=>{
@@ -3918,12 +3940,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     document.addEventListener("mousedown",h);
     return()=>document.removeEventListener("mousedown",h);
   },[showParticipants]);
-  const participantsList=(()=>{
-    const set=new Set([userCode]);
-    if(room.creatorCode) set.add(room.creatorCode);
-    roomParticipants.forEach(c=>set.add(c));
-    return Array.from(set).sort((a,b)=>(a===room.creatorCode?-1:b===room.creatorCode?1:0));
-  })();
   const myHandouts=handouts.filter(h=>(h.visibleTo||[]).includes(userCode));
   const onlineOthers=participantsList.filter(c=>c!==userCode&&isOnline(c));
 
@@ -3960,21 +3976,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     seenHandoutRef.current=merged;
     try{ localStorage.setItem(seenHandoutKey,JSON.stringify(merged)); }catch{}
   },[myHandouts]); // eslint-disable-line
-
-  // 귓속말: 고른 사람에게만 보이는 메시지. 플레이어는 GM에게만, GM은 아무에게나 보낼 수 있어요.
-  const [whisperTo,setWhisperTo]=useState([]);
-  const [showWhisperPick,setShowWhisperPick]=useState(false);
-  const whisperPickRef=useRef(null);
-  useEffect(()=>{
-    if(!showWhisperPick)return;
-    const h=e=>{ if(whisperPickRef.current&&!whisperPickRef.current.contains(e.target)) setShowWhisperPick(false); };
-    document.addEventListener("mousedown",h);
-    return()=>document.removeEventListener("mousedown",h);
-  },[showWhisperPick]);
-  // 플레이어가 고를 수 있는 대상은 GM뿐, GM은 방의 다른 참가자 전원.
-  const whisperCandidates=isGM
-    ? participantsList.filter(c=>c!==userCode)
-    : (room.creatorCode&&room.creatorCode!==userCode?[room.creatorCode]:[]);
 
   // 입력창 높이 — 위쪽 손잡이를 끌어서 조절합니다. 입력창이 커지면 그만큼 채팅 목록이
   // 좁아지고, 줄이면 채팅 목록이 넓어져요. (채팅 영역은 남는 공간을 채우는 구조라 자동입니다)
