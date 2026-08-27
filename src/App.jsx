@@ -3375,11 +3375,16 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     await storeSet(`npcbookmarks:${room.id}`,{list:next},true);
   };
   const applyNpcBookmark=bm=>{
-    setSpeaker("npc");
+    // 발화자는 ic/ooc/gm 셋뿐이고, NPC는 그 안의 GM 탭입니다.
+    // 예전엔 여기서 setSpeaker("npc")를 불러 없는 값이 들어가는 바람에 GM 입력줄이
+    // 통째로 사라져서, 북마크를 골라도 "대사" 탭을 다시 눌러야 했어요.
+    setSpeaker("gm");
     setGmTab("npc");
     setNpcName(bm.name);
     setNpcAvatar(bm.avatar||"");
     setNpcNameColor(bm.nameColor||"");
+    // 고르자마자 바로 대사를 칠 수 있도록 입력창에 커서를 올려둡니다.
+    setTimeout(()=>inputRef.current?.focus(),0);
   };
   const removeNpcBookmark=async id=>{
     const next=npcBookmarks.filter(b=>b.id!==id);
