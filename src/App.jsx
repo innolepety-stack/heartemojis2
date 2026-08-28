@@ -269,9 +269,12 @@ input[type=number] { -moz-appearance: textfield; }
    (예전에는 가운데 65% 크기의 "작은 무대"를 따로 두고 그 바깥을 블러로 채웠는데, 그러면
    코코포리아에서 "화면 끝"이던 위치가 우리에겐 "작은 상자 끝"이 되어 버려서, 거기서 넘친
    레이어들이 흐린 여백 위에 둥둥 뜨는 문제가 있었습니다.) */
+/* 무대 안쪽은 항상 같은 가로:세로 비율(16:9)을 유지합니다. 창을 가로로 길게 당기면
+   예전엔 위에 올린 레이어들이 같이 옆으로 늘어났어요(위치·크기가 무대 대비 %라서).
+   이제는 비율을 지킨 채 화면에 들어갈 수 있는 최대 크기로 잡고, 남는 자리는 블러 배경이
+   채웁니다. 덤으로 창 모양이 달라도 모두에게 같은 배치로 보입니다. 크기는 JS로 계산해요. */
 .stage-inner {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  width: 100%; height: 100%;
   z-index: 1;
 }
 .stage-inner-bg {
@@ -513,7 +516,7 @@ input[type="color"]::-moz-color-swatch { border: none; border-radius: inherit; }
 .coc-btn.small { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
 .coc-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
-.coc-input, .coc-select, .coc-textarea {
+.coc-input, .coc-textarea {
   background: var(--surface); border: 1px solid var(--border); color: var(--text);
   border-radius: 7px; padding: 8px 10px;
   /* 모바일(iOS/안드로이드)은 입력창 글씨가 16px보다 작으면 탭할 때 화면을 확대합니다.
@@ -521,7 +524,7 @@ input[type="color"]::-moz-color-swatch { border: none; border-radius: inherit; }
   font-family: 'Noto Sans KR', sans-serif; font-size: 16px; outline: none; width: 100%;
 }
 .coc-input::placeholder, .coc-textarea::placeholder { color: var(--text-faint); }
-.coc-input:focus, .coc-select:focus, .coc-textarea:focus {
+.coc-input:focus, .coc-textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
 }
 .coc-textarea { resize: vertical; font-family: 'Noto Sans KR', sans-serif; }
@@ -728,6 +731,35 @@ function useFoldAnchor(wrapRef,folded,setPos){
     });
   },[folded]); // eslint-disable-line
   return rememberFoldAnchor;
+}
+
+// 창을 접어둔 상태도 기억합니다. 접은 채로 나갔다 들어오면 접힌 그대로 뜨게 하려는 것입니다.
+function usePersistedFold(key){
+  const [v,setV]=useState(()=>{
+    try{ return localStorage.getItem("heartEmojiPanelFold:"+key)==="1"; }catch{ return false; }
+  });
+  useEffect(()=>{ try{ localStorage.setItem("heartEmojiPanelFold:"+key,v?"1":"0"); }catch{} },[key,v]);
+  return [v,setV];
+}
+
+// 창이 열려 있었는지를 기억합니다. 게임 중 창을 켜둔 채 나갔다 다시 들어와도
+// 그대로 열려 있게 하기 위한 것입니다. (방마다 따로 기억해요.)
+function usePersistedOpen(key,initial=false){
+  const [v,setV]=useState(()=>{
+    try{ const r=localStorage.getItem("heartEmojiPanelOpen:"+key); return r===null?initial:r==="1"; }
+    catch{ return initial; }
+  });
+  useEffect(()=>{ try{ localStorage.setItem("heartEmojiPanelOpen:"+key,v?"1":"0"); }catch{} },[key,v]);
+  return [v,setV];
+}
+// 열어둔 핸드아웃 목록처럼 "여러 개"를 기억할 때 씁니다.
+function usePersistedList(key){
+  const [v,setV]=useState(()=>{
+    try{ const r=localStorage.getItem("heartEmojiPanelOpen:"+key); const a=r?JSON.parse(r):[]; return Array.isArray(a)?a:[]; }
+    catch{ return []; }
+  });
+  useEffect(()=>{ try{ localStorage.setItem("heartEmojiPanelOpen:"+key,JSON.stringify(v)); }catch{} },[key,v]);
+  return [v,setV];
 }
 
 // 여러 창이 겹쳐 있을 때, 누른 창이 맨 앞으로 오도록 공용 카운터를 씁니다.
@@ -2308,12 +2340,12 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
 /* ============================== 선택지(조사 스팟) ============================== */
 
 // "꾸미기" 도구: 좌측 무대에 표시될 서술 문구를, 코드 칸에서 직접 타이핑하고 드래그로
-// 선택한 다음 서식 버튼을 눌러 그 부분만 꾸미는 GM 전용 도구입니다. 시트(♥ 버튼)처럼 떠 있는
+// 선택한 다음 서식 버튼을 눌러 그 부분만 꾸미는 GM 전용 도구입니다. 캐릭터 시트처럼 떠 있는
 // 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고, 제목줄을 잡고 끌어서 원하는
 // 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
 const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
 function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
-  const [folded,setFolded]=useState(false);
+  const [folded,setFolded]=usePersistedFold("decorate");
   const [z,bringToFront]=usePanelFront();
   const savedBox=loadPanelBox("decorate");
   const [fontSize,setFontSize]=useState(16);
@@ -2636,7 +2668,7 @@ function MapSettingsPanel({onClose,
   scenesList,activeSceneId,onAddScene,onSwitchScene,onDeleteScene,
   pos,setPos}){
   const wrapRef=useRef(null);
-  const [folded,setFolded]=useState(false);
+  const [folded,setFolded]=usePersistedFold("mapsettings");
   const [z,bringToFront]=usePanelFront();
   const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const [tab,setTab]=useState("scene"); // scene | layer | scenes | decorate
@@ -2853,7 +2885,7 @@ function MapSettingsPanel({onClose,
 // 시트·핸드아웃·맵세팅·꾸미기·수치조정·광기 창이 전부 이 껍데기를 함께 씁니다.
 function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 330px)",maxHeight="78vh",storageKey,children}){
   const wrapRef=useRef(null);
-  const [folded,setFolded]=useState(false);
+  const [folded,setFolded]=usePersistedFold(storageKey||"panel");
   const [z,bringToFront]=usePanelFront();
   const saved=storageKey?loadPanelBox(storageKey):null;
   const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:null);
@@ -3295,12 +3327,11 @@ function HandoutViewerModal({handouts,onClose,onSelect}){
 // 그 바를 다시 누르면 펼쳐집니다. "닫기"를 눌러야 완전히 사라집니다.
 function HandoutFloatingDetail({handout,onClose,index=0}){
   const wrapRef=useRef(null);
-  const [folded,setFolded]=useState(false);
-
   // 옮긴 자리와 크기는 핸드아웃별로 이 기기에 기억됩니다.
   // (설정 화면에 다녀오면 창이 다시 그려지는데, 예전엔 그때마다 위치가 처음으로 돌아갔어요.)
   const [z,bringToFront]=usePanelFront();
   const posKey=`handout:${handout.id}`;
+  const [folded,setFolded]=usePersistedFold(posKey);
   const saved=loadPanelBox(posKey);
   const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:null);
   // 사진이 잘 보이도록 가로는 넉넉하게 잡고, 세로는 내용 길이에 맞춰 자동으로 정합니다.
@@ -3435,7 +3466,7 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
   // 채팅방 상단의 "캐릭터" 버튼을 눌러야 열리는 떠 있는 패널입니다.
   // 접기를 누르면 닫히는 게 아니라, 내 캐릭터 이름이 적힌 투명도 80%의 작은 바로 줄어들어
   // 무대 어디에든 둘 수 있고, 그 바를 다시 누르면 펼쳐집니다. 닫기(X)를 눌러야 완전히 사라져요.
-  const [folded,setFolded]=useState(false);
+  const [folded,setFolded]=usePersistedFold("sheet");
   const [z,bringToFront]=usePanelFront();
   const savedBox=loadPanelBox("sheet");
   const [sheetDraft,setSheetDraft]=useState(char);
@@ -3936,7 +3967,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [showParticipants,setShowParticipants]=useState(false);
   const participantsRef=useRef(null);
   // 채팅방 우측 상단 "캐릭터" 아이콘으로 여닫는 시트 패널 (예전엔 화면에 늘 떠있던 하트 버튼이었음)
-  const [showCharSheet,setShowCharSheet]=useState(false);
+  const [showCharSheet,setShowCharSheet]=usePersistedOpen(`${room.id}:sheet`);
   useEffect(()=>{
     if(!showParticipants)return;
     const h=e=>{ if(participantsRef.current&&!participantsRef.current.contains(e.target)) setShowParticipants(false); };
@@ -3949,7 +3980,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 핸드아웃·광기를 받으면 받은 사람 화면에 고정 크기 창으로 자동으로 떠요.
   // "이미 본 적 있는지"를 기억해뒀다가, 새로 생긴 것만 팝업으로 띄웁니다.
   // 핸드아웃은 여러 장을 동시에 띄워둘 수 있습니다. 열어둔 것들의 id 목록이에요.
-  const [openHandoutIds,setOpenHandoutIds]=useState([]);
+  const [openHandoutIds,setOpenHandoutIds]=usePersistedList(`${room.id}:handouts`);
   const openHandout=h=>setOpenHandoutIds(ids=>ids.includes(h.id)?ids:[...ids,h.id]);
   const closeHandout=id=>setOpenHandoutIds(ids=>ids.filter(x=>x!==id));
 
@@ -4036,7 +4067,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   };
 
   // GM이 참가자에게 광기(장기적/단기적)를 부여하는 기능
-  const [showMadnessModal,setShowMadnessModal]=useState(false);
+  const [showMadnessModal,setShowMadnessModal]=usePersistedOpen(`${room.id}:madness`);
 
   // GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는 기능.
   // 공개(채팅에 안내)/비공개(시트에만 반영, 안내 없음) 중 GM이 고를 수 있습니다.
@@ -4088,8 +4119,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(charDoc) await storeSet(key,{...charDoc,madness:data},true);
   };
 
-  const [showHandoutManager,setShowHandoutManager]=useState(false);
-  const [showHandoutViewer,setShowHandoutViewer]=useState(false);
+  const [showHandoutManager,setShowHandoutManager]=usePersistedOpen(`${room.id}:handout-manager`);
+  const [showHandoutViewer,setShowHandoutViewer]=usePersistedOpen(`${room.id}:handout-viewer`);
   // 채팅방 우측 상단 "핸드아웃" 아이콘 하나로: GM은 생성·배부 창을, 참가자는 자신이 받은 목록을 엽니다.
   const openHandoutIcon=()=>{
     if(isGM){ setShowHandoutManager(true); }
@@ -4332,15 +4363,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 좌측 무대 배경/장면 이미지: GM이 올리면 방 전체(모든 참가자의 PC 화면)에 실시간 반영됩니다.
   // Cloudflare에 올리고 URL만 저장하기 때문에, APNG 등 큰 파일도 용량 걱정이 없습니다.
   const [sceneUrl,setSceneUrl]=useState("");
-  const [showDecorate,setShowDecorate]=useState(false);
-  const [showStatAdjust,setShowStatAdjust]=useState(false);
+  const [showDecorate,setShowDecorate]=usePersistedOpen(`${room.id}:decorate`);
+  const [showStatAdjust,setShowStatAdjust]=usePersistedOpen(`${room.id}:statadjust`);
   // 맵세팅 패널 위치 — 옮긴 자리를 이 기기에 기억합니다.
   const [gmBarPos,setGmBarPos]=useState(()=>{
     const b=loadPanelBox("mapsettings");
     return b&&Number.isFinite(b.x)?{x:b.x,y:b.y}:null;
   });
   useEffect(()=>{ if(gmBarPos) savePanelBox("mapsettings",{x:gmBarPos.x,y:gmBarPos.y}); },[gmBarPos]);
-  const [showMapSettings,setShowMapSettings]=useState(false);
+  const [showMapSettings,setShowMapSettings]=usePersistedOpen(`${room.id}:mapsettings`);
   const sceneInputRef=useRef(null);
   useEffect(()=>{
     // 먼저 기억해둔 값으로 즉시 그리고(없으면 비웁니다), 서버 응답이 오면 갱신합니다.
@@ -4380,6 +4411,26 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // 무대 확대/축소·이동(롤20·코코포리아 방식). 이건 방 전체가 아니라 "지금 보고 있는 내 화면"에만
   // 적용됩니다. 그래서 GM이 확대해도 다른 사람 화면은 그대로고, 각자 원하는 곳을 볼 수 있어요.
+  // 무대 안쪽(레이어가 놓이는 판)은 항상 16:9를 유지합니다. 무대 영역 크기가 바뀔 때마다
+  // "비율을 지키면서 들어갈 수 있는 최대 크기"를 다시 계산해요.
+  const STAGE_RATIO=16/9;
+  const [innerBox,setInnerBox]=useState({w:0,h:0});
+  useEffect(()=>{
+    const el=stageSceneRef.current;
+    if(!el)return;
+    const fit=()=>{
+      const r=el.getBoundingClientRect();
+      if(!r.width||!r.height)return;
+      const w=Math.min(r.width,r.height*STAGE_RATIO);
+      setInnerBox({w,h:w/STAGE_RATIO});
+    };
+    fit();
+    const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(fit):null;
+    if(ro) ro.observe(el);
+    window.addEventListener("resize",fit);
+    return()=>{ if(ro)ro.disconnect(); window.removeEventListener("resize",fit); };
+  },[]);
+
   const MIN_ZOOM=0.3, MAX_ZOOM=5;
   const [stageView,setStageView]=useState({scale:1,tx:0,ty:0}); // tx,ty는 픽셀 단위 이동량
   const stageSceneRef=useRef(null);
@@ -4580,7 +4631,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
     const stageRatio=(sr.width||16)/(sr.height||9);
     const fieldRatio=boundW/boundH;
-    // 배경(.stage-inner-bg)은 background-size:cover 로 작은 무대를 꽉 채우고 넘치는 부분은
+    // 배경(.stage-inner-bg)은 background-size:cover 로 무대를 꽉 채우고 넘치는 부분은
     // 잘라냅니다. 예전엔 마커만 "contain"(전부 안에 들어가게 축소)으로 맞춰서, 배경은 꽉 찼는데
     // 마커만 가운데 작게 모이고 양옆에 여백이 생겼어요. 코코포리아는 둘이 같은 기준이므로,
     // 마커도 배경과 똑같이 cover로 맞춥니다. (그래서 padX/padY가 음수가 되어 밖으로 넘칩니다.)
@@ -4855,11 +4906,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
   };
 
-  // 참가자 code로 화면에 보여줄 캐릭터 이름을 찾습니다 (본인은 char, 그 외엔 presence 기록).
-
-  // 판정 요청 조합: 대상(전원/개별 선택) + 기능치 이름을 테마색으로, "판정"은 기본색으로 맨 뒤에 자동 붙입니다.
-  // var(--accent-deep)를 쓰기 때문에 보는 사람마다 자기 테마색으로 보여요.
-
   // 이미지 메시지 전송 공통 로직 (파일 업로드든 외부 링크든 동일하게 처리)
   const postImageMsg=(dataUrlOrLink)=>{
     const tid=activeTab;
@@ -5120,9 +5166,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // 하나만 고르는 선택지는 기존처럼 "가장 최근"일 때만 잠깐 뜹니다.
   const activeChoice=pinnedChoice?pinnedChoice.msg
     :(latestOverallMsg&&latestOverallMsg.speaker==="choice"?latestOverallMsg:null);
-  // 판정은 대사와 달리 "지금 진짜로 가장 최근"일 때만 화면 중앙에 짧게 팝업으로 뜹니다
-  // (선택지랑 같은 방식). 다른 메시지가 뒤에 더 오면 자연스럽게 사라져요.
-  // 선택지를 고른 결과도 판정처럼 화면 중앙에 짧게 팝업으로 뜹니다 (대사창이 아니라).
   // 주사위 컷인은 누가 굴렸는지와 상관없이(나든 남이든) 화면 중앙에 다 같이 보이는 공용 이펙트입니다.
   // 두 사람이 거의 동시에 굴리면 예전에는 "가장 최근 것" 하나만 뜨고 앞 사람 컷인이 통째로
   // 묻히거나 겹쳐 보였어요. 이제는 새로 도착한 주사위를 대기열에 쌓아두고, 앞 컷인이 끝나면
@@ -5366,7 +5409,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               바깥 큰 무대의 남는 부분은 같은 배경을 블러 처리해서 채웁니다.
               여기에 확대/축소·이동(뷰)이 통째로 적용돼서, 안에 있는 배경과 토큰이 같이 움직입니다. */}
           <div className="stage-inner"
-            style={{transform:`translate(-50%,-50%) translate(${stageView.tx}px, ${stageView.ty}px) scale(${stageView.scale})`}}>
+            style={{width:innerBox.w||"100%",height:innerBox.h||"100%",
+              transform:`translate(-50%,-50%) translate(${stageView.tx}px, ${stageView.ty}px) scale(${stageView.scale})`}}>
             {sceneUrl&&<div className="stage-inner-bg" style={{backgroundImage:`url(${sceneUrl})`}}/>}
             {layers.map((l,i)=>(
               <StageToken key={l.id} layer={l} canEdit={isGM&&!layersLocked} zIndex={layers.length-i}
@@ -5916,8 +5960,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode} displayNameOf={displayNameOf}
         onClose={()=>setShowMadnessModal(false)} onSend={saveMadness}/>}
       {openHandoutIds.map((id,i)=>{
-        // 받은 것 중에 없으면(=GM이 관리 창에서 미리보기로 연 것) 전체 목록에서 찾습니다.
-        const h=myHandouts.find(x=>x.id===id)||handouts.find(x=>x.id===id);
+        // 내가 받은 것에서 먼저 찾습니다. 못 찾으면 GM일 때만(=관리 창 미리보기) 전체에서 찾아요.
+        // 참가자에게까지 전체 목록을 열어주면, 열어둔 창이 기억되는 탓에 배부가 취소된 뒤에도
+        // 그 핸드아웃이 계속 보일 수 있습니다.
+        const h=myHandouts.find(x=>x.id===id)||(isGM?handouts.find(x=>x.id===id):null);
         if(!h) return null;
         return <HandoutFloatingDetail key={id} handout={h} index={i} onClose={()=>closeHandout(id)}/>;
       })}
