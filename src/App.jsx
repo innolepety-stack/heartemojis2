@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
   Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock,
-  Heart, Check, Mail, AlertTriangle, UserRound, Sliders, Clapperboard, Circle
+  Heart, Check, Mail, AlertTriangle, Sliders, Clapperboard, Circle, Bookmark
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -528,6 +528,12 @@ input[type="color"]::-moz-color-swatch { border: none; border-radius: inherit; }
   border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,0.07);
 }
 .coc-textarea { resize: vertical; font-family: 'Noto Sans KR', sans-serif; }
+/* 채팅 입력창은 PC에서 12.5px로 작게 쓰고 있는데(코드에서 직접 지정), 손가락으로 쓰는
+   기기에서는 16px보다 작으면 탭할 때마다 화면이 확 확대됩니다. 그래서 터치 기기에서만
+   16px로 되돌립니다. (코드에서 직접 준 크기를 이기려면 !important가 필요해요.) */
+@media (pointer: coarse), (max-width: 1023px) {
+  .coc-input, .coc-textarea, input, textarea, select { font-size: 16px !important; }
+}
 
 .coc-card {
   background: var(--bg-card); border: 1px solid var(--border-soft);
@@ -4536,14 +4542,9 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     });
     return()=>{unsubOrder();unsubData();};
   },[sceneRoomId]);
-  const [showBookmarkPanel,setShowBookmarkPanel]=useState(false);
-  const bookmarkPanelRef=useRef(null);
-  useEffect(()=>{
-    if(!showBookmarkPanel)return;
-    const onDocClick=e=>{ if(bookmarkPanelRef.current&&!bookmarkPanelRef.current.contains(e.target)) setShowBookmarkPanel(false); };
-    document.addEventListener("mousedown",onDocClick);
-    return()=>document.removeEventListener("mousedown",onDocClick);
-  },[showBookmarkPanel]);
+  // NPC 북마크는 왼쪽 아이콘 바에서 여는 떠 있는 창입니다(접기·이동·크기 기억 지원).
+  // 예전에는 NPC 대사 줄에 버튼으로 붙어 있어서 그 줄이 너무 복잡했어요.
+  const [showBookmarkPanel,setShowBookmarkPanel]=usePersistedOpen(`${room.id}:npcbookmark`);
   // 새로 추가한 사진은 맨 앞(목록 맨 위 = 가장 앞에 보임)에 놓입니다.
   // 레이어 이미지은 Cloudflare에 올리고, 그 URL만 문서에 저장합니다(짧은 문자열이라
   // 용량 걱정이 없어요).
@@ -5298,6 +5299,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               <Layers size={18}/>
             </button>
 
+            <button type="button" className={"chat-icon-btn"+(showBookmarkPanel?" on":"")} onClick={()=>setShowBookmarkPanel(v=>!v)} title="NPC 북마크">
+              <Bookmark size={18}/>
+            </button>
+
             <button type="button" className={"chat-icon-btn"+(showDecorate?" on":"")} onClick={()=>setShowDecorate(v=>!v)} title="꾸미기 (서술 문구 꾸며서 보내기)">
               <Brush size={18}/>
             </button>
@@ -5867,39 +5872,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setNpcAvatar(url);e.target.value="";}}/>
             <button type="button" className="coc-btn ghost small" onClick={()=>npcAvatarInputRef.current?.click()} style={{flexShrink:0}}><Camera size={12}/></button>
             {npcAvatar&&<button type="button" className="coc-btn ghost small" onClick={()=>{setNpcAvatar("");setNpcName("");}} style={{flexShrink:0}}><X size={12}/></button>}
-            <div style={{position:"relative",flexShrink:0}} ref={bookmarkPanelRef}>
-              <button type="button" className={"coc-btn ghost small"+(npcBookmarks.length>0?" on":"")} title="NPC 북마크" onClick={()=>setShowBookmarkPanel(v=>!v)}>
-                <UserRound size={12}/>
-              </button>
-              {showBookmarkPanel&&(
-                <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:31,width:230,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
-                  <div className="coc-label" style={{marginBottom:8}}>NPC 북마크</div>
-                  <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:10}}
-                    disabled={!npcName.trim()} onClick={saveNpcBookmark}>
-                    <Plus size={13}/> 지금 NPC 저장 {npcName.trim()?`(${npcName.trim()})`:""}
-                  </button>
-                  {npcBookmarks.length===0?(
-                    <div style={{fontSize:11.5,color:"var(--text-faint)",textAlign:"center",padding:"8px 0"}}>저장된 NPC가 없어요</div>
-                  ):(
-                    <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:260,overflowY:"auto"}}>
-                      {npcBookmarks.map(bm=>(
-                        <div key={bm.id} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 6px",borderRadius:6,background:"var(--bg-panel)"}}>
-                          <button type="button" onClick={()=>{applyNpcBookmark(bm);setShowBookmarkPanel(false);}}
-                            style={{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
-                            <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"#fff",border:"1px solid var(--border)"}}>
-                              {bm.avatar?<img src={bm.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:null}
-                            </div>
-                            <span style={{fontSize:12.5,color:bm.nameColor||"var(--text-dim)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bm.name}</span>
-                          </button>
-                          <button type="button" onClick={()=>removeNpcBookmark(bm.id)}
-                            style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1,flexShrink:0}}>×</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
         )}
         {isGM&&speaker==="gm"&&gmTab==="choice"?(
@@ -5941,6 +5913,37 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           scenesList={scenesList} activeSceneId={activeSceneId} onAddScene={addScene} onSwitchScene={switchScene} onDeleteScene={deleteScene}/>}
 
         {showChoiceCreator&&<ChoiceCreatorModal onClose={()=>setShowChoiceCreator(false)} onCreate={handleCreateChoice}/>}
+        {showBookmarkPanel&&(
+          <FloatingPanel storageKey="npcbookmark" title="NPC 북마크" icon={Bookmark}
+            onClose={()=>setShowBookmarkPanel(false)} width="min(94vw, 260px)"
+            defaultAnchor={{position:"fixed",left:76,top:200}}>
+            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:10}}
+              disabled={!npcName.trim()} onClick={saveNpcBookmark}>
+              <Plus size={13}/> 지금 NPC 저장 {npcName.trim()?`(${npcName.trim()})`:""}
+            </button>
+            {npcBookmarks.length===0?(
+              <div style={{fontSize:11.5,color:"var(--text-faint)",textAlign:"center",padding:"10px 0"}}>
+                저장된 NPC가 없어요.<br/>대사 탭에서 이름·사진을 채운 뒤 저장해보세요.
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {npcBookmarks.map(bm=>(
+                  <div key={bm.id} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 6px",borderRadius:6,background:"var(--bg-panel)"}}>
+                    <button type="button" onClick={()=>applyNpcBookmark(bm)}
+                      style={{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0,background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
+                      <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"#fff",border:"1px solid var(--border)"}}>
+                        {bm.avatar?<img src={bm.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:null}
+                      </div>
+                      <span style={{fontSize:12.5,color:bm.nameColor||"var(--text-dim)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bm.name}</span>
+                    </button>
+                    <button type="button" onClick={()=>removeNpcBookmark(bm.id)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1,flexShrink:0}}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </FloatingPanel>
+        )}
         {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
           onSendText={markup=>doSend("narrate",markup,"","")}
           diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
