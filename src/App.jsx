@@ -1126,7 +1126,7 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
 // 교육(EDU)×4 만큼의 "기능 점수"를 배분한다고 가정하고, 기준값보다 올린 만큼을 사용량으로 계산합니다.
 // (자유 기능치는 기준값이 없으므로 값 전체를 사용량으로 셉니다.)
 function calcSkillPoints(sheet){
-  const total=(sheet.characteristics?.EDU||0)*4;
+  const total=(sheet.characteristics?.INT||0)*4+(sheet.characteristics?.EDU||0)*2;
   let spent=0;
   SKILL_LIST.forEach(([name,base])=>{
     const cur=sheet.skills?.[name]??base;
@@ -1137,6 +1137,22 @@ function calcSkillPoints(sheet){
 }
 
 function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false,onRollCheck,panel=false}){
+  // 회피의 기본값은 "민첩 ÷ 2"입니다. 민첩을 고치면 회피도 자동으로 따라 바뀌어요.
+  // 다만 기능 점수를 써서 기본값보다 올려둔 경우에는, 올린 값을 지우지 않고 그대로 둡니다.
+  const dex=sheet.characteristics?.DEX||0;
+  const dodgeBase=Math.floor(dex/2);
+  const prevDodgeBase=useRef(dodgeBase);
+  useEffect(()=>{
+    if(readOnly)return;
+    const prev=prevDodgeBase.current;
+    prevDodgeBase.current=dodgeBase;
+    if(prev===dodgeBase)return;               // 민첩이 안 바뀌었으면 건드리지 않음
+    const cur=sheet.skills?.["회피"];
+    if(cur===undefined||cur===null||cur===prev){ // 손대지 않았던 경우에만 갱신
+      setSheet({...sheet,skills:{...sheet.skills,"회피":dodgeBase}});
+    }
+  },[dodgeBase,readOnly]); // eslint-disable-line
+
   if(readOnly) return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
@@ -1197,7 +1213,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
         const {total,spent,remaining}=calcSkillPoints(sheet);
         return(
           <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:"7px 10px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-            <span className="coc-label">기능 점수 (교육×4)</span>
+            <span className="coc-label">기능 점수 (지능×4 + 교육×2)</span>
             <span className="coc-mono" style={{fontSize:12,fontWeight:700,color:remaining<0?"#c05050":"var(--accent-deep)"}}>
               {spent}/{total} · 남음 {remaining}
             </span>
@@ -1247,7 +1263,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
         const {total,spent,remaining}=calcSkillPoints(sheet);
         return(
           <div style={{background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:8,padding:"9px 12px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span className="coc-label">기능 점수 (교육×4)</span>
+            <span className="coc-label">기능 점수 (지능×4 + 교육×2)</span>
             <span className="coc-mono" style={{fontSize:13,fontWeight:700,color:remaining<0?"#c05050":"var(--accent-deep)"}}>
               {spent} / {total} 사용 · 남음 {remaining}
             </span>
@@ -2350,10 +2366,12 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
 // 창이라, 열어둔 채로 채팅 입력창 등 바깥을 자유롭게 쓸 수 있고, 제목줄을 잡고 끌어서 원하는
 // 자리로 옮기거나 우측 하단 손잡이로 크기를 조절할 수 있습니다.
 const DICE_LABELS=["대성공","극단적 성공","어려운 성공","보통 성공","실패","대실패"];
-function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
+function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,onSendImage,onSendImageUrl}){
   const [folded,setFolded]=usePersistedFold("decorate");
   const [z,bringToFront]=usePanelFront();
   const savedBox=loadPanelBox("decorate");
+  const decoImgRef=useRef(null);
+  const [decoImgUrl,setDecoImgUrl]=useState("");
   const [fontSize,setFontSize]=useState(16);
   const [color,setColor]=useState(()=>currentThemeColor("--accent-deep","#c0392b"));
   const [code,setCode]=useState("");
@@ -2507,6 +2525,28 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin}){
           disabled={!code.trim()} onClick={sendCode}>
           서술로 보내기
         </button>
+
+        <div className="coc-divider" style={{margin:"18px 0 14px"}}/>
+
+        <div className="coc-label" style={{marginBottom:6,flexShrink:0}}>이미지 전송</div>
+        <div style={{fontSize:11.5,color:"var(--text-faint)",marginBottom:10,flexShrink:0}}>
+          채팅에 사진을 올립니다. 파일로 올리거나, 인터넷에 있는 이미지 링크를 넣어도 돼요.
+        </div>
+        <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center",marginBottom:8,flexShrink:0}}
+          onClick={()=>decoImgRef.current?.click()}>
+          <Camera size={13}/> 파일에서 선택
+        </button>
+        <input ref={decoImgRef} type="file" accept="image/*" style={{display:"none"}}
+          onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await onSendImage(f);e.target.value="";}}/>
+        <div style={{display:"flex",gap:6,flexShrink:0}}>
+          <input className="coc-input" value={decoImgUrl} onChange={e=>setDecoImgUrl(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&decoImgUrl.trim()){e.preventDefault();onSendImageUrl(decoImgUrl);setDecoImgUrl("");}}}
+            placeholder="이미지 링크 (Imgur 등)" style={{flex:1,fontSize:12}}/>
+          <button type="button" className="coc-btn small" disabled={!decoImgUrl.trim()}
+            onClick={()=>{onSendImageUrl(decoImgUrl);setDecoImgUrl("");}}>
+            삽입
+          </button>
+        </div>
 
         <div className="coc-divider" style={{margin:"18px 0 14px"}}/>
 
@@ -2975,6 +3015,173 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
   );
 }
 
+/* 판정 기록: 지나간 주사위만 모아서 봅니다. 채팅은 화면이 무거워지지 않게 최근 것만
+   보여주기 때문에, 앞서 굴린 판정을 다시 확인하려면 여기가 편해요. */
+function DiceLogPanel({onClose,rolls,userCode,displayNameOf}){
+  const [onlyMine,setOnlyMine]=useState(false);
+  const shown=onlyMine?rolls.filter(m=>m.userCode===userCode):rolls;
+
+  const timeText=ts=>{
+    if(!ts)return"";
+    const d=new Date(ts);
+    return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  };
+
+  return(
+    <FloatingPanel title="판정 기록" icon={Dice5} onClose={onClose} storageKey="dicelog"
+      defaultAnchor={{position:"fixed",right:18,top:80}} width="min(94vw, 330px)">
+
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        {[[false,"전체"],[true,"내 판정만"]].map(([v,l])=>(
+          <button key={l} type="button" onClick={()=>setOnlyMine(v)}
+            style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
+              background:onlyMine===v?"var(--accent)":"var(--surface)",
+              color:onlyMine===v?"#fff":"var(--text-dim)",
+              border:"1px solid "+(onlyMine===v?"var(--accent)":"var(--border)")}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {shown.length===0?(
+        <div style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",padding:"18px 0"}}>
+          아직 굴린 판정이 없어요.
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {shown.map(m=>{
+            let d=null;
+            try{ d=JSON.parse(m.text); }catch{ return null; }
+            if(!d)return null;
+            const secret=!!(m.whisperTo&&m.whisperTo.length);
+            return(
+              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,
+                padding:"7px 9px",borderRadius:8,background:"var(--bg-panel)",
+                border:"1px solid "+(secret?"var(--accent-soft)":"transparent")}}>
+
+                <div style={{width:30,height:30,borderRadius:6,background:d.color,flexShrink:0,
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span className="coc-mono" style={{fontSize:12.5,fontWeight:700,color:"#fff"}}>{d.roll}</span>
+                </div>
+
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11.5,color:"var(--text-dim)",fontWeight:600,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {d.skillName}<span className="coc-mono" style={{color:"var(--text-faint)",fontWeight:400}}> /{d.value}</span>
+                  </div>
+                  <div style={{fontSize:10.5,color:"var(--text-faint)",
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {m.characterName||displayNameOf(m.userCode)} · {timeText(m.timestamp)}
+                    {secret&&<span style={{color:"var(--accent-deep)"}}> · 비밀</span>}
+                  </div>
+                </div>
+
+                <span style={{fontSize:11,fontWeight:700,color:d.color,flexShrink:0}}>{d.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </FloatingPanel>
+  );
+}
+
+/* 파티 상태 패널: 방에 있는 모두의 체력·정신·이성을 한눈에 봅니다.
+   각자가 접속 신호(presence)에 자기 수치를 함께 실어 보내기 때문에, GM이 남의
+   시트를 열어보지 않아도 지금 상태를 바로 알 수 있어요. 수치가 깎이면 바로 반영됩니다. */
+function PartyStatusPanel({onClose,participantsList,presenceMap,userCode,creatorCode,isOnline,displayNameOf,onAdjust}){
+  const bar=(label,cur,max,color)=>{
+    if(cur===null||cur===undefined) return null;
+    const hasMax=Number.isFinite(max)&&max>0;
+    const pct=hasMax?Math.max(0,Math.min(100,(cur/max)*100)):100;
+    const low=hasMax&&pct<=25;
+    return(
+      <div style={{marginBottom:5}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
+          <span style={{fontSize:10.5,color:"var(--text-faint)",letterSpacing:"0.04em"}}>{label}</span>
+          <span className="coc-mono" style={{fontSize:11.5,fontWeight:700,color:low?"#c05050":"var(--text-dim)"}}>
+            {cur}{hasMax?<span style={{opacity:0.55,fontWeight:400}}> / {max}</span>:null}
+          </span>
+        </div>
+        <div style={{height:5,borderRadius:3,background:"var(--bg-panel)",overflow:"hidden"}}>
+          <div style={{width:pct+"%",height:"100%",background:low?"#c05050":color,borderRadius:3,transition:"width .3s"}}/>
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <FloatingPanel title="파티 상태" icon={Heart} onClose={onClose} storageKey="partystatus"
+      defaultAnchor={{position:"fixed",right:18,top:80}} width="min(94vw, 290px)">
+      <div style={{display:"flex",flexDirection:"column",gap:9}}>
+        {participantsList.map(code=>{
+          const p=presenceMap[code]||{};
+          const s=p.stats||{};
+          const online=code===userCode?true:isOnline(code);
+          const hasStats=s.HP!==null&&s.HP!==undefined;
+          return(
+            <div key={code} style={{border:"1px solid var(--border-soft)",borderRadius:10,
+              padding:"9px 10px",background:"var(--surface)",opacity:online?1:0.5}}>
+
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:hasStats?8:0}}>
+                <div style={{width:30,height:30,borderRadius:"50%",overflow:"hidden",flexShrink:0,
+                  background:"var(--bg-panel)",border:"1px solid var(--border)",
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {p.charAvatar
+                    ? <img src={p.charAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    : <Sparkles size={13} color="var(--accent-soft)"/>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{fontSize:12.5,fontWeight:700,color:"var(--text)",
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {displayNameOf?displayNameOf(code):(p.charName||code)}
+                    </span>
+                    {code===creatorCode&&<span style={{fontSize:9,fontWeight:700,color:"var(--accent-deep)",
+                      fontFamily:"JetBrains Mono,monospace",flexShrink:0}}>GM</span>}
+                  </div>
+                  <span style={{fontSize:10.5,color:online?"#3f9e6a":"var(--text-faint)"}}>
+                    {online?"접속 중":"오프라인"}
+                  </span>
+                </div>
+                {onAdjust&&(
+                  <button type="button" title="이 사람 수치 조정하기" onClick={()=>onAdjust(code)}
+                    style={{border:"1px solid var(--border)",background:"var(--surface)",borderRadius:6,
+                      padding:"3px 5px",cursor:"pointer",color:"var(--text-faint)",display:"flex",flexShrink:0}}>
+                    <Sliders size={11}/>
+                  </button>
+                )}
+              </div>
+
+              {hasStats?(
+                <>
+                  {bar("체력 HP",s.HP,s.maxHP,"#c9736b")}
+                  {bar("정신 MP",s.MP,s.maxMP,"#6b8fc9")}
+                  {bar("이성 SAN",s.SAN,s.maxSAN,"#8f7bc0")}
+                  {s.madness&&(
+                    <div style={{marginTop:6,display:"flex",alignItems:"center",gap:5,
+                      background:"#fff5f5",border:"1px solid #e8c4c4",borderRadius:6,padding:"4px 7px"}}>
+                      <AlertTriangle size={10} color="#c05050" style={{flexShrink:0}}/>
+                      <span style={{fontSize:10.5,color:"#a04848",fontWeight:600,
+                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {s.madness}{s.madnessTerm?` (${s.madnessTerm})`:""}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ):(
+                <div style={{fontSize:10.5,color:"var(--text-faint)",paddingTop:2}}>
+                  {online?"아직 캐릭터를 만들지 않았어요":"수치 정보 없음"}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </FloatingPanel>
+  );
+}
+
 function StatAdjustPanel({onClose,displayNameOf,
   participantsList,presenceMap,userCode,
   statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
@@ -3198,6 +3405,23 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,on
   const [selection,setSelection]=useState({});
   const imgRef=useRef(null);
 
+  // 핸드아웃 본문 꾸미기: 꾸미기 창과 같은 방식으로, 끌어서 선택한 부분만 감쌉니다.
+  const hoTextRef=useRef(null);
+  const [hoColor,setHoColor]=useState("#c0392b");
+  const hoFmtBtn={background:"var(--surface)",color:"var(--text-dim)",border:"1px solid var(--border)",
+    borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:12.5,fontWeight:700};
+  const wrapHandoutText=(before,after)=>{
+    const el=hoTextRef.current;
+    if(!el)return;
+    const start=el.selectionStart,end=el.selectionEnd;
+    if(start===end)return;                    // 선택된 글자가 없으면 아무것도 안 함
+    const selected=text.slice(start,end);
+    const next=text.slice(0,start)+before+selected+after+text.slice(end);
+    setText(next);
+    const s=start+before.length, e=s+selected.length;
+    setTimeout(()=>{ el.focus(); el.setSelectionRange(s,e); },10);
+  };
+
   const closeForm=()=>{ setShowCreate(false);setEditing(null);setTitle("");setText("");setImage(""); };
   // 새로 만들 때도, 이미 있는 걸 고칠 때도 이 함수를 씁니다.
   // 고칠 때는 이미 전송한 대상(visibleTo)과 만든 사람·만든 시각을 그대로 유지합니다.
@@ -3256,7 +3480,26 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,on
               <div className="coc-label" style={{marginBottom:5}}>제목</div>
               <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 낡은 편지" style={{marginBottom:12}} autoFocus/>
               <div className="coc-label" style={{marginBottom:5}}>내용</div>
-              <textarea className="coc-input" rows={5} value={text} onChange={e=>setText(e.target.value)} placeholder="플레이어에게 보여줄 글 내용" style={{marginBottom:12}}/>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>
+                <button type="button" onClick={()=>wrapHandoutText("**","**")} style={hoFmtBtn}>B</button>
+                <button type="button" onClick={()=>wrapHandoutText("*","*")} style={{...hoFmtBtn,fontStyle:"italic"}}>I</button>
+                <button type="button" onClick={()=>wrapHandoutText("__","__")} style={{...hoFmtBtn,textDecoration:"underline"}}>U</button>
+                <button type="button" onClick={()=>wrapHandoutText("~~","~~")} style={{...hoFmtBtn,textDecoration:"line-through"}}>S</button>
+                <label style={{position:"relative",width:30,height:30,borderRadius:6,overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer",flexShrink:0}}>
+                  <input type="color" value={hoColor} onChange={e=>setHoColor(e.target.value)}
+                    style={{position:"absolute",top:-6,left:-6,width:44,height:44,border:"none",padding:0,cursor:"pointer"}}/>
+                </label>
+                <button type="button" onClick={()=>wrapHandoutText(`<span style="color:${hoColor}">`,"</span>")} style={hoFmtBtn}>색</button>
+              </div>
+              <textarea ref={hoTextRef} className="coc-input" rows={5} value={text} onChange={e=>setText(e.target.value)}
+                placeholder="플레이어에게 보여줄 글 내용 (글자를 끌어서 선택한 뒤 위 버튼을 누르면 꾸며져요)" style={{marginBottom:8}}/>
+              {text.trim()&&(
+                <div style={{background:"var(--bg-panel)",borderRadius:8,padding:"9px 11px",marginBottom:12,
+                  fontSize:13.5,lineHeight:1.65,wordBreak:"break-word"}}>
+                  <div className="coc-label" style={{marginBottom:4}}>미리보기</div>
+                  <FormattedText text={text}/>
+                </div>
+              )}
               <div className="coc-label" style={{marginBottom:5}}>사진 (선택)</div>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
                 {image&&<img src={image} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}}/>}
@@ -3456,7 +3699,7 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
         padding:"12px 14px 14px",touchAction:"pan-y"}}>
         {handout.image&&<img src={handout.image} alt=""
           style={{width:"100%",display:"block",borderRadius:8,border:"1px solid var(--border)",marginBottom:handout.text?10:0}}/>}
-        {handout.text&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}>{handout.text}</div>}
+        {handout.text&&<div style={{whiteSpace:"pre-wrap",fontSize:13.5,lineHeight:1.6}}><FormattedText text={handout.text}/></div>}
 
       </div>
 
@@ -3468,7 +3711,7 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
   );
 }
 
-function DicePanel({char,onRollToChat,roomId,onClose}){
+function DicePanel({char,onRollToChat,roomId,onClose,secretRoll,setSecretRoll}){
   // 채팅방 상단의 "캐릭터" 버튼을 눌러야 열리는 떠 있는 패널입니다.
   // 접기를 누르면 닫히는 게 아니라, 내 캐릭터 이름이 적힌 투명도 80%의 작은 바로 줄어들어
   // 무대 어디에든 둘 수 있고, 그 바를 다시 누르면 펼쳐집니다. 닫기(X)를 눌러야 완전히 사라져요.
@@ -3619,6 +3862,23 @@ function DicePanel({char,onRollToChat,roomId,onClose}){
       <div className="coc-scroll" style={{flex:1,minHeight:0,overflowY:"auto",overflowX:"auto",padding:"12px 14px 14px",touchAction:"pan-x pan-y"}}>
         {/* 창을 좁혀도 내용은 이 최소 폭을 유지하고, 대신 가로 스크롤 바로 옆을 볼 수 있게 합니다. */}
         <div style={{minWidth:SHEET_MIN_CONTENT}}>
+          {setSecretRoll&&(
+            <button type="button" onClick={()=>setSecretRoll(v=>!v)}
+              title={secretRoll?"지금은 굴린 결과가 GM에게만 보입니다":"모두에게 보이도록 굴립니다"}
+              style={{display:"flex",alignItems:"center",gap:7,width:"100%",marginBottom:12,
+                padding:"8px 11px",borderRadius:8,cursor:"pointer",textAlign:"left",
+                border:"1px solid "+(secretRoll?"var(--accent)":"var(--border)"),
+                background:secretRoll?"var(--accent-soft)":"var(--surface)"}}>
+              {secretRoll?<Lock size={13} color="var(--accent-deep)"/>:<Unlock size={13} color="var(--text-faint)"/>}
+              <span style={{flex:1,fontSize:12,fontWeight:secretRoll?700:400,
+                color:secretRoll?"var(--accent-deep)":"var(--text-dim)"}}>
+                비밀 굴림 {secretRoll?"켜짐":"꺼짐"}
+              </span>
+              <span style={{fontSize:10.5,color:"var(--text-faint)"}}>
+                {secretRoll?"GM에게만":"모두에게"}
+              </span>
+            </button>
+          )}
           {char?.madness?.name&&(
             <div style={{border:"1px solid #c05050",background:"#fff5f5",borderRadius:8,padding:"7px 10px",marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
@@ -3763,7 +4023,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setLoadingFullTranscript(false);
   };
   const inputRef=useRef(null);
-  const imgInputRef=useRef(null);
   const firstLoad=useRef({});
   const isGM=userCode===room.creatorCode;
 
@@ -3883,14 +4142,36 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   useEffect(()=>{
     const key=`presence:${room.id}:${userCode}`;
     let intervalId=null;
-    const beat=()=>{ if(document.visibilityState==="visible") storeSet(key,{userCode,charId:char?.id||"",charName:char?.name||userCode,charAvatar:char?.avatar||"",lastSeen:Date.now()},true); };
+    const beat=()=>{
+      if(document.visibilityState!=="visible")return;
+      // 파티 상태 패널에서 모두의 체력·정신·이성을 실시간으로 볼 수 있도록, 지금 쓰는
+      // 캐릭터의 주요 수치도 함께 실어 보냅니다. (시트 전체가 아니라 이 값들만 보냅니다)
+      const d=char?.derived||{};
+      storeSet(key,{
+        userCode,
+        charId:char?.id||"",
+        charName:char?.name||userCode,
+        charAvatar:char?.avatar||"",
+        stats:char?{
+          HP:d.HP??null, maxHP:d.maxHP??null,
+          MP:d.MP??null, maxMP:d.maxMP??null,
+          SAN:d.SAN??null, maxSAN:d.maxSAN??null,
+          madness:char?.madness?.name||"",
+          madnessTerm:char?.madness?.term||"",
+        }:null,
+        lastSeen:Date.now(),
+      },true);
+    };
     const start=()=>{ beat(); if(!intervalId) intervalId=setInterval(beat,10000); };
     const stop=()=>{ if(intervalId){clearInterval(intervalId);intervalId=null;} };
     const onVisibility=()=>{ if(document.visibilityState==="visible") start(); else stop(); };
     start();
     document.addEventListener("visibilitychange",onVisibility);
     return()=>{ stop(); document.removeEventListener("visibilitychange",onVisibility); };
-  },[room.id,userCode,char?.name,char?.id,char?.avatar]);
+  },[room.id,userCode,char?.name,char?.id,char?.avatar,
+     char?.derived?.HP,char?.derived?.MP,char?.derived?.SAN,
+     char?.derived?.maxHP,char?.derived?.maxMP,char?.derived?.maxSAN,
+     char?.madness?.name,char?.madness?.term]);
 
   const [presenceMap,setPresenceMap]=useState({}); // {userCode: {charName,charAvatar,lastSeen}}
   useEffect(()=>{
@@ -4133,16 +4414,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     else{ setShowHandoutViewer(true); setSeenHandoutCount(myHandouts.length); }
   };
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
-  const [showImgPopover,setShowImgPopover]=useState(false);
-  const [imgUrlInput,setImgUrlInput]=useState("");
-  const imgPopoverRef=useRef(null);
-  useEffect(()=>{
-    if(!showImgPopover)return;
-    const h=e=>{ if(imgPopoverRef.current&&!imgPopoverRef.current.contains(e.target)) setShowImgPopover(false); };
-    document.addEventListener("mousedown",h);
-    return()=>document.removeEventListener("mousedown",h);
-  },[showImgPopover]);
-
   function ytEmbedUrl(url){
     if(!url)return null;
     try{
@@ -4371,6 +4642,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [sceneUrl,setSceneUrl]=useState("");
   const [showDecorate,setShowDecorate]=usePersistedOpen(`${room.id}:decorate`);
   const [showStatAdjust,setShowStatAdjust]=usePersistedOpen(`${room.id}:statadjust`);
+  const [showPartyStatus,setShowPartyStatus]=usePersistedOpen(`${room.id}:partystatus`);
   // 맵세팅 패널 위치 — 옮긴 자리를 이 기기에 기억합니다.
   const [gmBarPos,setGmBarPos]=useState(()=>{
     const b=loadPanelBox("mapsettings");
@@ -4929,7 +5201,34 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     postImageMsg(u);
   };
 
-  const sendDice=r=>doSend("dice",r,char.name,char.avatar,undefined,char.nameColor);
+  // 비밀 굴림: 켜두면 주사위 결과가 GM과 굴린 본인에게만 보입니다.
+  // (GM이 굴리면 GM에게만 보이니, 결과를 숨기고 서술만 줄 때 씁니다)
+  const [secretRoll,setSecretRoll]=usePersistedOpen(`${room.id}:secretroll`);
+
+  /* 판정 기록: 채팅은 화면이 무거워지지 않게 최근 것만 불러오지만, 주사위는 지나간 것도
+     다시 찾아볼 일이 많아서 따로 넉넉히 가져옵니다. 내가 볼 수 있는 것만 담습니다. */
+  const [showDiceLog,setShowDiceLog]=usePersistedOpen(`${room.id}:dicelog`);
+  const [diceLog,setDiceLog]=useState([]);
+  useEffect(()=>{
+    if(!showDiceLog){ return; }   // 창을 열었을 때만 구독해서 평소엔 읽기 낭비가 없도록
+    const unsub=storeListenPrefix(`chat:${room.id}:`,list=>{
+      const rolls=list.map(x=>x.value)
+        .filter(m=>m&&m.speaker==="dice")
+        .filter(m=>!m.whisperTo||m.userCode===userCode||m.whisperTo.includes(userCode))
+        .sort((a,b)=>(b.timestamp||0)-(a.timestamp||0))
+        .slice(0,80);
+      setDiceLog(rolls);
+    },400);
+    return()=>unsub();
+  },[room.id,userCode,showDiceLog]);
+
+  const sendDice=r=>{
+    var wt;
+    if(secretRoll){
+      wt=isGM?[userCode]:[room.creatorCode,userCode].filter(Boolean);
+    }
+    return doSend("dice",r,char.name,char.avatar,undefined,char.nameColor,wt);
+  };
   const handleKeyDown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
   const placeholder=()=>{
     if(isGM&&speaker==="gm")return GM_TABS.find(x=>x.key===gmTab)?.placeholder||"";
@@ -5291,6 +5590,16 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           )}
         </div>
 
+        <button type="button" className={"chat-icon-btn"+(showPartyStatus?" on":"")}
+          onClick={()=>setShowPartyStatus(v=>!v)} title="파티 상태 (모두의 체력·정신·이성)">
+          <Heart size={18}/>
+        </button>
+
+        <button type="button" className={"chat-icon-btn"+(showDiceLog?" on":"")}
+          onClick={()=>setShowDiceLog(v=>!v)} title="판정 기록 (지나간 주사위 모아보기)">
+          <Dice5 size={18}/>
+        </button>
+
         {isGM&&(
           <>
             <div className="rail-divider"/>
@@ -5314,30 +5623,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             <button type="button" className={"chat-icon-btn"+(showMadnessModal?" on":"")} onClick={()=>setShowMadnessModal(v=>!v)} title="광기 부여">
               <AlertTriangle size={18}/>
             </button>
-
-            <div style={{position:"relative"}} ref={imgPopoverRef}>
-              <button type="button" className={"chat-icon-btn"+(showImgPopover?" on":"")} onClick={()=>setShowImgPopover(v=>!v)} title="이미지 전송">
-                <Camera size={18}/>
-              </button>
-              {showImgPopover&&(
-                <div style={{position:"absolute",top:0,left:"calc(100% + 8px)",zIndex:31,width:230,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.14)",padding:10}}>
-                  <button type="button" className="coc-btn ghost small" style={{width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>imgInputRef.current?.click()}>
-                    파일에서 선택
-                  </button>
-                  <div style={{display:"flex",gap:6}}>
-                    <input className="coc-input" value={imgUrlInput} onChange={e=>setImgUrlInput(e.target.value)}
-                      onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();sendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}}
-                      placeholder="이미지 링크 (Imgur 등)" style={{flex:1,fontSize:12}}/>
-                    <button type="button" className="coc-btn small" disabled={!imgUrlInput.trim()}
-                      onClick={()=>{sendImageUrl(imgUrlInput);setImgUrlInput("");setShowImgPopover(false);}}>
-                      삽입
-                    </button>
-                  </div>
-                </div>
-              )}
-              <input ref={imgInputRef} type="file" accept="image/*" style={{display:"none"}}
-                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;await sendImage(f);e.target.value="";setShowImgPopover(false);}}/>
-            </div>
           </>
         )}
 
@@ -5946,6 +6231,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         )}
         {showDecorate&&<DecoratePanel onClose={()=>setShowDecorate(false)}
           onSendText={markup=>doSend("narrate",markup,"","")}
+          onSendImage={sendImage} onSendImageUrl={sendImageUrl}
           diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
         {showStatAdjust&&<StatAdjustPanel onClose={()=>setShowStatAdjust(false)} displayNameOf={displayNameOf}
           participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
@@ -5958,6 +6244,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           onApplyStatAdjust={applyStatAdjust}/>}
         </>
       )}
+      {showPartyStatus&&<PartyStatusPanel onClose={()=>setShowPartyStatus(false)}
+        participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
+        creatorCode={room.creatorCode} isOnline={isOnline} displayNameOf={displayNameOf}
+        onAdjust={isGM?(code=>{ setStatAdjustTarget(code); setShowStatAdjust(true); }):null}/>}
+      {showDiceLog&&<DiceLogPanel onClose={()=>setShowDiceLog(false)}
+        rolls={diceLog} userCode={userCode} displayNameOf={displayNameOf}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants}
         onClose={()=>setShowHandoutManager(false)} onPreview={openHandout} displayNameOf={displayNameOf}/>}
       {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode} displayNameOf={displayNameOf}
@@ -5993,7 +6285,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         onSelect={h=>openHandout(h)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
         onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
-      {showCharSheet&&char&&<DicePanel char={char} onRollToChat={sendDice} roomId={room.id} onClose={()=>setShowCharSheet(false)}/>}
+      {showCharSheet&&char&&<DicePanel char={char} onRollToChat={sendDice} roomId={room.id} onClose={()=>setShowCharSheet(false)}
+        secretRoll={secretRoll} setSecretRoll={setSecretRoll}/>}
     </div>
     </div>
   );
