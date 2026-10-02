@@ -4709,7 +4709,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>{ if(ro)ro.disconnect(); window.removeEventListener("resize",fit); };
   },[]);
 
-  const MIN_ZOOM=0.3, MAX_ZOOM=5;
+  const MIN_ZOOM=0.1, MAX_ZOOM=5;
   const [stageView,setStageView]=useState({scale:1,tx:0,ty:0}); // tx,ty는 픽셀 단위 이동량
   const stageSceneRef=useRef(null);
   const stageViewRef=useRef(stageView);
@@ -4882,13 +4882,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName,frame)=>{
     const combined={...(items||{}),...(markers||{})};
     const fw=fieldWidth||100, fh=fieldHeight||100;
-    const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>it.order||it.z||0));
+    // ⚠️ 코코포리아의 "order"는 소품 목록 패널에 뜨는 순서일 뿐, 실제 화면에 쌓이는 순서는
+    // "z" 값이 결정합니다. 둘이 서로 다른 경우(목록에서는 위인데 화면에서는 아래 깔리는 등)가
+    // 꽤 있어서, order로 정렬하면 실제 코코포리아 화면과 다른 순서로 겹쳐 보이는 문제가
+    // 있었습니다. z를 우선으로 쓰고, z가 없는 항목(마커 등)만 order로 보완합니다.
+    const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>(it.z??it.order??0)));
     const fieldRect={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
     if(foregroundUrl&&fileByName[foregroundUrl]){
-      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,order:maxOrder+1};
+      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,z:maxOrder+1,order:maxOrder+1};
     }
     const sorted=Object.entries(combined).map(([,v])=>v)
-      .sort((a,b)=>(b.order??b.z??0)-(a.order??a.z??0));
+      .sort((a,b)=>(b.z??b.order??0)-(a.z??a.order??0));
     const {minX,minY,boundW,boundH}=frame||computeSceneBBox({items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName);
     const stageEl=document.querySelector(".stage-scene");
     const sr=stageEl?stageEl.getBoundingClientRect():{width:16,height:9};
