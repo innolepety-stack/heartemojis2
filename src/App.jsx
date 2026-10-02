@@ -4868,23 +4868,13 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   };
   // markers/items/foreground를 한데 모아 위치를 계산하고, 레이어로 "지정한 장면"에 저장합니다.
   // 한 장면이 차지하는 범위(코코포리아 좌표 기준)를 계산합니다. 배치 배율을 정할 때 씁니다.
-  const computeSceneBBox=(source,fileByName)=>{
-    const {items,markers,foregroundUrl,fieldWidth,fieldHeight}=source;
-    const combined={...(items||{}),...(markers||{})};
-    const fw=fieldWidth||100, fh=fieldHeight||100;
-    combined["__field__"]={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
-    if(foregroundUrl&&fileByName[foregroundUrl]) combined["__fg__"]={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
-    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-    for(const it of Object.values(combined)){
-      const w=it.width||10,h=it.height||10;
-      const cx=(it.x||0)+w/2, cy=(it.y||0)+h/2;
-      const rad=(it.angle||0)*Math.PI/180;
-      const cos=Math.abs(Math.cos(rad)), sin=Math.abs(Math.sin(rad));
-      const halfW=(w*cos+h*sin)/2, halfH=(w*sin+h*cos)/2;
-      minX=Math.min(minX,cx-halfW);maxX=Math.max(maxX,cx+halfW);
-      minY=Math.min(minY,cy-halfH);maxY=Math.max(maxY,cy+halfH);
-    }
-    return {minX,minY,boundW:Math.max(1,maxX-minX),boundH:Math.max(1,maxY-minY)};
+  // ※ 코코포리아는 "필드"가 좌표의 기준입니다. 소품이 필드 밖으로 아무리 멀리 나가 있어도
+  // 필드 크기는 그대로고, 밖으로 나간 소품은 화면 밖으로 넘쳐서 잘릴 뿐이에요.
+  // 예전엔 "모든 소품을 감싸는 범위"를 기준으로 삼아서, 소품이 멀리 퍼진 시나리오일수록
+  // 전체가 확 축소되어 원작자가 의도한 구도와 달라졌습니다. 이제 필드를 그대로 기준으로 씁니다.
+  const computeSceneBBox=(source)=>{
+    const fw=source.fieldWidth||100, fh=source.fieldHeight||100;
+    return {minX:-fw/2,minY:-fh/2,boundW:fw,boundH:fh};
   };
 
   // frame(기준 범위)을 밖에서 받아서, 여러 장면이 "같은 배율"로 배치되도록 합니다.
@@ -4958,17 +4948,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     // 활성 장면에 넣을 원본: 장면 목록이 있으면 그 첫 장면, 없으면 방의 현재 상태
     const firstSrc=sceneEntries.length>0?sceneEntries[0]:cocoRoom;
 
-    // 코코포리아는 "필드"를 화면에 맞추고, 그보다 큰 컷인 같은 건 화면 밖으로 잘라냅니다.
-    // 예전 우리 코드는 장면마다 "모든 마커를 포함한 전체 범위"를 무대에 욱여넣어서,
-    // 화면을 덮는 큰 컷인이 하나만 있어도 그 장면의 배경·소품이 확 쪼그라들고 장면마다
-    // 크기가 널뛰었어요. 이제는 모든 장면의 범위를 재서 그중 "중간값"을 기준 배율로 삼습니다.
-    // 이러면 컷인이 없는 보통 장면들이 무대를 꽉 채우고, 컷인은 코코포리아처럼 넘쳐서 잘립니다.
-    // (중간값이라 컷인 있는 장면 하나 때문에 끌려가지도, 텅 빈 장면 하나 때문에 확대되지도 않아요.)
-    const allSources=sceneEntries.length>0
-      ? sceneEntries.map(sc=>({items,markers:sc.markers,foregroundUrl:sc.foregroundUrl,fieldWidth:sc.fieldWidth,fieldHeight:sc.fieldHeight}))
-      : [{items,markers:cocoRoom.markers,foregroundUrl:cocoRoom.foregroundUrl,fieldWidth:cocoRoom.fieldWidth,fieldHeight:cocoRoom.fieldHeight}];
-    const boxes=allSources.map(s=>computeSceneBBox(s,fileByName)).sort((a,b)=>a.boundW*a.boundH-b.boundW*b.boundH);
-    const sharedFrame=boxes[Math.floor((boxes.length-1)/2)];
+    // 모든 장면이 같은 기준(= 필드)으로 배치되도록, 기준 틀을 한 번만 정해서 돌려 씁니다.
+    // 코코포리아처럼 필드가 무대를 꽉 채우고, 필드 밖으로 나간 소품은 넘쳐서 잘립니다.
+    const sharedFrame=computeSceneBBox({
+      fieldWidth:firstSrc.fieldWidth||cocoRoom.fieldWidth,
+      fieldHeight:firstSrc.fieldHeight||cocoRoom.fieldHeight,
+    });
 
     if(firstSrc.backgroundUrl&&fileByName[firstSrc.backgroundUrl]){
       await uploadScene(fileByName[firstSrc.backgroundUrl]);
