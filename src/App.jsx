@@ -2048,14 +2048,12 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved,ownerCode,a
     if(res.ok) onSaved(char);
     else setError(`저장에 실패했습니다.\n오류: ${res.error}`);
   };
+  // 예전 캐릭터 시트 창처럼, 끌어서 옮기고 "접기"로 작은 바로 줄여 둘 수 있는 떠 있는 창입니다.
   return(
-    <div className="coc-modal-backdrop">
-      <div className="coc-modal" onClick={e=>e.stopPropagation()}>
-        <div style={{padding:20}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>탐사자 시트</div>
-            <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
-          </div>
+    <FloatingPanel title={sheet.name?.trim()?`${sheet.name} · 시트`:"탐사자 시트"} icon={Sparkles} onClose={onClose}
+      storageKey="charedit" startUnfolded width="min(96vw, 560px)" maxHeight="88vh"
+      defaultAnchor={{position:"fixed",left:"max(8px, calc(50vw - 280px))",top:40}}>
+        <div>
           {assignOptions&&(
             <div style={{marginBottom:16,padding:"10px 12px",borderRadius:10,background:"var(--bg-panel)",border:"1px solid var(--border-soft)"}}>
               <div className="coc-label" style={{marginBottom:6}}>이 캐릭터를 쓸 사람</div>
@@ -2113,8 +2111,7 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved,ownerCode,a
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </FloatingPanel>
   );
 }
 
@@ -2951,9 +2948,11 @@ function MapSettingsPanel({onClose,
 // 닫히는 대신 제목이 적힌 투명도 80%의 작은 알약 바로 줄어들어 어디든 둘 수 있으며, 그 바를
 // 다시 누르면 펼쳐집니다. "닫기"(X)를 눌러야 완전히 사라집니다.
 // 시트·핸드아웃·맵세팅·꾸미기·수치조정·광기 창이 전부 이 껍데기를 함께 씁니다.
-function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 330px)",maxHeight="78vh",storageKey,children}){
+function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 330px)",maxHeight="78vh",storageKey,startUnfolded,children}){
   const wrapRef=useRef(null);
   const [folded,setFolded]=usePersistedFold(storageKey||"panel");
+  // 새로 열 때는 (지난번에 접어 둔 채였더라도) 펼친 상태로 시작합니다.
+  useEffect(()=>{ if(startUnfolded) setFolded(false); },[]); // eslint-disable-line
   const [z,bringToFront]=usePanelFront();
   const saved=storageKey?loadPanelBox(storageKey):null;
   const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:null);
