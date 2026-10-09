@@ -350,7 +350,7 @@ input[type=number] { -moz-appearance: textfield; }
   padding: 20px 24px; height: 25vh; box-sizing: border-box; overflow-y: auto;
 }
 .vn-textcol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.vn-name { font-size: 26px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.vn-name { font-size: 26px; font-weight: 700; color: #fff !important; margin-bottom: 8px; } /* 무대 대사창 이름은 항상 하얀색 */
 .vn-line { font-size: 18px; line-height: 1.5; word-break: break-word; color: #fff; }
 
 /* GM 서술/판정: 초상화 없이, 대사창만 화면 하단에 꽉 차게. 절대 위치라 나타나거나
@@ -787,10 +787,9 @@ function getImageSize(url){
   });
 }
 // 캐릭터 이름 색깔: 올바른 색상 코드일 때만 사용하고, 아니면 빈 값(= 기본 테마색)으로 처리합니다.
-function safeNameColor(c) {
-  const v = (c || "").trim();
-  return isValidHexColor(v) ? v : "";
-}
+// 이름 색은 따로 고를 수 없고, 언제나 각자의 테마색으로 보입니다.
+// (예전 메시지·시트에 저장된 색이 있어도 무시합니다.)
+function safeNameColor(c) { return ""; }
 // 헷갈리기 쉬운 문자(0/O, 1/I 등)를 뺀 6자리 초대 코드
 function genInviteCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1159,7 +1158,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
         <div style={{width:52,height:52,borderRadius:"50%",overflow:"hidden",border:"1px solid var(--border)",flexShrink:0,background:"var(--bg-panel)"}}>
           {sheet.avatar?<img src={sheet.avatar} className="coc-avatar" style={{width:"100%",height:"100%"}}/>:<Sparkles size={22} color="var(--accent-soft)" style={{margin:15}}/>}
         </div>
-        <div className="coc-display" style={{fontSize:18,color:sheet.nameColor||"var(--accent-deep)"}}>{sheet.name||"이름 없음"}</div>
+        <div className="coc-display" style={{fontSize:18,color:"var(--accent-deep)"}}>{sheet.name||"이름 없음"}</div>
       </div>
       <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={()=>{}} allowRoll={false} compact={compact}/>
       <div className="coc-divider"/>
@@ -1180,22 +1179,6 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
             <div className="coc-label" style={{marginBottom:3}}>이름</div>
             <input className="coc-input" value={sheet.name} onChange={e=>setSheet({...sheet,name:e.target.value})}
               placeholder="탐사자 이름" style={{fontSize:13,padding:"5px 8px"}}/>
-          </div>
-          <div>
-            <div className="coc-label" style={{marginBottom:3}}>이름 색깔</div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}>
-              <label style={{position:"relative",width:30,height:30,borderRadius:7,overflow:"hidden",border:"1.5px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-                <input type="color" value={sheet.nameColor||currentThemeColor()}
-                  onChange={e=>setSheet({...sheet,nameColor:e.target.value})}
-                  style={{position:"absolute",top:-6,left:-6,width:44,height:44,border:"none",padding:0,cursor:"pointer"}}/>
-              </label>
-              {sheet.nameColor&&(
-                <button type="button" className="coc-btn ghost small" title="기본 테마색으로"
-                  onClick={()=>setSheet({...sheet,nameColor:""})} style={{padding:"4px 6px"}}>
-                  <RotateCcw size={11}/>
-                </button>
-              )}
-            </div>
           </div>
         </div>
 
@@ -1233,24 +1216,6 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
       <div style={{marginBottom:14}}>
         <div className="coc-label" style={{marginBottom:5}}>이름</div>
         <input className="coc-input" value={sheet.name} onChange={e=>setSheet({...sheet,name:e.target.value})} placeholder="탐사자 이름"/>
-      </div>
-      {/* 대사창·채팅에 뜨는 이름 색깔. 비워두면 각자 자기 테마색으로 보입니다. */}
-      <div style={{marginBottom:16}}>
-        <div className="coc-label" style={{marginBottom:5}}>이름 색깔</div>
-        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <label style={{position:"relative",width:38,height:38,borderRadius:9,overflow:"hidden",border:"2px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-            <input type="color" value={sheet.nameColor||currentThemeColor()}
-              onChange={e=>setSheet({...sheet,nameColor:e.target.value})}
-              style={{position:"absolute",top:-6,left:-6,width:52,height:52,border:"none",padding:0,cursor:"pointer"}}/>
-          </label>
-          <input className="coc-input coc-mono" value={sheet.nameColor||""}
-            onChange={e=>setSheet({...sheet,nameColor:e.target.value})}
-            placeholder="비워두면 기본 테마색" style={{maxWidth:180}}/>
-          {sheet.nameColor&&<button type="button" className="coc-btn ghost small" onClick={()=>setSheet({...sheet,nameColor:""})}>기본색으로</button>}
-        </div>
-        <div style={{marginTop:8,fontSize:13,fontWeight:700,color:safeNameColor(sheet.nameColor)||"var(--accent-deep)"}}>
-          {sheet.name||"탐사자 이름"} <span style={{fontWeight:400,fontSize:11.5,color:"var(--text-faint)"}}>← 대사창에 이렇게 보여요</span>
-        </div>
       </div>
       <div style={{marginBottom:16}}><div className="coc-label" style={{marginBottom:5}}>사진</div><AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})}/></div>
       <div className="coc-divider"/>
@@ -2106,6 +2071,35 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved,ownerCode,a
             </div>
           )}
           <SheetEditor sheet={sheet} setSheet={setSheet} allowRoll={true}/>
+          {assignOptions&&(()=>{
+            // GM 전용: 광기를 시트에 직접 적어 줍니다. 저장하면 그 플레이어 화면에 광기 알림이 떠요.
+            const m=sheet.madness||{name:"",term:"단기적",note:""};
+            const setM=patch=>setSheet(sh=>({...sh,madness:{...(sh.madness||{name:"",term:"단기적",note:""}),...patch}}));
+            return(
+              <div style={{marginTop:16,padding:"12px 12px 14px",borderRadius:10,background:"rgba(192,80,80,0.06)",border:"1px solid #e8c4c4"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+                  <AlertTriangle size={14} color="#c05050"/>
+                  <span className="coc-label" style={{color:"#c05050",margin:0}}>광기 (GM만 보여요)</span>
+                  <span style={{flex:1}}/>
+                  {m.name&&<button type="button" onClick={()=>setM({name:"",note:""})}
+                    style={{background:"none",border:"none",cursor:"pointer",color:"#c05050",fontSize:11,fontWeight:700}}>광기 없애기</button>}
+                </div>
+                <div style={{display:"flex",gap:6,marginBottom:8}}>
+                  {["단기적","장기적"].map(t=>(
+                    <button key={t} type="button" onClick={()=>setM({term:t})}
+                      style={{flex:1,fontSize:12,padding:"6px 0",borderRadius:6,cursor:"pointer",
+                        background:(m.term||"단기적")===t?"#c05050":"var(--surface)",color:(m.term||"단기적")===t?"#fff":"var(--text-dim)",
+                        border:"1px solid "+((m.term||"단기적")===t?"#c05050":"var(--border)")}}>
+                      {t} 광기
+                    </button>
+                  ))}
+                </div>
+                <input className="coc-input" value={m.name||""} onChange={e=>setM({name:e.target.value})} placeholder="광기 이름 (예: 실어증) — 비워 두면 광기 없음" style={{marginBottom:8}}/>
+                <textarea className="coc-input" value={m.note||""} onChange={e=>setM({note:e.target.value})} placeholder="증상·행동 등" rows={3} style={{resize:"vertical"}}/>
+                <div style={{fontSize:11,color:"var(--text-faint)",marginTop:6}}>저장하면 이 캐릭터를 가진 플레이어에게 광기 알림이 떠요.</div>
+              </div>
+            );
+          })()}
           <div className="coc-divider"/>
           {error&&<div style={{color:"var(--accent)",fontSize:13,marginBottom:10,whiteSpace:"pre-wrap"}}>{error}</div>}
           <button className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!sheet.name.trim()||saving} onClick={save}>
@@ -3069,7 +3063,7 @@ function CharacterRosterPanel({onClose,assignOptions,allChars,creatorCode,isOnli
             :<Sparkles size={12} color="var(--accent-soft)"/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:12.5,fontWeight:700,color:c.nameColor||"var(--text)",
+          <div style={{fontSize:12.5,fontWeight:700,color:"var(--text)",
             overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"(이름 없음)"}</div>
           <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
             HP {d.HP??"-"} · MP {d.MP??"-"} · SAN {d.SAN??"-"}
@@ -3182,7 +3176,7 @@ function CollectionPanel({onClose,isGM,tab,setTab,
                     {avatar(c.avatar,34)}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <span style={{fontSize:13,fontWeight:700,color:c.nameColor||"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"(이름 없음)"}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"(이름 없음)"}</span>
                         {active&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>사용 중</span>}
                       </div>
                       <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
@@ -3225,261 +3219,6 @@ function CollectionPanel({onClose,isGM,tab,setTab,
               </div>}
         </>
       )}
-    </FloatingPanel>
-  );
-}
-
-/* 판정 기록: 지나간 주사위만 모아서 봅니다. 채팅은 화면이 무거워지지 않게 최근 것만
-   보여주기 때문에, 앞서 굴린 판정을 다시 확인하려면 여기가 편해요. */
-function DiceLogPanel({onClose,rolls,userCode,displayNameOf}){
-  const [onlyMine,setOnlyMine]=useState(false);
-  const shown=onlyMine?rolls.filter(m=>m.userCode===userCode):rolls;
-
-  const timeText=ts=>{
-    if(!ts)return"";
-    const d=new Date(ts);
-    return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
-  };
-
-  return(
-    <FloatingPanel title="판정 기록" icon={Dice5} onClose={onClose} storageKey="dicelog"
-      defaultAnchor={{position:"fixed",right:18,top:80}} width="min(94vw, 330px)">
-
-      <div style={{display:"flex",gap:6,marginBottom:10}}>
-        {[[false,"전체"],[true,"내 판정만"]].map(([v,l])=>(
-          <button key={l} type="button" onClick={()=>setOnlyMine(v)}
-            style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
-              background:onlyMine===v?"var(--accent)":"var(--surface)",
-              color:onlyMine===v?"#fff":"var(--text-dim)",
-              border:"1px solid "+(onlyMine===v?"var(--accent)":"var(--border)")}}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {shown.length===0?(
-        <div style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",padding:"18px 0"}}>
-          아직 굴린 판정이 없어요.
-        </div>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:5}}>
-          {shown.map(m=>{
-            let d=null;
-            try{ d=JSON.parse(m.text); }catch{ return null; }
-            if(!d)return null;
-            const secret=!!(m.whisperTo&&m.whisperTo.length);
-            return(
-              <div key={m.id} style={{display:"flex",alignItems:"center",gap:8,
-                padding:"7px 9px",borderRadius:8,background:"var(--bg-panel)",
-                border:"1px solid "+(secret?"var(--accent-soft)":"transparent")}}>
-
-                <div style={{width:30,height:30,borderRadius:6,background:d.color,flexShrink:0,
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span className="coc-mono" style={{fontSize:12.5,fontWeight:700,color:"#fff"}}>{d.roll}</span>
-                </div>
-
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:11.5,color:"var(--text-dim)",fontWeight:600,
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {d.skillName}<span className="coc-mono" style={{color:"var(--text-faint)",fontWeight:400}}> /{d.value}</span>
-                  </div>
-                  <div style={{fontSize:10.5,color:"var(--text-faint)",
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {m.characterName||displayNameOf(m.userCode)} · {timeText(m.timestamp)}
-                    {secret&&<span style={{color:"var(--accent-deep)"}}> · 비밀</span>}
-                  </div>
-                </div>
-
-                <span style={{fontSize:11,fontWeight:700,color:d.color,flexShrink:0}}>{d.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </FloatingPanel>
-  );
-}
-
-/* 파티 상태 패널: 방에 있는 모두의 체력·정신·이성을 한눈에 봅니다.
-   각자가 접속 신호(presence)에 자기 수치를 함께 실어 보내기 때문에, GM이 남의
-   시트를 열어보지 않아도 지금 상태를 바로 알 수 있어요. 수치가 깎이면 바로 반영됩니다. */
-function PartyStatusPanel({onClose,participantsList,presenceMap,userCode,creatorCode,isOnline,displayNameOf,onAdjust}){
-  const bar=(label,cur,max,color)=>{
-    if(cur===null||cur===undefined) return null;
-    const hasMax=Number.isFinite(max)&&max>0;
-    const pct=hasMax?Math.max(0,Math.min(100,(cur/max)*100)):100;
-    const low=hasMax&&pct<=25;
-    return(
-      <div style={{marginBottom:5}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-          <span style={{fontSize:10.5,color:"var(--text-faint)",letterSpacing:"0.04em"}}>{label}</span>
-          <span className="coc-mono" style={{fontSize:11.5,fontWeight:700,color:low?"#c05050":"var(--text-dim)"}}>
-            {cur}{hasMax?<span style={{opacity:0.55,fontWeight:400}}> / {max}</span>:null}
-          </span>
-        </div>
-        <div style={{height:5,borderRadius:3,background:"var(--bg-panel)",overflow:"hidden"}}>
-          <div style={{width:pct+"%",height:"100%",background:low?"#c05050":color,borderRadius:3,transition:"width .3s"}}/>
-        </div>
-      </div>
-    );
-  };
-
-  return(
-    <FloatingPanel title="파티 상태" icon={Heart} onClose={onClose} storageKey="partystatus"
-      defaultAnchor={{position:"fixed",right:18,top:80}} width="min(94vw, 290px)">
-      <div style={{display:"flex",flexDirection:"column",gap:9}}>
-        {participantsList.map(code=>{
-          const p=presenceMap[code]||{};
-          const s=p.stats||{};
-          const online=code===userCode?true:isOnline(code);
-          const hasStats=s.HP!==null&&s.HP!==undefined;
-          return(
-            <div key={code} style={{border:"1px solid var(--border-soft)",borderRadius:10,
-              padding:"9px 10px",background:"var(--surface)",opacity:online?1:0.5}}>
-
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:hasStats?8:0}}>
-                <div style={{width:30,height:30,borderRadius:"50%",overflow:"hidden",flexShrink:0,
-                  background:"var(--bg-panel)",border:"1px solid var(--border)",
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {p.charAvatar
-                    ? <img src={p.charAvatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                    : <Sparkles size={13} color="var(--accent-soft)"/>}
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{fontSize:12.5,fontWeight:700,color:"var(--text)",
-                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      {displayNameOf?displayNameOf(code):(p.charName||code)}
-                    </span>
-                    {code===creatorCode&&<span style={{fontSize:9,fontWeight:700,color:"var(--accent-deep)",
-                      fontFamily:"JetBrains Mono,monospace",flexShrink:0}}>GM</span>}
-                  </div>
-                  <span style={{fontSize:10.5,color:online?"#3f9e6a":"var(--text-faint)"}}>
-                    {online?"접속 중":"오프라인"}
-                  </span>
-                </div>
-                {onAdjust&&(
-                  <button type="button" title="이 사람 수치 조정하기" onClick={()=>onAdjust(code)}
-                    style={{border:"1px solid var(--border)",background:"var(--surface)",borderRadius:6,
-                      padding:"3px 5px",cursor:"pointer",color:"var(--text-faint)",display:"flex",flexShrink:0}}>
-                    <Sliders size={11}/>
-                  </button>
-                )}
-              </div>
-
-              {hasStats?(
-                <>
-                  {bar("체력 HP",s.HP,s.maxHP,"#c9736b")}
-                  {bar("정신 MP",s.MP,s.maxMP,"#6b8fc9")}
-                  {bar("이성 SAN",s.SAN,s.maxSAN,"#8f7bc0")}
-                  {s.madness&&(
-                    <div style={{marginTop:6,display:"flex",alignItems:"center",gap:5,
-                      background:"#fff5f5",border:"1px solid #e8c4c4",borderRadius:6,padding:"4px 7px"}}>
-                      <AlertTriangle size={10} color="#c05050" style={{flexShrink:0}}/>
-                      <span style={{fontSize:10.5,color:"#a04848",fontWeight:600,
-                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {s.madness}{s.madnessTerm?` (${s.madnessTerm})`:""}
-                      </span>
-                    </div>
-                  )}
-                </>
-              ):(
-                <div style={{fontSize:10.5,color:"var(--text-faint)",paddingTop:2}}>
-                  {online?"아직 캐릭터를 만들지 않았어요":"수치 정보 없음"}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </FloatingPanel>
-  );
-}
-
-function StatAdjustPanel({onClose,displayNameOf,
-  participantsList,presenceMap,userCode,
-  statAdjustTarget,setStatAdjustTarget,statAdjustCategory,setStatAdjustCategory,
-  statAdjustKey,setStatAdjustKey,statAdjustAmount,setStatAdjustAmount,statAdjustSign,setStatAdjustSign,
-  statAdjustPublic,setStatAdjustPublic,onApplyStatAdjust}){
-  return(
-    <FloatingPanel storageKey="statadjust" title="수치 조정" icon={Sliders} onClose={onClose} width="min(94vw, 320px)"
-      defaultAnchor={{position:"fixed",left:76,top:80}}>
-        <div className="coc-label" style={{marginBottom:6}}>대상</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-          {participantsList.filter(c=>c!==userCode).map(code=>{
-            const displayName=displayNameOf?displayNameOf(code):(presenceMap[code]?.charName||code);
-            const active=statAdjustTarget===code;
-            return(
-              <button key={code} type="button" onClick={()=>setStatAdjustTarget(code)}
-                style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
-                  background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
-                  border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
-                {displayName}
-              </button>
-            );
-          })}
-        </div>
-        <div className="coc-label" style={{marginBottom:6}}>종류</div>
-        <div style={{display:"flex",gap:5,marginBottom:10}}>
-          {[["characteristics","특성치"],["derived","파생 능력치"],["skills","기능치"]].map(([v,l])=>(
-            <button key={v} type="button" onClick={()=>{setStatAdjustCategory(v);setStatAdjustKey("");}}
-              style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
-                background:statAdjustCategory===v?"var(--accent)":"var(--surface)",color:statAdjustCategory===v?"#fff":"var(--text-dim)",
-                border:"1px solid "+(statAdjustCategory===v?"var(--accent)":"var(--border)")}}>
-              {l}
-            </button>
-          ))}
-        </div>
-        <div className="coc-label" style={{marginBottom:6}}>항목</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10,maxHeight:120,overflowY:"auto"}}>
-          {(statAdjustCategory==="characteristics"?CHAR_KEYS.map(k=>[k,CHAR_LABEL[k]]):
-            statAdjustCategory==="derived"?Object.entries(DERIVED_LABEL):
-            SKILL_LIST_SORTED.map(([name])=>[name,name])
-          ).map(([key,label])=>(
-            <button key={key} type="button" onClick={()=>setStatAdjustKey(key)}
-              style={{fontSize:11,padding:"4px 10px",borderRadius:999,cursor:"pointer",
-                background:statAdjustKey===key?"var(--accent)":"var(--surface)",color:statAdjustKey===key?"#fff":"var(--text-dim)",
-                border:"1px solid "+(statAdjustKey===key?"var(--accent)":"var(--border)")}}>
-              {label}
-            </button>
-          ))}
-        </div>
-        {/* 증감량: 앞의 +/- 버튼으로 방향을 고르고, 뒤에 숫자나 주사위 표기를 적습니다. */}
-        <div style={{display:"flex",gap:5,marginBottom:6}}>
-          <div style={{display:"flex",flexShrink:0,borderRadius:6,overflow:"hidden",border:"1px solid var(--border)"}}>
-            {[["+","더하기"],["-","빼기"]].map(([sg,t])=>(
-              <button key={sg} type="button" title={t} onClick={()=>setStatAdjustSign(sg)}
-                style={{width:30,fontSize:14,fontWeight:700,border:"none",cursor:"pointer",
-                  background:statAdjustSign===sg?"var(--accent)":"var(--surface)",
-                  color:statAdjustSign===sg?"#fff":"var(--text-faint)"}}>
-                {sg}
-              </button>
-            ))}
-          </div>
-          <input className="coc-input" value={statAdjustAmount} onChange={e=>setStatAdjustAmount(e.target.value)}
-            placeholder="숫자 또는 1d6" style={{flex:1,minWidth:0}}/>
-        </div>
-        <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:10}}>
-          숫자를 그대로 적어도 되고, <span className="coc-mono">1d6</span> · <span className="coc-mono">[[2d6+1]]</span>처럼 주사위로 적으면 굴려서 적용됩니다.
-        </div>
-        <div style={{display:"flex",gap:5,marginBottom:10}}>
-          {[[true,"공개"],[false,"비공개"]].map(([v,l])=>(
-            <button key={l} type="button" onClick={()=>setStatAdjustPublic(v)}
-              style={{flex:1,fontSize:11.5,padding:"6px 0",borderRadius:6,cursor:"pointer",
-                background:statAdjustPublic===v?"var(--accent)":"var(--surface)",color:statAdjustPublic===v?"#fff":"var(--text-dim)",
-                border:"1px solid "+(statAdjustPublic===v?"var(--accent)":"var(--border)")}}>
-              {l}
-            </button>
-          ))}
-        </div>
-        <div style={{fontSize:10.5,color:"var(--text-faint)",marginBottom:10}}>
-          {statAdjustPublic?"채팅에 '누구의 무엇이 얼마나 조정되었습니다'라고 안내가 남아요.":"시트에만 조용히 반영되고, 채팅엔 아무 안내도 남지 않아요."}
-        </div>
-        <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center"}}
-          disabled={!statAdjustTarget||!statAdjustKey||!statAdjustAmount.trim()}
-          onClick={onApplyStatAdjust}>
-          적용
-        </button>
     </FloatingPanel>
   );
 }
@@ -3558,55 +3297,6 @@ function ChoiceCreatorModal({onClose,onCreate}){
 }
 
 /* ============================== 핸드아웃 ============================== */
-
-// GM이 대상·종류(단기적/장기적)·이름·내용을 골라 광기를 부여하는 창. 핸드아웃 관리 창과
-// 똑같은 패턴(별도로 뜨는 모달)이라, "배부" 탭 안에 인라인으로 있던 예전 방식 대신 이걸 씁니다.
-function MadnessAssignModal({participantsList,presenceMap,userCode,onClose,onSend,displayNameOf}){
-  const [target,setTarget]=useState(null);
-  const [term,setTerm]=useState("단기적");
-  const [name,setName]=useState("");
-  const [note,setNote]=useState("");
-  return(
-    <FloatingPanel storageKey="madness" title="광기 부여" icon={AlertTriangle} onClose={onClose} width="min(94vw, 330px)"
-      defaultAnchor={{position:"fixed",left:120,top:110}}>
-          <div className="coc-label" style={{marginBottom:6}}>대상</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
-            {participantsList.filter(c=>c!==userCode).map(code=>{
-              const displayName=displayNameOf?displayNameOf(code):(presenceMap[code]?.charName||code);
-              const active=target===code;
-              return(
-                <button key={code} type="button" onClick={()=>setTarget(code)}
-                  style={{fontSize:11.5,padding:"5px 12px",borderRadius:999,cursor:"pointer",
-                    background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text-dim)",
-                    border:"1px solid "+(active?"var(--accent)":"var(--border)")}}>
-                  {displayName}
-                </button>
-              );
-            })}
-          </div>
-          <div className="coc-label" style={{marginBottom:6}}>종류</div>
-          <div style={{display:"flex",gap:6,marginBottom:12}}>
-            {["단기적","장기적"].map(t=>(
-              <button key={t} type="button" onClick={()=>setTerm(t)}
-                style={{flex:1,fontSize:12.5,padding:"7px 0",borderRadius:6,cursor:"pointer",
-                  background:term===t?"var(--accent)":"var(--surface)",color:term===t?"#fff":"var(--text-dim)",
-                  border:"1px solid "+(term===t?"var(--accent)":"var(--border)")}}>
-                {t} 광기
-              </button>
-            ))}
-          </div>
-          <div className="coc-label" style={{marginBottom:6}}>광기 이름</div>
-          <input className="coc-input" value={name} onChange={e=>setName(e.target.value)} placeholder="예: 실어증" style={{marginBottom:12}}/>
-          <div className="coc-label" style={{marginBottom:6}}>내용</div>
-          <textarea className="coc-input" value={note} onChange={e=>setNote(e.target.value)} placeholder="증상·행동 등을 적어주세요" rows={4} style={{marginBottom:16,resize:"vertical"}}/>
-          <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center"}}
-            disabled={!target||!name.trim()}
-            onClick={()=>{onSend(target,{name:name.trim(),term,note});onClose();}}>
-            전송
-          </button>
-    </FloatingPanel>
-  );
-}
 
 function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,onPreview,displayNameOf}){
   const [showCreate,setShowCreate]=useState(false);
@@ -4225,13 +3915,35 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(!el)return;
     setAtMsgListTop(el.scrollTop<24);
   };
+  // 채팅이 짧아서 스크롤이 생기지 않으면 onScroll이 아예 안 불려 버튼이 영영 안 떴어요.
+  // 내용이 바뀔 때마다 "맨 위가 보이는지"를 다시 확인합니다.
+  useEffect(()=>{
+    const el=msgListRef.current;
+    if(!el)return;
+    setAtMsgListTop(el.scrollHeight<=el.clientHeight+4||el.scrollTop<24);
+  });
   const viewFullTranscript=async()=>{
+    // 브라우저는 "클릭한 그 순간"에 연 창만 허용하고, 기록을 불러오느라 기다린 뒤에 여는 창은
+    // 팝업으로 보고 막아 버립니다. 그래서 창을 먼저 열어 두고, 불러온 기록을 그 창에 채워 넣어요.
+    const w=window.open("","_blank");
+    if(w){
+      try{ w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>불러오는 중...</title><p style="font-family:sans-serif;padding:24px;color:#888">기록을 불러오는 중이에요...</p>'); }catch{}
+    }
     setLoadingFullTranscript(true);
     try{
       const transcript=await fetchRoomTranscript(room,userCode);
       const themeForExport=dark?toDarkTheme(deriveThemeFromColor(customColor)):deriveThemeFromColor(customColor);
-      openInNewTab(buildHtmlExport(room,transcript,themeForExport,{interactive:true}),"text/html;charset=utf-8");
+      const html=buildHtmlExport(room,transcript,themeForExport,{interactive:true});
+      if(w&&!w.closed){
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+      }else{
+        // 팝업이 막혀 창을 못 열었으면 파일로 받아서 볼 수 있게 합니다.
+        downloadFile(`${room.title||"session"}_전문.html`,html,"text/html;charset=utf-8");
+      }
     }catch(err){
+      if(w&&!w.closed) w.close();
       alert("불러오기에 실패했습니다: "+(err?.message||String(err)));
     }
     setLoadingFullTranscript(false);
@@ -4582,59 +4294,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     onChangeSound(!soundEnabled);
   };
 
-  // GM이 참가자에게 광기(장기적/단기적)를 부여하는 기능
-  const [showMadnessModal,setShowMadnessModal]=usePersistedOpen(`${room.id}:madness`);
-
-  // GM이 원하는 항목(특성치·파생능력치·기능치)의 수치를 대상에게 더하거나 깎는 기능.
-  // 공개(채팅에 안내)/비공개(시트에만 반영, 안내 없음) 중 GM이 고를 수 있습니다.
-  const [statAdjustTarget,setStatAdjustTarget]=useState(null);
-  const [statAdjustCategory,setStatAdjustCategory]=useState("characteristics"); // characteristics | derived | skills
-  const [statAdjustKey,setStatAdjustKey]=useState("");
-  const [statAdjustAmount,setStatAdjustAmount]=useState("");
-  const [statAdjustSign,setStatAdjustSign]=useState("+"); // 증감 방향 버튼
-  const [statAdjustPublic,setStatAdjustPublic]=useState(true);
-  const applyStatAdjust=async()=>{
-    const code=statAdjustTarget;
-    // 숫자든 주사위 표기든 여기서 실제 값으로 바꿉니다. 방향은 +/- 버튼이 정합니다.
-    const parsed=rollAmountExpression(statAdjustAmount);
-    if(!parsed){ alert("증감량을 숫자나 1d6 같은 형식으로 적어주세요."); return; }
-    const amount=(statAdjustSign==="-"?-1:1)*Math.abs(parsed.value);
-    if(!code||!statAdjustKey||!Number.isFinite(amount)||amount===0)return;
-    const p=presenceMap[code];
-    if(!p?.charId)return;
-    const key=`char:${room.id}:${p.charId}`;
-    const charDoc=await storeGet(key,true);
-    if(!charDoc)return;
-    const next={...charDoc};
-    let statLabel=statAdjustKey;
-    if(statAdjustCategory==="characteristics"){
-      next.characteristics={...next.characteristics,[statAdjustKey]:(next.characteristics?.[statAdjustKey]||0)+amount};
-      statLabel=CHAR_LABEL[statAdjustKey]||statAdjustKey;
-    }else if(statAdjustCategory==="derived"){
-      next.derived={...next.derived,[statAdjustKey]:(next.derived?.[statAdjustKey]||0)+amount};
-      statLabel=DERIVED_LABEL[statAdjustKey]||statAdjustKey;
-    }else{
-      next.skills={...next.skills,[statAdjustKey]:(next.skills?.[statAdjustKey]||0)+amount};
-    }
-    await storeSet(key,next,true);
-    if(statAdjustPublic){
-      const sign=amount>0?"+":"";
-      const displayName=displayNameOf(code);
-      const dice=parsed.detail?` (${parsed.detail})`:"";
-      await doSend("system",`${displayName}의 ${statLabel}이(가) ${sign}${amount} 조정되었습니다.${dice}`,"","");
-    }
-    // 창은 닫지 않습니다 — 여러 명·여러 항목을 잇따라 조정하는 일이 많아서요.
-    // 입력한 증감량만 비우고, 고른 대상·항목은 그대로 둡니다.
-    setStatAdjustAmount("");
-  };
-  const saveMadness=async(code,data)=>{
-    const p=presenceMap[code];
-    if(!p?.charId)return;
-    const key=`char:${room.id}:${p.charId}`;
-    const charDoc=await storeGet(key,true);
-    if(charDoc) await storeSet(key,{...charDoc,madness:data},true);
-  };
-
   const [showHandoutManager,setShowHandoutManager]=usePersistedOpen(`${room.id}:handout-manager`);
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
   function ytEmbedUrl(url){
@@ -4864,8 +4523,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // Cloudflare에 올리고 URL만 저장하기 때문에, APNG 등 큰 파일도 용량 걱정이 없습니다.
   const [sceneUrl,setSceneUrl]=useState("");
   const [showDecorate,setShowDecorate]=usePersistedOpen(`${room.id}:decorate`);
-  const [showStatAdjust,setShowStatAdjust]=usePersistedOpen(`${room.id}:statadjust`);
-  const [showPartyStatus,setShowPartyStatus]=usePersistedOpen(`${room.id}:partystatus`);
   // GM의 캐릭터 관리 창과, 지금 그 창에서 열어서 고치고 있는 캐릭터
   const [showRoster,setShowRoster]=usePersistedOpen(`${room.id}:collection`);
   const [collectionTab,setCollectionTabRaw]=useState(()=>{ try{ return localStorage.getItem("heartEmojiCollectionTab")||"chars"; }catch{ return "chars"; } });
@@ -5455,23 +5112,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   // (GM이 굴리면 GM에게만 보이니, 결과를 숨기고 서술만 줄 때 씁니다)
   const [secretRoll,setSecretRoll]=usePersistedOpen(`${room.id}:secretroll`);
 
-  /* 판정 기록: 채팅은 화면이 무거워지지 않게 최근 것만 불러오지만, 주사위는 지나간 것도
-     다시 찾아볼 일이 많아서 따로 넉넉히 가져옵니다. 내가 볼 수 있는 것만 담습니다. */
-  const [showDiceLog,setShowDiceLog]=usePersistedOpen(`${room.id}:dicelog`);
-  const [diceLog,setDiceLog]=useState([]);
-  useEffect(()=>{
-    if(!showDiceLog){ return; }   // 창을 열었을 때만 구독해서 평소엔 읽기 낭비가 없도록
-    const unsub=storeListenPrefix(`chat:${room.id}:`,list=>{
-      const rolls=list.map(x=>x.value)
-        .filter(m=>m&&m.speaker==="dice")
-        .filter(m=>!m.whisperTo||m.userCode===userCode||m.whisperTo.includes(userCode))
-        .sort((a,b)=>(b.timestamp||0)-(a.timestamp||0))
-        .slice(0,80);
-      setDiceLog(rolls);
-    },400);
-    return()=>unsub();
-  },[room.id,userCode,showDiceLog]);
-
   const sendDice=r=>{
     var wt;
     if(secretRoll){
@@ -5848,16 +5488,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             <span style={{position:"absolute",top:4,right:4,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
         </button>
 
-        <button type="button" className={"chat-icon-btn"+(showPartyStatus?" on":"")}
-          onClick={()=>setShowPartyStatus(v=>!v)} title="파티 상태 (모두의 체력·정신·이성)">
-          <Heart size={18}/>
-        </button>
-
-        <button type="button" className={"chat-icon-btn"+(showDiceLog?" on":"")}
-          onClick={()=>setShowDiceLog(v=>!v)} title="판정 기록 (지나간 주사위 모아보기)">
-          <Dice5 size={18}/>
-        </button>
-
         {isGM&&(
           <>
             <div className="rail-divider"/>
@@ -5872,14 +5502,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
             <button type="button" className={"chat-icon-btn"+(showDecorate?" on":"")} onClick={()=>setShowDecorate(v=>!v)} title="꾸미기 (서술 문구 꾸며서 보내기)">
               <Brush size={18}/>
-            </button>
-
-            <button type="button" className={"chat-icon-btn"+(showStatAdjust?" on":"")} onClick={()=>setShowStatAdjust(v=>!v)} title="수치 조정">
-              <Sliders size={18}/>
-            </button>
-
-            <button type="button" className={"chat-icon-btn"+(showMadnessModal?" on":"")} onClick={()=>setShowMadnessModal(v=>!v)} title="광기 부여">
-              <AlertTriangle size={18}/>
             </button>
           </>
         )}
@@ -5934,7 +5556,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                 {othersLatestDialogue.avatar?<img src={othersLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
               </div>
               <div className="vn-textcol">
-                <div className="vn-name" style={safeNameColor(othersLatestDialogue.nameColor)?{color:safeNameColor(othersLatestDialogue.nameColor)}:undefined}>{othersLatestDialogue.characterName||"???"}</div>
+                <div className="vn-name">{othersLatestDialogue.characterName||"???"}</div>
                 <div className="vn-line"><FormattedText text={othersLatestDialogue.text} maxChars={typedCountOthers}/></div>
               </div>
             </div>
@@ -6016,7 +5638,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                 {myLatestDialogue.avatar?<img src={myLatestDialogue.avatar} alt=""/>:<Sparkles size={38} color="var(--accent-soft)"/>}
               </div>
               <div className="vn-textcol">
-                <div className="vn-name" style={safeNameColor(myLatestDialogue.nameColor)?{color:safeNameColor(myLatestDialogue.nameColor)}:undefined}>{myLatestDialogue.characterName||"???"}</div>
+                <div className="vn-name">{myLatestDialogue.characterName||"???"}</div>
                 <div className="vn-line"><FormattedText text={myLatestDialogue.text} maxChars={typedCountMine}/></div>
               </div>
             </div>
@@ -6049,42 +5671,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       {embedUrl&&bgmStarted&&<iframe ref={iframeRef} src={embedUrl} title="BGM" onLoad={handleBgmIframeLoad} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0,pointerEvents:"none"}} allow="autoplay; encrypted-media"/>}
 
       {/* 헤더는 좌측 세로 아이콘 바(chat-icon-rail)로 옮겨갔습니다. 참가자 목록/광기·이성 처리 로직은 그대로 유지됩니다. */}
-
-      {/* 채팅방 상단: 접속 멤버 수 알약 (캐릭터·핸드아웃 버튼은 좌측 바의 "모아보기"로 옮겨갔습니다) */}
-      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginBottom:6,flexShrink:0}}>
-        <div style={{position:"relative"}} ref={participantsRef}>
-          <button type="button" onClick={()=>{setShowParticipants(v=>!v);setSeenOnlineIds(onlineOthers);}}
-            title="접속 중인 참가자"
-            style={{display:"flex",alignItems:"center",gap:5,height:32,padding:"0 12px",borderRadius:999,
-              border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text-dim)",
-              fontSize:12,cursor:"pointer",position:"relative"}}>
-            <Circle size={8} fill="#3a9a6e" color="#3a9a6e"/>
-            {onlineOthers.length+1}명 접속 중
-            {onlineOthers.some(c=>!seenOnlineIds.includes(c))&&
-              <span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
-          </button>
-          {showParticipants&&(
-            <div className="rail-participants-flyout" style={{top:"calc(100% + 6px)",left:"auto",right:0}}>
-              <div className="coc-label" style={{marginBottom:8}}>참가자</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {participantsList.map(code=>{
-                  const online=code===userCode?true:isOnline(code);
-                  const displayName=code===userCode?(char?.name||userCode):(presenceMap[code]?.charName||code);
-                  return(
-                    <div key={code}>
-                      <div style={{display:"flex",alignItems:"center",gap:7}}>
-                        <Circle size={10} color={online?"#3a9a6e":"var(--border)"} fill={online?"#3a9a6e":"var(--border)"} style={{flexShrink:0}}/>
-                        <span style={{fontSize:12.5,color:online?"var(--text)":"var(--text-faint)",flex:1}}>{displayName}{code===userCode?" (나)":""}</span>
-                        {code===room.creatorCode&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* 채팅 탭바 */}
       <div className="chat-tab-bar">
@@ -6392,12 +5978,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               {npcAvatar?<img src={npcAvatar} alt="NPC" className="coc-avatar" style={{width:"100%",height:"100%"}}/>:<Sparkles size={13} color="var(--accent-soft)"/>}
             </div>
             <input className="coc-input" value={npcName} onChange={e=>setNpcName(e.target.value)} placeholder="이름 (미입력 시 NPC로 출력됩니다.)" style={{flex:1}}/>
-            {/* NPC 이름 색깔 */}
-            <label title="NPC 이름 색깔" style={{position:"relative",width:34,height:34,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-              <input type="color" value={npcNameColor||currentThemeColor()} onChange={e=>setNpcNameColor(e.target.value)}
-                style={{position:"absolute",top:-6,left:-6,width:48,height:48,border:"none",padding:0,cursor:"pointer"}}/>
-            </label>
-            {npcNameColor&&<button type="button" className="coc-btn ghost small" title="이름 색 기본값으로" onClick={()=>setNpcNameColor("")} style={{flexShrink:0,display:"inline-flex",alignItems:"center",gap:3}}>색<RotateCcw size={10}/></button>}
             <input ref={npcAvatarInputRef} type="file" accept="image/*" style={{display:"none"}}
               onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setNpcAvatar(url);e.target.value="";}}/>
             <button type="button" className="coc-btn ghost small" onClick={()=>npcAvatarInputRef.current?.click()} style={{flexShrink:0}}><Camera size={12}/></button>
@@ -6464,7 +6044,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                       <div style={{width:26,height:26,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"#fff",border:"1px solid var(--border)"}}>
                         {bm.avatar?<img src={bm.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:null}
                       </div>
-                      <span style={{fontSize:12.5,color:bm.nameColor||"var(--text-dim)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bm.name}</span>
+                      <span style={{fontSize:12.5,color:"var(--text-dim)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{bm.name}</span>
                     </button>
                     <button type="button" onClick={()=>removeNpcBookmark(bm.id)}
                       style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:2,fontSize:13,lineHeight:1,flexShrink:0}}>×</button>
@@ -6478,27 +6058,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           onSendText={markup=>doSend("narrate",markup,"","")}
           onSendImage={sendImage} onSendImageUrl={sendImageUrl}
           diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
-        {showStatAdjust&&<StatAdjustPanel onClose={()=>setShowStatAdjust(false)} displayNameOf={displayNameOf}
-          participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
-          statAdjustTarget={statAdjustTarget} setStatAdjustTarget={setStatAdjustTarget}
-          statAdjustCategory={statAdjustCategory} setStatAdjustCategory={setStatAdjustCategory}
-          statAdjustKey={statAdjustKey} setStatAdjustKey={setStatAdjustKey}
-          statAdjustAmount={statAdjustAmount} setStatAdjustAmount={setStatAdjustAmount}
-          statAdjustSign={statAdjustSign} setStatAdjustSign={setStatAdjustSign}
-          statAdjustPublic={statAdjustPublic} setStatAdjustPublic={setStatAdjustPublic}
-          onApplyStatAdjust={applyStatAdjust}/>}
         </>
       )}
-      {showPartyStatus&&<PartyStatusPanel onClose={()=>setShowPartyStatus(false)}
-        participantsList={participantsList} presenceMap={presenceMap} userCode={userCode}
-        creatorCode={room.creatorCode} isOnline={isOnline} displayNameOf={displayNameOf}
-        onAdjust={isGM?(code=>{ setStatAdjustTarget(code); setShowStatAdjust(true); }):null}/>}
-      {showDiceLog&&<DiceLogPanel onClose={()=>setShowDiceLog(false)}
-        rolls={diceLog} userCode={userCode} displayNameOf={displayNameOf}/>}
       {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants}
         onClose={()=>setShowHandoutManager(false)} onPreview={openHandout} displayNameOf={displayNameOf}/>}
-      {showMadnessModal&&<MadnessAssignModal participantsList={participantsList} presenceMap={presenceMap} userCode={userCode} displayNameOf={displayNameOf}
-        onClose={()=>setShowMadnessModal(false)} onSend={saveMadness}/>}
       {openHandoutIds.map((id,i)=>{
         // 내가 받은 것에서 먼저 찾습니다. 못 찾으면 GM일 때만(=관리 창 미리보기) 전체에서 찾아요.
         // 참가자에게까지 전체 목록을 열어주면, 열어둔 창이 기억되는 탓에 배부가 취소된 뒤에도
