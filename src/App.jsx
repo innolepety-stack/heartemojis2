@@ -1135,7 +1135,26 @@ function calcSkillPoints(sheet){
   return {total,spent,remaining:total-spent};
 }
 
-function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false,onRollCheck,panel=false}){
+function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false,onRollCheck,panel=false,playerSlot}){
+  // 사진 옆에 이름·플레이어를 나란히 두는 머리 줄 (ㅁ= 모양)
+  const headerRow=(
+    <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:14}}>
+      <div style={{width:88,flexShrink:0}}>
+        <AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})} size={88} vertical/>
+      </div>
+      <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:10}}>
+        <div>
+          <div className="coc-label" style={{marginBottom:4}}>이름</div>
+          <input className="coc-input" value={sheet.name} onChange={e=>setSheet({...sheet,name:e.target.value})}
+            placeholder="탐사자 이름" style={{fontSize:13.5,padding:"6px 9px"}}/>
+        </div>
+        <div>
+          <div className="coc-label" style={{marginBottom:4}}>플레이어</div>
+          {playerSlot||<div style={{fontSize:13,color:"var(--text-faint)",padding:"6px 2px"}}>-</div>}
+        </div>
+      </div>
+    </div>
+  );
   // 회피의 기본값은 "민첩 ÷ 2"입니다. 민첩을 고치면 회피도 자동으로 따라 바뀌어요.
   // 다만 기능 점수를 써서 기본값보다 올려둔 경우에는, 올린 값을 지우지 않고 그대로 둡니다.
   const dex=sheet.characteristics?.DEX||0;
@@ -1172,21 +1191,11 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
   // 왼쪽에 사진·이름·색상을 세로로 쌓고, 그 오른쪽에 능력치, 그 아래에 파생 능력치를 가로로 나란히.
   if(panel) return(
     <div>
-      <div style={{display:"flex",gap:12,marginBottom:12,alignItems:"flex-start"}}>
-        <div style={{width:104,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
-          <AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})} size={104} vertical/>
-          <div>
-            <div className="coc-label" style={{marginBottom:3}}>이름</div>
-            <input className="coc-input" value={sheet.name} onChange={e=>setSheet({...sheet,name:e.target.value})}
-              placeholder="탐사자 이름" style={{fontSize:13,padding:"5px 8px"}}/>
-          </div>
-        </div>
-
-        <div style={{flex:1,minWidth:0}}>
-          <div className="coc-label" style={{marginBottom:6}}>능력치</div>
-          <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})}
-            allowRoll={allowRoll} onRollCheck={onRollCheck} cols={3}/>
-        </div>
+      {headerRow}
+      <div style={{marginBottom:12}}>
+        <div className="coc-label" style={{marginBottom:6}}>능력치</div>
+        <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})}
+          allowRoll={allowRoll} onRollCheck={onRollCheck} cols={4}/>
       </div>
 
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={d=>setSheet({...sheet,derived:d})}
@@ -1213,11 +1222,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
   );
   return(
     <div>
-      <div style={{marginBottom:14}}>
-        <div className="coc-label" style={{marginBottom:5}}>이름</div>
-        <input className="coc-input" value={sheet.name} onChange={e=>setSheet({...sheet,name:e.target.value})} placeholder="탐사자 이름"/>
-      </div>
-      <div style={{marginBottom:16}}><div className="coc-label" style={{marginBottom:5}}>사진</div><AvatarUpload value={sheet.avatar} onChange={v=>setSheet({...sheet,avatar:v})}/></div>
+      {headerRow}
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:7}}>능력치</div>
       <CharacteristicsGrid characteristics={sheet.characteristics} setCharacteristics={c=>setSheet({...sheet,characteristics:c})} allowRoll={allowRoll} onRollCheck={onRollCheck} compact={compact}/>
@@ -2054,21 +2059,13 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved,ownerCode,a
       storageKey="charedit" startUnfolded width="min(96vw, 560px)" maxHeight="88vh"
       defaultAnchor={{position:"fixed",left:"max(8px, calc(50vw - 280px))",top:40}}>
         <div>
-          {assignOptions&&(
-            <div style={{marginBottom:16,padding:"10px 12px",borderRadius:10,background:"var(--bg-panel)",border:"1px solid var(--border-soft)"}}>
-              <div className="coc-label" style={{marginBottom:6}}>이 캐릭터를 쓸 사람</div>
-              <select className="coc-input" value={owner} onChange={e=>setOwner(e.target.value)} style={{width:"100%"}}>
-                <option value="">아직 배정 안 함</option>
-                {assignOptions.map(o=>(
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-              <div style={{fontSize:11,color:"var(--text-faint)",marginTop:6}}>
-                배정하면 그 플레이어 화면에 이 캐릭터가 바로 잡혀요. 배정 후에도 GM과 플레이어 모두 시트를 열어 고칠 수 있어요.
-              </div>
-            </div>
-          )}
-          <SheetEditor sheet={sheet} setSheet={setSheet} allowRoll={true}/>
+          <SheetEditor sheet={sheet} setSheet={setSheet} allowRoll={true}
+            playerSlot={assignOptions
+              ? <select className="coc-input" value={owner} onChange={e=>setOwner(e.target.value)} style={{width:"100%",fontSize:13,padding:"6px 8px"}}>
+                  <option value="">아직 배정 안 함</option>
+                  {assignOptions.map(o=><option key={o.code} value={o.code}>{o.label}</option>)}
+                </select>
+              : <div style={{fontSize:13,color:"var(--text-dim)",padding:"6px 2px"}}>{owner||"-"}</div>}/>
           {assignOptions&&(()=>{
             // GM 전용: 광기를 시트에 직접 적어 줍니다. 저장하면 그 플레이어 화면에 광기 알림이 떠요.
             const m=sheet.madness||{name:"",term:"단기적",note:""};
@@ -3129,12 +3126,12 @@ function CharacterRosterPanel({onClose,assignOptions,allChars,creatorCode,isOnli
   );
 }
 
-/* 모아보기: 캐릭터와 핸드아웃을 한 창에서 봅니다.
-   GM은 방 안의 모든 캐릭터(만들기·배정·시트)와 모든 핸드아웃(열람·만들기·배부)을,
-   플레이어는 자신이 배정받은 캐릭터와 받은 핸드아웃만 봅니다. */
+/* 관리: 캐릭터와 핸드아웃을 한 창에서 봅니다.
+   GM은 방 안의 모든 캐릭터·핸드아웃을, 플레이어는 자신이 받은 캐릭터·핸드아웃만 봅니다.
+   목록에서 캐릭터를 누르면 바로 시트가, 핸드아웃을 누르면 바로 내용이 열려요. */
 function CollectionPanel({onClose,isGM,tab,setTab,
-  rosterProps,myChars,activeCharId,onPickChar,onOpenSheet,
-  handouts,onOpenHandout,onManageHandouts,unseenHandouts,displayNameOf}){
+  allChars,onCreateChar,onOpenChar,myChars,activeCharId,onOpenMyChar,
+  handouts,onOpenHandout,onAddHandout,unseenHandouts}){
   const tabBtn=(key,label,dot)=>(
     <button type="button" onClick={()=>setTab(key)}
       style={{flex:1,padding:"7px 0",borderRadius:8,fontSize:12.5,fontWeight:700,cursor:"pointer",position:"relative",
@@ -3145,76 +3142,63 @@ function CollectionPanel({onClose,isGM,tab,setTab,
       {dot&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
     </button>
   );
-  const avatar=(src,size=32)=>(
-    <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,
-      background:"var(--bg-panel)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      {src?<img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Sparkles size={13} color="var(--accent-soft)"/>}
-    </div>
-  );
   const empty=t=><div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:"22px 8px",lineHeight:1.6}}>{t}</div>;
+  const addBtn=(label,onClick)=>(
+    <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:12}} onClick={onClick}>
+      <Plus size={13}/> {label}
+    </button>
+  );
+  const charRow=(c,onClick,active)=>(
+    <button key={c.id} type="button" onClick={()=>onClick(c)} title="눌러서 시트 열기"
+      style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%",
+        background:"var(--surface)",border:"1px solid "+(active?"var(--accent-soft)":"var(--border-soft)")}}>
+      <div style={{width:36,height:36,borderRadius:"50%",overflow:"hidden",flexShrink:0,
+        background:"var(--bg-panel)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {c.avatar?<img src={c.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Sparkles size={14} color="var(--accent-soft)"/>}
+      </div>
+      <span style={{flex:1,minWidth:0,fontSize:13.5,fontWeight:700,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        {c.name||"(이름 없음)"}
+      </span>
+      {active&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>사용 중</span>}
+    </button>
+  );
+  const chars=isGM?allChars:myChars;
 
   return(
-    <FloatingPanel title={isGM?"모아보기 (GM)":"내 캐릭터·핸드아웃"} icon={Folder} onClose={onClose} storageKey="collection"
-      defaultAnchor={{position:"fixed",left:64,top:80}} width="min(94vw, 370px)">
+    <FloatingPanel title={isGM?"관리":"내 캐릭터·핸드아웃"} icon={Folder} onClose={onClose} storageKey="collection"
+      defaultAnchor={{position:"fixed",left:64,top:80}} width="min(94vw, 340px)">
       <div style={{display:"flex",gap:6,marginBottom:12}}>
-        {tabBtn("chars",isGM?"모든 캐릭터":"내 캐릭터")}
-        {tabBtn("handouts",isGM?"모든 핸드아웃":"내 핸드아웃",!isGM&&unseenHandouts&&tab!=="handouts")}
+        {tabBtn("chars",isGM?"캐릭터":"내 캐릭터")}
+        {tabBtn("handouts",isGM?"핸드아웃":"내 핸드아웃",!isGM&&unseenHandouts&&tab!=="handouts")}
       </div>
 
-      {tab==="chars"&&(isGM
-        ? <CharacterRosterPanel embedded {...rosterProps}/>
-        : (myChars.length===0
-          ? empty(<>아직 받은 캐릭터가 없어요.<br/>GM이 캐릭터를 배정해 주면 여기에 나타나요.</>)
-          : <div style={{display:"flex",flexDirection:"column",gap:7}}>
-              {myChars.map(c=>{
-                const d=c.derived||{};
-                const active=c.id===activeCharId;
-                return(
-                  <div key={c.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:10,
-                    background:"var(--surface)",border:"1px solid "+(active?"var(--accent-soft)":"var(--border-soft)")}}>
-                    {avatar(c.avatar,34)}
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <span style={{fontSize:13,fontWeight:700,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"(이름 없음)"}</span>
-                        {active&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>사용 중</span>}
-                      </div>
-                      <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
-                        HP {d.HP??"-"}/{d.maxHP??"-"} · MP {d.MP??"-"}/{d.maxMP??"-"} · SAN {d.SAN??"-"}
-                      </div>
-                    </div>
-                    {!active&&<button type="button" className="coc-btn ghost small" style={{padding:"4px 8px",flexShrink:0}} onClick={()=>onPickChar(c)}>사용</button>}
-                    <button type="button" className="coc-btn small" style={{padding:"4px 8px",flexShrink:0}} onClick={()=>onOpenSheet(c)}>시트</button>
-                  </div>
-                );
-              })}
-            </div>))}
+      {tab==="chars"&&(
+        <>
+          {isGM&&addBtn("캐릭터 추가",onCreateChar)}
+          {chars.length===0
+            ? empty(isGM?"아직 만든 캐릭터가 없어요.":<>아직 받은 캐릭터가 없어요.<br/>GM이 캐릭터를 배정해 주면 여기에 나타나요.</>)
+            : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {chars.map(c=>charRow(c,isGM?onOpenChar:onOpenMyChar,!isGM&&c.id===activeCharId))}
+              </div>}
+        </>
+      )}
 
       {tab==="handouts"&&(
         <>
-          {isGM&&(
-            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:12}} onClick={onManageHandouts}>
-              <Plus size={13}/> 핸드아웃 만들기 · 배부하기
-            </button>
-          )}
+          {isGM&&addBtn("핸드아웃 추가",onAddHandout)}
           {handouts.length===0
             ? empty(isGM?"아직 만든 핸드아웃이 없어요.":"아직 받은 핸드아웃이 없어요.")
-            : <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                {handouts.map(h=>{
-                  const to=h.visibleTo||[];
-                  return(
-                    <div key={h.id} className="coc-card" onClick={()=>onOpenHandout(h)}
-                      style={{padding:10,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
-                      {h.image?<img src={h.image} alt="" style={{width:42,height:42,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
-                        <div style={{width:42,height:42,borderRadius:8,background:"var(--bg-panel)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Folder size={15} color="var(--accent-soft)"/></div>}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title||"(제목 없음)"}</div>
-                        {isGM&&<div style={{fontSize:10.5,color:"var(--text-faint)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {to.length===0?"아직 아무에게도 안 줬어요":"받은 사람: "+to.map(c=>displayNameOf?displayNameOf(c):c).join(", ")}
-                        </div>}
-                      </div>
-                    </div>
-                  );
-                })}
+            : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {handouts.map(h=>(
+                  <button key={h.id} type="button" onClick={()=>onOpenHandout(h)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%",
+                      background:"var(--surface)",border:"1px solid var(--border-soft)"}}>
+                    {h.image?<img src={h.image} alt="" style={{width:38,height:38,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
+                      <div style={{width:38,height:38,borderRadius:8,background:"var(--bg-panel)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Folder size={15} color="var(--accent-soft)"/></div>}
+                    <span style={{flex:1,minWidth:0,fontSize:13.5,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title||"(제목 없음)"}</span>
+                    {isGM&&!(h.visibleTo||[]).length&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--text-faint)",flexShrink:0}}>비공개</span>}
+                  </button>
+                ))}
               </div>}
         </>
       )}
@@ -3297,18 +3281,18 @@ function ChoiceCreatorModal({onClose,onCreate}){
 
 /* ============================== 핸드아웃 ============================== */
 
-function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,onPreview,displayNameOf}){
-  const [showCreate,setShowCreate]=useState(false);
-  const [editing,setEditing]=useState(null); // 수정 중인 핸드아웃 (없으면 새로 만들기)
-  const [title,setTitle]=useState("");
-  const [text,setText]=useState("");
-  const [image,setImage]=useState("");
+/* 핸드아웃 추가·수정 창 (GM 전용).
+   누구에게 공개할지도 여기서 바로 고릅니다. 여러 명을 눌러 고를 수 있고,
+   아무도 고르지 않으면 비공개로 저장돼서 미리 만들어 두기만 할 수 있어요. */
+function HandoutEditPanel({room,userCode,initial,players,displayNameOf,onClose,onDeleted}){
+  const [title,setTitle]=useState(initial?.title||"");
+  const [text,setText]=useState(initial?.text||"");
+  const [image,setImage]=useState(initial?.image||"");
+  const [visibleTo,setVisibleTo]=useState(initial?.visibleTo||[]);
   const [saving,setSaving]=useState(false);
-  const [assigning,setAssigning]=useState(null);
-  const [selection,setSelection]=useState({});
   const imgRef=useRef(null);
 
-  // 핸드아웃 본문 꾸미기: 꾸미기 창과 같은 방식으로, 끌어서 선택한 부분만 감쌉니다.
+  // 본문 꾸미기: 끌어서 선택한 부분만 감쌉니다.
   const hoTextRef=useRef(null);
   const [hoColor,setHoColor]=useState("#c0392b");
   const hoFmtBtn={background:"var(--surface)",color:"var(--text-dim)",border:"1px solid var(--border)",
@@ -3317,167 +3301,109 @@ function HandoutManagerModal({room,userCode,handouts,roomParticipants,onClose,on
     const el=hoTextRef.current;
     if(!el)return;
     const start=el.selectionStart,end=el.selectionEnd;
-    if(start===end)return;                    // 선택된 글자가 없으면 아무것도 안 함
+    if(start===end)return;
     const selected=text.slice(start,end);
-    const next=text.slice(0,start)+before+selected+after+text.slice(end);
-    setText(next);
+    setText(text.slice(0,start)+before+selected+after+text.slice(end));
     const s=start+before.length, e=s+selected.length;
     setTimeout(()=>{ el.focus(); el.setSelectionRange(s,e); },10);
   };
 
-  const closeForm=()=>{ setShowCreate(false);setEditing(null);setTitle("");setText("");setImage(""); };
-  // 새로 만들 때도, 이미 있는 걸 고칠 때도 이 함수를 씁니다.
-  // 고칠 때는 이미 전송한 대상(visibleTo)과 만든 사람·만든 시각을 그대로 유지합니다.
-  const saveHandout=async()=>{
-    const t=title.trim();if(!t)return;
+  // 명단에서 빠졌지만 이미 받은 사람도 고른 상태로 보이게 함께 둡니다.
+  const choices=Array.from(new Set([...players,...visibleTo]));
+  const toggle=code=>setVisibleTo(v=>v.includes(code)?v.filter(c=>c!==code):[...v,code]);
+
+  const save=async()=>{
+    const t=title.trim(); if(!t)return;
     setSaving(true);
-    const handout=editing
-      ? {...editing,title:t,text:text.trim(),image}
-      : {id:newId(),roomId:room.id,title:t,text:text.trim(),image,creatorCode:userCode,createdAt:Date.now(),visibleTo:[]};
+    const handout=initial
+      ? {...initial,title:t,text:text.trim(),image,visibleTo}
+      : {id:newId(),roomId:room.id,title:t,text:text.trim(),image,creatorCode:userCode,createdAt:Date.now(),visibleTo};
     await storeSet(`handout:${room.id}:${handout.id}`,handout,true);
     setSaving(false);
-    closeForm();
+    onClose();
   };
-  const openEdit=h=>{
-    setEditing(h);setTitle(h.title||"");setText(h.text||"");setImage(h.image||"");setShowCreate(true);
-  };
-  const deleteHandout=async h=>{
-    if(!window.confirm(`'${h.title}' 핸드아웃을 삭제하시겠습니까?`))return;
-    await storeDelete(`handout:${room.id}:${h.id}`,true);
-  };
-  const openAssign=h=>{
-    setAssigning(h);
-    const sel={};(h.visibleTo||[]).forEach(c=>sel[c]=true);setSelection(sel);
-  };
-  const saveAssign=async()=>{
-    const visibleTo=Object.entries(selection).filter(([,v])=>v).map(([c])=>c);
-    await storeSet(`handout:${room.id}:${assigning.id}`,{...assigning,visibleTo},true);
-    setAssigning(null);
+  const remove=async()=>{
+    if(!initial)return;
+    if(!window.confirm(`'${initial.title}' 핸드아웃을 삭제할까요? 되돌릴 수 없어요.`))return;
+    await storeDelete(`handout:${room.id}:${initial.id}`,true);
+    onDeleted&&onDeleted(initial.id);
   };
 
   return(
-    <FloatingPanel storageKey="handout-manager" title="핸드아웃 관리" icon={Folder} onClose={onClose} width="min(94vw, 360px)"
-      defaultAnchor={{position:"fixed",left:164,top:140}}>
-          {assigning?(
-            <div>
-              <button className="coc-btn ghost small" onClick={()=>setAssigning(null)} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
-              <div className="coc-display" style={{fontSize:14,marginBottom:4}}>{assigning.title}</div>
-              <div className="coc-label" style={{marginBottom:8}}>누구에게 보여줄까요?</div>
-              {roomParticipants.length===0?(
-                <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:14}}>아직 캐릭터를 만든 참가자가 없어요.</div>
-              ):(
-                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-                  {roomParticipants.map(code=>(
-                    <label key={code} style={{display:"flex",alignItems:"center",gap:8,fontSize:13.5,cursor:"pointer",padding:"8px 10px",background:"var(--bg-panel)",borderRadius:8}}>
-                      <input type="checkbox" checked={!!selection[code]} onChange={e=>setSelection(s=>({...s,[code]:e.target.checked}))} style={{width:16,height:16,cursor:"pointer"}}/>
-                      {displayNameOf?displayNameOf(code):code}
-                    </label>
-                  ))}
-                </div>
-              )}
-              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} onClick={saveAssign}>전송</button>
-            </div>
-          ):showCreate?(
-            <div>
-              <button className="coc-btn ghost small" onClick={closeForm} style={{marginBottom:12}}><ArrowLeft size={12}/> 목록으로</button>
-              <div className="coc-label" style={{marginBottom:5}}>제목</div>
-              <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 낡은 편지" style={{marginBottom:12}} autoFocus/>
-              <div className="coc-label" style={{marginBottom:5}}>내용</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>
-                <button type="button" onClick={()=>wrapHandoutText("**","**")} style={hoFmtBtn}>B</button>
-                <button type="button" onClick={()=>wrapHandoutText("*","*")} style={{...hoFmtBtn,fontStyle:"italic"}}>I</button>
-                <button type="button" onClick={()=>wrapHandoutText("__","__")} style={{...hoFmtBtn,textDecoration:"underline"}}>U</button>
-                <button type="button" onClick={()=>wrapHandoutText("~~","~~")} style={{...hoFmtBtn,textDecoration:"line-through"}}>S</button>
-                <label style={{position:"relative",width:30,height:30,borderRadius:6,overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer",flexShrink:0}}>
-                  <input type="color" value={hoColor} onChange={e=>setHoColor(e.target.value)}
-                    style={{position:"absolute",top:-6,left:-6,width:44,height:44,border:"none",padding:0,cursor:"pointer"}}/>
-                </label>
-                <button type="button" onClick={()=>wrapHandoutText(`<span style="color:${hoColor}">`,"</span>")} style={hoFmtBtn}>색</button>
-              </div>
-              <textarea ref={hoTextRef} className="coc-input" rows={5} value={text} onChange={e=>setText(e.target.value)}
-                placeholder="플레이어에게 보여줄 글 내용 (글자를 끌어서 선택한 뒤 위 버튼을 누르면 꾸며져요)" style={{marginBottom:8}}/>
-              {text.trim()&&(
-                <div style={{background:"var(--bg-panel)",borderRadius:8,padding:"9px 11px",marginBottom:12,
-                  fontSize:13.5,lineHeight:1.65,wordBreak:"break-word"}}>
-                  <div className="coc-label" style={{marginBottom:4}}>미리보기</div>
-                  <FormattedText text={text}/>
-                </div>
-              )}
-              <div className="coc-label" style={{marginBottom:5}}>사진 (선택)</div>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-                {image&&<img src={image} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}}/>}
-                <button type="button" className="coc-btn ghost small" onClick={()=>imgRef.current?.click()}><Camera size={12}/> 사진 첨부</button>
-                {image&&<button type="button" className="coc-btn ghost small" onClick={()=>setImage("")}>제거</button>}
-              </div>
-              <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}}
-                onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setImage(url);e.target.value="";}}/>
-              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!title.trim()||saving} onClick={saveHandout}>
-                {saving?"저장 중...":editing?"수정 저장":"핸드아웃 만들기"}
-              </button>
-              {editing&&(
-                <div style={{fontSize:11,color:"var(--text-faint)",marginTop:8,textAlign:"center"}}>
-                  이미 받은 사람에게도 바뀐 내용이 바로 보여요.
-                </div>
-              )}
-            </div>
-          ):(
-            <div>
-              <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11,marginBottom:16}} onClick={()=>setShowCreate(true)}>
-                <Plus size={13}/> 새 핸드아웃 추가
-              </button>
-              {handouts.length===0?(
-                <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 만든 핸드아웃이 없어요.</div>
-              ):(
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {handouts.map(h=>(
-                    <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      {h.image?<img src={h.image} style={{width:40,height:40,borderRadius:6,objectFit:"cover",flexShrink:0}}/>:
-                        <div style={{width:40,height:40,borderRadius:6,background:"var(--bg-panel)",flexShrink:0}}/>}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title}</div>
-                        <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
-                          {(h.visibleTo||[]).length>0?`공개 대상: ${h.visibleTo.map(c=>displayNameOf?displayNameOf(c):c).join(", ")}`:"아직 공개 안 됨"}
-                        </div>
-                      </div>
-                      <button type="button" className="coc-btn ghost small" title="내용 보기" onClick={()=>onPreview&&onPreview(h)} style={{padding:"4px 7px"}}>보기</button>
-                      <button type="button" className="coc-btn ghost small" title="수정" onClick={()=>openEdit(h)} style={{padding:"4px 7px"}}><Pencil size={11}/></button>
-                      <button type="button" className="coc-btn small" onClick={()=>openAssign(h)}>전송</button>
-                      <button type="button" onClick={()=>deleteHandout(h)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:4}}><Trash2 size={13}/></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-    </FloatingPanel>
-  );
-}
+    <FloatingPanel storageKey="handout-edit" startUnfolded title={initial?`핸드아웃 수정 · ${initial.title}`:"핸드아웃 추가"} icon={Pencil}
+      onClose={onClose} width="min(94vw, 380px)" maxHeight="86vh" defaultAnchor={{position:"fixed",left:120,top:90}}>
+      <div className="coc-label" style={{marginBottom:5}}>제목</div>
+      <input className="coc-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="예: 낡은 편지" style={{marginBottom:12}} autoFocus={!initial}/>
 
-function HandoutViewerModal({handouts,onClose,onSelect}){
-  return(
-    <FloatingPanel storageKey="handout-viewer" title="핸드아웃" icon={Folder} onClose={onClose} width="min(94vw, 330px)"
-      defaultAnchor={{position:"fixed",left:164,top:140}}>
-      {handouts.length===0?(
-        <div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:24}}>아직 받은 핸드아웃이 없어요.</div>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {handouts.map(h=>(
-            <div key={h.id} className="coc-card" style={{padding:12,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>onSelect(h)}>
-              {h.image?<img src={h.image} style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
-                <div style={{width:44,height:44,borderRadius:8,background:"var(--bg-panel)",flexShrink:0}}/>}
-              <div style={{fontSize:14,fontWeight:600}}>{h.title}</div>
-            </div>
-          ))}
+      <div className="coc-label" style={{marginBottom:5}}>내용</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>
+        <button type="button" onClick={()=>wrapHandoutText("**","**")} style={hoFmtBtn}>B</button>
+        <button type="button" onClick={()=>wrapHandoutText("*","*")} style={{...hoFmtBtn,fontStyle:"italic"}}>I</button>
+        <button type="button" onClick={()=>wrapHandoutText("__","__")} style={{...hoFmtBtn,textDecoration:"underline"}}>U</button>
+        <button type="button" onClick={()=>wrapHandoutText("~~","~~")} style={{...hoFmtBtn,textDecoration:"line-through"}}>S</button>
+        <label style={{position:"relative",width:30,height:30,borderRadius:6,overflow:"hidden",border:"1px solid var(--border)",cursor:"pointer",flexShrink:0}}>
+          <input type="color" value={hoColor} onChange={e=>setHoColor(e.target.value)}
+            style={{position:"absolute",top:-6,left:-6,width:44,height:44,border:"none",padding:0,cursor:"pointer"}}/>
+        </label>
+        <button type="button" onClick={()=>wrapHandoutText(`<span style="color:${hoColor}">`,"</span>")} style={hoFmtBtn}>색</button>
+      </div>
+      <textarea ref={hoTextRef} className="coc-input" rows={5} value={text} onChange={e=>setText(e.target.value)}
+        placeholder="플레이어에게 보여줄 글 (글자를 끌어서 선택한 뒤 위 버튼을 누르면 꾸며져요)" style={{marginBottom:8,resize:"vertical"}}/>
+      {text.trim()&&(
+        <div style={{background:"var(--bg-panel)",borderRadius:8,padding:"9px 11px",marginBottom:12,fontSize:13.5,lineHeight:1.65,wordBreak:"break-word"}}>
+          <div className="coc-label" style={{marginBottom:4}}>미리보기</div>
+          <FormattedText text={text}/>
         </div>
+      )}
+
+      <div className="coc-label" style={{marginBottom:5}}>사진 (선택)</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        {image&&<img src={image} alt="" style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}}/>}
+        <button type="button" className="coc-btn ghost small" onClick={()=>imgRef.current?.click()}><Camera size={12}/> 사진 첨부</button>
+        {image&&<button type="button" className="coc-btn ghost small" onClick={()=>setImage("")}>제거</button>}
+      </div>
+      <input ref={imgRef} type="file" accept="image/*" style={{display:"none"}}
+        onChange={async e=>{const f=e.target.files?.[0];if(!f)return;const url=await uploadToCloudflare(f);if(url)setImage(url);e.target.value="";}}/>
+
+      <div className="coc-label" style={{marginBottom:6}}>공개할 사람</div>
+      {choices.length===0
+        ? <div style={{fontSize:12,color:"var(--text-faint)",marginBottom:8}}>아직 방에 들어온 플레이어가 없어요.</div>
+        : <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+            {choices.map(code=>{
+              const on=visibleTo.includes(code);
+              return(
+                <button key={code} type="button" onClick={()=>toggle(code)}
+                  style={{fontSize:12,padding:"6px 12px",borderRadius:999,cursor:"pointer",
+                    background:on?"var(--accent)":"var(--surface)",color:on?"#fff":"var(--text-dim)",
+                    border:"1px solid "+(on?"var(--accent)":"var(--border)")}}>
+                  {on&&"✓ "}{displayNameOf?displayNameOf(code):code}
+                </button>
+              );
+            })}
+          </div>}
+      <div style={{fontSize:11,color:"var(--text-faint)",marginBottom:14}}>
+        {visibleTo.length===0?"아무도 고르지 않으면 비공개로 저장돼요. 미리 만들어 두고 나중에 공개할 수 있어요."
+          :`${visibleTo.length}명에게 공개돼요. 저장하면 바로 그 사람 화면에 보여요.`}
+      </div>
+
+      <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!title.trim()||saving} onClick={save}>
+        {saving?"저장 중...":initial?"수정 저장":"핸드아웃 추가"}
+      </button>
+      {initial&&(
+        <button type="button" className="coc-btn ghost small"
+          style={{width:"100%",justifyContent:"center",marginTop:8,color:"#c05050",borderColor:"#e8c4c4"}} onClick={remove}>
+          <Trash2 size={12}/> 핸드아웃 삭제
+        </button>
       )}
     </FloatingPanel>
   );
 }
 
+
 // 핸드아웃 상세 보기: 새로 받았을 때 자동으로 뜨거나, 목록에서 골라 열 때 씁니다.
 // "접기"를 누르면 닫히는 게 아니라 투명도 80%의 작은 바로 줄어들어 무대 어디에든 둘 수 있고,
 // 그 바를 다시 누르면 펼쳐집니다. "닫기"를 눌러야 완전히 사라집니다.
-function HandoutFloatingDetail({handout,onClose,index=0}){
+function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
   const wrapRef=useRef(null);
   // 옮긴 자리와 크기는 핸드아웃별로 이 기기에 기억됩니다.
   // (설정 화면에 다녀오면 창이 다시 그려지는데, 예전엔 그때마다 위치가 처음으로 돌아갔어요.)
@@ -3587,6 +3513,11 @@ function HandoutFloatingDetail({handout,onClose,index=0}){
         <Mail size={14} color="var(--accent-deep)"/>
         <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"var(--accent-deep)",
           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{handout.title}</span>
+        {onEdit&&<button type="button" title="수정" onPointerDown={e=>e.stopPropagation()} onClick={onEdit}
+          style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
+            color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <Pencil size={12}/>
+        </button>}
         <button type="button" title="접기" onPointerDown={e=>e.stopPropagation()} onClick={()=>{rememberFoldAnchor();setFolded(true);}}
           style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",
             color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -3794,7 +3725,8 @@ function DicePanel({char,onRollToChat,roomId,onClose,secretRoll,setSecretRoll}){
 
           {/* 롤20 스타일: 각 항목 옆 주사위 아이콘을 누르면 "지금 이 값"으로 바로 판정이 나가고,
               값 자체는 그 자리에서 바로 수정할 수 있어요. 따로 "판정" 화면이 없어도 됩니다. */}
-          <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={false} panel onRollCheck={roll}/>
+          <SheetEditor sheet={sheetDraft} setSheet={setSheetDraft} allowRoll={false} panel onRollCheck={roll}
+            playerSlot={<div style={{fontSize:13,color:"var(--text-dim)",padding:"6px 2px"}}>{char.ownerCode||"-"}</div>}/>
           <button type="button" className="coc-btn" style={{width:"100%",justifyContent:"center",marginTop:10}} disabled={saving} onClick={saveSheet}>
             {saving?"저장 중...":"시트 저장"}
           </button>
@@ -3921,31 +3853,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     if(!el)return;
     setAtMsgListTop(el.scrollHeight<=el.clientHeight+4||el.scrollTop<24);
   });
-  const viewFullTranscript=async()=>{
-    // 브라우저는 "클릭한 그 순간"에 연 창만 허용하고, 기록을 불러오느라 기다린 뒤에 여는 창은
-    // 팝업으로 보고 막아 버립니다. 그래서 창을 먼저 열어 두고, 불러온 기록을 그 창에 채워 넣어요.
-    const w=window.open("","_blank");
-    if(w){
-      try{ w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>불러오는 중...</title><p style="font-family:sans-serif;padding:24px;color:#888">기록을 불러오는 중이에요...</p>'); }catch{}
-    }
-    setLoadingFullTranscript(true);
-    try{
-      const transcript=await fetchRoomTranscript(room,userCode);
-      const themeForExport=dark?toDarkTheme(deriveThemeFromColor(customColor)):deriveThemeFromColor(customColor);
-      const html=buildHtmlExport(room,transcript,themeForExport,{interactive:true});
-      if(w&&!w.closed){
-        w.document.open();
-        w.document.write(html);
-        w.document.close();
-      }else{
-        // 팝업이 막혀 창을 못 열었으면 파일로 받아서 볼 수 있게 합니다.
-        downloadFile(`${room.title||"session"}_전문.html`,html,"text/html;charset=utf-8");
-      }
-    }catch(err){
-      if(w&&!w.closed) w.close();
-      alert("불러오기에 실패했습니다: "+(err?.message||String(err)));
-    }
-    setLoadingFullTranscript(false);
+  const viewFullTranscript=()=>{
+    // 앱 주소에 ?transcript=… 를 붙인 새 창을 엽니다. 그 창이 스스로 기록을 불러와 보여줘요.
+    const q=new URLSearchParams({transcript:room.id,viewer:userCode||"",dark:dark?"1":"0",color:customColor||""});
+    window.open(`${window.location.origin}${window.location.pathname}?${q.toString()}`,"_blank");
   };
   const inputRef=useRef(null);
   const firstLoad=useRef({});
@@ -4293,7 +4204,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     onChangeSound(!soundEnabled);
   };
 
-  const [showHandoutManager,setShowHandoutManager]=usePersistedOpen(`${room.id}:handout-manager`);
+  // GM이 지금 만들거나 고치고 있는 핸드아웃 (null이면 창 닫힘, {}이면 새로 만들기)
+  const [handoutEdit,setHandoutEdit]=useState(null);
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
   function ytEmbedUrl(url){
     if(!url)return null;
@@ -4619,10 +4531,34 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // 소품이 필드 밖으로 멀리 퍼진 시나리오는 많이 축소해야 전체가 보여서, 하한을 넉넉히 둡니다.
   const MIN_ZOOM=0.05, MAX_ZOOM=5;
-  const [stageView,setStageView]=useState({scale:1,tx:0,ty:0}); // tx,ty는 픽셀 단위 이동량
+  // 확대·축소 정도와 위치는 방마다, 사람(이 기기·브라우저)마다 따로 기억합니다.
+  // 다시 들어오면 마지막으로 맞춰 둔 화면 그대로 보여요.
+  const stageViewKey=`heartEmojiStageView:${room.id}`;
+  const loadStageView=()=>{
+    try{
+      const v=JSON.parse(localStorage.getItem(stageViewKey)||"null");
+      if(v&&Number.isFinite(v.scale)&&Number.isFinite(v.tx)&&Number.isFinite(v.ty))
+        return {scale:Math.min(MAX_ZOOM,Math.max(MIN_ZOOM,v.scale)),tx:v.tx,ty:v.ty};
+    }catch{}
+    return {scale:1,tx:0,ty:0};
+  };
+  const [stageView,setStageView]=useState(loadStageView); // tx,ty는 픽셀 단위 이동량
   const stageSceneRef=useRef(null);
   const stageViewRef=useRef(stageView);
   useEffect(()=>{ stageViewRef.current=stageView; },[stageView]);
+  // 다른 방으로 옮겨 가면 그 방에서 마지막으로 맞춘 화면을 불러옵니다.
+  const stageViewRoomRef=useRef(room.id);
+  useEffect(()=>{
+    if(stageViewRoomRef.current===room.id)return;
+    stageViewRoomRef.current=room.id;
+    setStageView(loadStageView());
+  },[room.id]); // eslint-disable-line
+  // 휠을 굴리는 동안 매번 저장하지 않도록, 멈추고 0.4초 뒤에 한 번만 저장합니다.
+  useEffect(()=>{
+    const key=stageViewKey;
+    const t=setTimeout(()=>{ try{ localStorage.setItem(key,JSON.stringify(stageView)); }catch{} },400);
+    return()=>clearTimeout(t);
+  },[stageView]); // eslint-disable-line
   const resetStageView=()=>setStageView({scale:1,tx:0,ty:0});
   // 확대/축소 버튼: 무대 한가운데를 기준으로 커지고 작아집니다.
   const zoomStageBy=factor=>{
@@ -5481,7 +5417,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
         <button type="button" className={"chat-icon-btn"+(showRoster?" on":"")} style={{position:"relative"}}
           onClick={()=>setShowRoster(v=>!v)}
-          title={isGM?"모아보기 (모든 캐릭터·핸드아웃)":"내 캐릭터·핸드아웃"}>
+          title={isGM?"관리 (캐릭터·핸드아웃)":"내 캐릭터·핸드아웃"}>
           <Folder size={18}/>
           {!isGM&&myHandouts.length>seenHandoutCount&&
             <span style={{position:"absolute",top:4,right:4,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
@@ -6059,15 +5995,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           diceCutins={diceCutins} onSetCutin={setDiceCutin} onClearCutin={clearDiceCutin}/>}
         </>
       )}
-      {showHandoutManager&&<HandoutManagerModal room={room} userCode={userCode} handouts={handouts} roomParticipants={roomParticipants}
-        onClose={()=>setShowHandoutManager(false)} onPreview={openHandout} displayNameOf={displayNameOf}/>}
+      {isGM&&handoutEdit&&<HandoutEditPanel key={handoutEdit.id||"new"} room={room} userCode={userCode} initial={handoutEdit.id?handoutEdit:null}
+        players={assignOptions.filter(o=>o.code!==room.creatorCode).map(o=>o.code)} displayNameOf={displayNameOf}
+        onClose={()=>setHandoutEdit(null)} onDeleted={id=>{ setHandoutEdit(null); closeHandout(id); }}/>}
       {openHandoutIds.map((id,i)=>{
         // 내가 받은 것에서 먼저 찾습니다. 못 찾으면 GM일 때만(=관리 창 미리보기) 전체에서 찾아요.
         // 참가자에게까지 전체 목록을 열어주면, 열어둔 창이 기억되는 탓에 배부가 취소된 뒤에도
         // 그 핸드아웃이 계속 보일 수 있습니다.
         const h=myHandouts.find(x=>x.id===id)||(isGM?handouts.find(x=>x.id===id):null);
         if(!h) return null;
-        return <HandoutFloatingDetail key={id} handout={h} index={i} onClose={()=>closeHandout(id)}/>;
+        return <HandoutFloatingDetail key={id} handout={h} index={i} onClose={()=>closeHandout(id)}
+          onEdit={isGM?()=>setHandoutEdit(h):null}/>;
       })}
       {popupMadness&&(
         <div className="coc-modal-backdrop" onClick={()=>setPopupMadness(null)}>
@@ -6093,14 +6031,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
       {showRoster&&<CollectionPanel onClose={()=>setShowRoster(false)} isGM={isGM}
         tab={collectionTab} setTab={setCollectionTab}
-        rosterProps={{assignOptions,allChars,creatorCode:room.creatorCode,isOnline,userCode,
-          onCreateFor:rosterCreateFor,onOpen:rosterOpen,onReassign:rosterReassign}}
+        allChars={allChars} onCreateChar={()=>rosterCreateFor("")} onOpenChar={rosterOpen}
         myChars={myChars} activeCharId={char?.id}
-        onPickChar={c=>{setChar(c);setSpeaker("ic");}}
-        onOpenSheet={c=>{setChar(c);setShowCharSheet(true);}}
+        onOpenMyChar={c=>{setChar(c);setSpeaker("ic");setShowCharSheet(true);}}
         handouts={isGM?handouts:myHandouts} onOpenHandout={openHandout}
-        onManageHandouts={()=>setShowHandoutManager(true)}
-        unseenHandouts={myHandouts.length>seenHandoutCount} displayNameOf={displayNameOf}/>}
+        onAddHandout={()=>setHandoutEdit({})}
+        unseenHandouts={myHandouts.length>seenHandoutCount}/>}
       {isGM&&rosterEdit&&<CharacterEditModal key={rosterEdit.id}
         initial={{id:rosterEdit.id,sheet:rosterEdit.sheet,createdAt:rosterEdit.createdAt}}
         roomId={room.id} userCode={userCode}
@@ -6314,7 +6250,32 @@ function AppInner(){
   );
 }
 
+/* 전문 보기 전용 화면: 주소에 ?transcript=방아이디 가 붙어 있으면 앱 대신 이 화면이 뜹니다.
+   새 탭이 "주소를 가진 진짜 페이지"로 열리기 때문에, 팝업 차단이나 다운로드로 빠지지 않아요. */
+function TranscriptPage({roomId,viewer,dark,color}){
+  const [msg,setMsg]=useState("기록을 불러오는 중이에요...");
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const room=await storeGet(`room:${roomId}`,true);
+        if(!room){ setMsg("방을 찾을 수 없어요."); return; }
+        const transcript=await fetchRoomTranscript(room,viewer);
+        const base=deriveThemeFromColor(/^#[0-9a-fA-F]{6}$/.test(color)?color:"#2e9bdb");
+        const theme=dark?toDarkTheme(base):base;
+        const html=buildHtmlExport(room,transcript,theme,{interactive:true});
+        document.open(); document.write(html); document.close();
+      }catch(err){ setMsg("불러오기에 실패했어요: "+(err?.message||String(err))); }
+    })();
+  },[]); // eslint-disable-line
+  return <div style={{fontFamily:"sans-serif",padding:24,color:"#888"}}>{msg}</div>;
+}
+
 export default function App(){
+  const tp=typeof window!=="undefined"?new URLSearchParams(window.location.search):null;
+  if(tp&&tp.get("transcript")){
+    return <TranscriptPage roomId={tp.get("transcript")} viewer={tp.get("viewer")||""}
+      dark={tp.get("dark")==="1"} color={tp.get("color")||""}/>;
+  }
   return (
     <ErrorBoundary>
       <AppInner/>
