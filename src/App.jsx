@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, RotateCcw, X, Camera, MessageCircle,
   Crown, Settings, Trash2, Bell, BellOff, Music, Folder, Lock,
   Image as ImageIcon, Moon, Sun, Minus, Brush, Layers, Unlock,
-  Heart, Check, Mail, AlertTriangle, Sliders, Clapperboard, Circle, Bookmark
+  Heart, Check, Mail, AlertTriangle, Sliders, Clapperboard, Circle, Bookmark, UserRound
 } from "lucide-react";
 import { db } from "./firebase";
 import {
@@ -2063,14 +2063,21 @@ function RoomModal({room,onClose,onSaved,onDeleted,userCode}){
 
 /* ============================== CHAR SELECT ============================== */
 
-function CharacterEditModal({initial,roomId,userCode,onClose,onSaved}){
+// assignOptions가 있으면(GM이 쓸 때) 맨 위에 "누구에게 줄지" 고르는 칸이 생깁니다.
+// ownerCode를 넘기면 그 사람의 캐릭터로 저장하고, 안 넘기면 저장하는 본인 것으로 저장합니다.
+// 이미 있는 캐릭터를 열 때는 initial.sheet에 그 캐릭터 내용을 그대로 넘기면 됩니다.
+function CharacterEditModal({initial,roomId,userCode,onClose,onSaved,ownerCode,assignOptions,onDelete}){
   const [sheet,setSheet]=useState(initial.sheet);
+  const [owner,setOwner]=useState(ownerCode!==undefined?ownerCode:userCode);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
   const save=async()=>{
     if(!sheet.name.trim())return;
     setSaving(true);setError("");
-    const char={id:initial.id,roomId,ownerCode:userCode,...sheet,createdAt:initial.createdAt||Date.now()};
+    // 시트 안에 예전 주인·아이디 같은 값이 섞여 있어도 덮어쓰이지 않도록 걸러낸 뒤,
+    // 주인(ownerCode)은 맨 마지막에 확실하게 넣습니다.
+    const {id:_i,roomId:_r,ownerCode:_o,createdAt:_c,...clean}=sheet;
+    const char={...clean,id:initial.id,roomId,ownerCode:owner,createdAt:initial.createdAt||Date.now()};
     const res=await storeSet(`char:${roomId}:${initial.id}`,char,true);
     setSaving(false);
     if(res.ok) onSaved(char);
@@ -2084,12 +2091,33 @@ function CharacterEditModal({initial,roomId,userCode,onClose,onSaved}){
             <div className="coc-display" style={{fontSize:16,color:"var(--accent-deep)"}}>탐사자 시트</div>
             <button className="coc-btn ghost small" onClick={onClose} style={{padding:6}}><X size={13}/></button>
           </div>
+          {assignOptions&&(
+            <div style={{marginBottom:16,padding:"10px 12px",borderRadius:10,background:"var(--bg-panel)",border:"1px solid var(--border-soft)"}}>
+              <div className="coc-label" style={{marginBottom:6}}>이 캐릭터를 쓸 사람</div>
+              <select className="coc-input" value={owner} onChange={e=>setOwner(e.target.value)} style={{width:"100%"}}>
+                <option value="">아직 배정 안 함</option>
+                {assignOptions.map(o=>(
+                  <option key={o.code} value={o.code}>{o.label}</option>
+                ))}
+              </select>
+              <div style={{fontSize:11,color:"var(--text-faint)",marginTop:6}}>
+                배정하면 그 플레이어 화면에 이 캐릭터가 바로 잡혀요. 배정 후에도 GM과 플레이어 모두 시트를 열어 고칠 수 있어요.
+              </div>
+            </div>
+          )}
           <SheetEditor sheet={sheet} setSheet={setSheet} allowRoll={true}/>
           <div className="coc-divider"/>
           {error&&<div style={{color:"var(--accent)",fontSize:13,marginBottom:10,whiteSpace:"pre-wrap"}}>{error}</div>}
           <button className="coc-btn" style={{width:"100%",justifyContent:"center",padding:11}} disabled={!sheet.name.trim()||saving} onClick={save}>
             {saving?"저장 중...":"캐릭터 저장"}
           </button>
+          {onDelete&&(
+            <button type="button" className="coc-btn ghost small"
+              style={{width:"100%",justifyContent:"center",marginTop:8,color:"#c05050",borderColor:"#e8c4c4"}}
+              onClick={()=>{ if(window.confirm(`'${sheet.name||"이 캐릭터"}'를 삭제할까요? 되돌릴 수 없어요.`)) onDelete(); }}>
+              <Trash2 size={12}/> 캐릭터 삭제
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -3012,6 +3040,192 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
         {children}
       </div>
     </div>
+  );
+}
+
+/* 캐릭터 관리(GM 전용): GM이 캐릭터를 미리 만들어서 플레이어에게 나눠주는 창입니다.
+   참가자별로 그 사람이 받은 캐릭터를 묶어 보여주고, 아무 캐릭터나 열어서 시트를 보거나
+   고칠 수 있어요. 배정을 바꾸면 원래 쓰던 사람 화면에서는 빠지고 새 사람에게 잡힙니다. */
+function CharacterRosterPanel({onClose,assignOptions,allChars,creatorCode,isOnline,userCode,onCreateFor,onOpen,onReassign,embedded}){
+  // 명단에 있는 사람 + (혹시 명단에서 빠졌지만) 캐릭터를 갖고 있는 사람까지 모두 칸을 만듭니다.
+  const codes=[];
+  const seen=new Set();
+  const push=c=>{ if(c&&!seen.has(c)){ seen.add(c); codes.push(c); } };
+  assignOptions.forEach(o=>{ if(o.code!==creatorCode) push(o.code); });
+  allChars.forEach(c=>{ if(c.ownerCode&&c.ownerCode!==creatorCode) push(c.ownerCode); });
+  if(creatorCode) push(creatorCode);              // GM 본인 칸은 맨 아래에
+  const unassigned=allChars.filter(c=>!c.ownerCode);
+  const labelOf=code=>assignOptions.find(o=>o.code===code)?.label||code;
+
+  const charRow=c=>{
+    const d=c.derived||{};
+    return(
+      <div key={c.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",
+        borderRadius:8,background:"var(--surface)",border:"1px solid var(--border-soft)"}}>
+        <div style={{width:28,height:28,borderRadius:"50%",overflow:"hidden",flexShrink:0,
+          background:"var(--bg-panel)",border:"1px solid var(--border)",
+          display:"flex",alignItems:"center",justifyContent:"center"}}>
+          {c.avatar?<img src={c.avatar} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            :<Sparkles size={12} color="var(--accent-soft)"/>}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12.5,fontWeight:700,color:c.nameColor||"var(--text)",
+            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"(이름 없음)"}</div>
+          <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
+            HP {d.HP??"-"} · MP {d.MP??"-"} · SAN {d.SAN??"-"}
+          </div>
+        </div>
+        <select value={c.ownerCode||""} title="배정 바꾸기" onChange={e=>onReassign(c,e.target.value)}
+          style={{maxWidth:84,fontSize:11,padding:"3px 4px",borderRadius:6,border:"1px solid var(--border)",
+            background:"var(--surface)",color:"var(--text-dim)",flexShrink:0}}>
+          <option value="">배정 안 함</option>
+          {assignOptions.map(o=><option key={o.code} value={o.code}>{o.label}</option>)}
+        </select>
+        <button type="button" className="coc-btn ghost small" onClick={()=>onOpen(c)} style={{flexShrink:0,padding:"4px 8px"}}>
+          시트
+        </button>
+      </div>
+    );
+  };
+
+  const body=(
+    <>
+      <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:12}}
+        onClick={()=>onCreateFor("")}>
+        <Plus size={13}/> 새 캐릭터 만들기
+      </button>
+
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {codes.map(code=>{
+          const mine=allChars.filter(c=>c.ownerCode===code);
+          const online=code===userCode?true:isOnline(code);
+          return(
+            <div key={code}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                <Circle size={7} fill={online?"#3f9e6a":"var(--border)"} color={online?"#3f9e6a":"var(--border)"}/>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--text-dim)"}}>{labelOf(code)}</span>
+                {code===creatorCode&&<span style={{fontSize:9,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace"}}>GM</span>}
+                <span style={{flex:1}}/>
+                <button type="button" onClick={()=>onCreateFor(code)} title="이 사람에게 줄 캐릭터 만들기"
+                  style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",fontSize:11,fontWeight:700,padding:"2px 4px"}}>
+                  + 만들어 주기
+                </button>
+              </div>
+              {mine.length>0
+                ? <div style={{display:"flex",flexDirection:"column",gap:5}}>{mine.map(charRow)}</div>
+                : <div style={{fontSize:11,color:"var(--text-faint)",padding:"4px 2px"}}>아직 받은 캐릭터가 없어요</div>}
+            </div>
+          );
+        })}
+
+        {unassigned.length>0&&(
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:"var(--text-faint)",marginBottom:6}}>배정 안 된 캐릭터</div>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>{unassigned.map(charRow)}</div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+  if(embedded) return body;
+  return(
+    <FloatingPanel title="캐릭터 관리" icon={UserRound} onClose={onClose} storageKey="charroster"
+      defaultAnchor={{position:"fixed",right:18,top:80}} width="min(94vw, 360px)">
+      {body}
+    </FloatingPanel>
+  );
+}
+
+/* 모아보기: 캐릭터와 핸드아웃을 한 창에서 봅니다.
+   GM은 방 안의 모든 캐릭터(만들기·배정·시트)와 모든 핸드아웃(열람·만들기·배부)을,
+   플레이어는 자신이 배정받은 캐릭터와 받은 핸드아웃만 봅니다. */
+function CollectionPanel({onClose,isGM,tab,setTab,
+  rosterProps,myChars,activeCharId,onPickChar,onOpenSheet,
+  handouts,onOpenHandout,onManageHandouts,unseenHandouts,displayNameOf}){
+  const tabBtn=(key,label,dot)=>(
+    <button type="button" onClick={()=>setTab(key)}
+      style={{flex:1,padding:"7px 0",borderRadius:8,fontSize:12.5,fontWeight:700,cursor:"pointer",position:"relative",
+        border:"1px solid "+(tab===key?"var(--accent-soft)":"var(--border)"),
+        background:tab===key?"var(--bg-panel)":"var(--surface)",
+        color:tab===key?"var(--accent-deep)":"var(--text-dim)"}}>
+      {label}
+      {dot&&<span style={{position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
+    </button>
+  );
+  const avatar=(src,size=32)=>(
+    <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,
+      background:"var(--bg-panel)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      {src?<img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<Sparkles size={13} color="var(--accent-soft)"/>}
+    </div>
+  );
+  const empty=t=><div style={{color:"var(--text-faint)",fontSize:12.5,textAlign:"center",padding:"22px 8px",lineHeight:1.6}}>{t}</div>;
+
+  return(
+    <FloatingPanel title={isGM?"모아보기 (GM)":"내 캐릭터·핸드아웃"} icon={Folder} onClose={onClose} storageKey="collection"
+      defaultAnchor={{position:"fixed",left:64,top:80}} width="min(94vw, 370px)">
+      <div style={{display:"flex",gap:6,marginBottom:12}}>
+        {tabBtn("chars",isGM?"모든 캐릭터":"내 캐릭터")}
+        {tabBtn("handouts",isGM?"모든 핸드아웃":"내 핸드아웃",!isGM&&unseenHandouts&&tab!=="handouts")}
+      </div>
+
+      {tab==="chars"&&(isGM
+        ? <CharacterRosterPanel embedded {...rosterProps}/>
+        : (myChars.length===0
+          ? empty(<>아직 받은 캐릭터가 없어요.<br/>GM이 캐릭터를 배정해 주면 여기에 나타나요.</>)
+          : <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {myChars.map(c=>{
+                const d=c.derived||{};
+                const active=c.id===activeCharId;
+                return(
+                  <div key={c.id} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:10,
+                    background:"var(--surface)",border:"1px solid "+(active?"var(--accent-soft)":"var(--border-soft)")}}>
+                    {avatar(c.avatar,34)}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:13,fontWeight:700,color:c.nameColor||"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"(이름 없음)"}</span>
+                        {active&&<span style={{fontSize:9.5,fontWeight:700,color:"var(--accent-deep)",flexShrink:0}}>사용 중</span>}
+                      </div>
+                      <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>
+                        HP {d.HP??"-"}/{d.maxHP??"-"} · MP {d.MP??"-"}/{d.maxMP??"-"} · SAN {d.SAN??"-"}
+                      </div>
+                    </div>
+                    {!active&&<button type="button" className="coc-btn ghost small" style={{padding:"4px 8px",flexShrink:0}} onClick={()=>onPickChar(c)}>사용</button>}
+                    <button type="button" className="coc-btn small" style={{padding:"4px 8px",flexShrink:0}} onClick={()=>onOpenSheet(c)}>시트</button>
+                  </div>
+                );
+              })}
+            </div>))}
+
+      {tab==="handouts"&&(
+        <>
+          {isGM&&(
+            <button type="button" className="coc-btn small" style={{width:"100%",justifyContent:"center",marginBottom:12}} onClick={onManageHandouts}>
+              <Plus size={13}/> 핸드아웃 만들기 · 배부하기
+            </button>
+          )}
+          {handouts.length===0
+            ? empty(isGM?"아직 만든 핸드아웃이 없어요.":"아직 받은 핸드아웃이 없어요.")
+            : <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                {handouts.map(h=>{
+                  const to=h.visibleTo||[];
+                  return(
+                    <div key={h.id} className="coc-card" onClick={()=>onOpenHandout(h)}
+                      style={{padding:10,display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                      {h.image?<img src={h.image} alt="" style={{width:42,height:42,borderRadius:8,objectFit:"cover",flexShrink:0}}/>:
+                        <div style={{width:42,height:42,borderRadius:8,background:"var(--bg-panel)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Folder size={15} color="var(--accent-soft)"/></div>}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13.5,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.title||"(제목 없음)"}</div>
+                        {isGM&&<div style={{fontSize:10.5,color:"var(--text-faint)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {to.length===0?"아직 아무에게도 안 줬어요":"받은 사람: "+to.map(c=>displayNameOf?displayNameOf(c):c).join(", ")}
+                        </div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>}
+        </>
+      )}
+    </FloatingPanel>
   );
 }
 
@@ -4089,13 +4303,28 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [myChars,setMyChars]=useState([]);
   // 닉네임(참가 코드) → 캐릭터 이름. 배부·초대 목록을 닉네임 대신 캐릭터 이름으로 보여주려고 씁니다.
   const [charNameByCode,setCharNameByCode]=useState({});
+  // 방에 들어온 사람 명단(초대 코드로 참가한 사람 전부). 아직 캐릭터가 없는 플레이어에게도
+  // 캐릭터를 배정해 줄 수 있도록, 방 문서를 실시간으로 받아 최신 명단을 유지합니다.
+  const [liveMembers,setLiveMembers]=useState(room.members||[room.creatorCode]);
+  useEffect(()=>{
+    const unsub=storeListenDoc(`room:${room.id}`,r=>{
+      if(r&&Array.isArray(r.members)) setLiveMembers(r.members);
+    });
+    return()=>unsub();
+  },[room.id]);
+
+  // 이 방의 모든 캐릭터(주인 상관없이). GM이 캐릭터를 만들어 배정하고, 누구 시트든 열어볼 때 씁니다.
+  const [allChars,setAllChars]=useState([]);
   useEffect(()=>{
     const unsub=storeListenPrefix(`char:${room.id}:`,list=>{
       const owners=new Set();
       const mine=[];
       const names={};
+      setAllChars(list.map(x=>x.value).filter(Boolean)
+        .sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)));
       list.forEach(x=>{
         const c=x.value;
+        if(!c)return;
         if(c.ownerCode&&c.name&&!names[c.ownerCode]) names[c.ownerCode]=c.name;
         if(c.ownerCode&&c.ownerCode!==userCode) owners.add(c.ownerCode);
         if(c.ownerCode===userCode) mine.push(c);
@@ -4407,12 +4636,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   };
 
   const [showHandoutManager,setShowHandoutManager]=usePersistedOpen(`${room.id}:handout-manager`);
-  const [showHandoutViewer,setShowHandoutViewer]=usePersistedOpen(`${room.id}:handout-viewer`);
-  // 채팅방 우측 상단 "핸드아웃" 아이콘 하나로: GM은 생성·배부 창을, 참가자는 자신이 받은 목록을 엽니다.
-  const openHandoutIcon=()=>{
-    if(isGM){ setShowHandoutManager(true); }
-    else{ setShowHandoutViewer(true); setSeenHandoutCount(myHandouts.length); }
-  };
   const [showChoiceCreator,setShowChoiceCreator]=useState(false);
   function ytEmbedUrl(url){
     if(!url)return null;
@@ -4643,6 +4866,35 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [showDecorate,setShowDecorate]=usePersistedOpen(`${room.id}:decorate`);
   const [showStatAdjust,setShowStatAdjust]=usePersistedOpen(`${room.id}:statadjust`);
   const [showPartyStatus,setShowPartyStatus]=usePersistedOpen(`${room.id}:partystatus`);
+  // GM의 캐릭터 관리 창과, 지금 그 창에서 열어서 고치고 있는 캐릭터
+  const [showRoster,setShowRoster]=usePersistedOpen(`${room.id}:collection`);
+  const [collectionTab,setCollectionTabRaw]=useState(()=>{ try{ return localStorage.getItem("heartEmojiCollectionTab")||"chars"; }catch{ return "chars"; } });
+  const setCollectionTab=t=>{ setCollectionTabRaw(t); try{ localStorage.setItem("heartEmojiCollectionTab",t); }catch{} };
+  const [rosterEdit,setRosterEdit]=useState(null);   // {id, sheet, ownerCode, createdAt, isNew}
+
+  // 캐릭터를 배정해 줄 수 있는 사람들: 방 참가 명단 전원 (GM 본인 포함 — GM이 탐사자를 같이 굴리는 경우도 있어서)
+  const assignOptions=(()=>{
+    const set=new Set(liveMembers);
+    if(room.creatorCode) set.add(room.creatorCode);
+    return Array.from(set).map(code=>({
+      code,
+      label:code===room.creatorCode?`${code} (GM)`:code,
+    }));
+  })();
+  const rosterCreateFor=ownerCode=>{
+    setRosterEdit({id:newId(),sheet:blankCharSheet(),ownerCode,createdAt:Date.now(),isNew:true});
+  };
+  const rosterOpen=c=>{
+    setRosterEdit({id:c.id,sheet:c,ownerCode:c.ownerCode||"",createdAt:c.createdAt,isNew:false});
+  };
+  const rosterReassign=async(c,newOwner)=>{
+    if((c.ownerCode||"")===newOwner)return;
+    await storeSet(`char:${room.id}:${c.id}`,{...c,ownerCode:newOwner},true);
+  };
+  const rosterDelete=async id=>{
+    await storeDelete(`char:${room.id}:${id}`,true);
+    setRosterEdit(null);
+  };
   // 맵세팅 패널 위치 — 옮긴 자리를 이 기기에 기억합니다.
   const [gmBarPos,setGmBarPos]=useState(()=>{
     const b=loadPanelBox("mapsettings");
@@ -4709,7 +4961,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>{ if(ro)ro.disconnect(); window.removeEventListener("resize",fit); };
   },[]);
 
-  const MIN_ZOOM=0.1, MAX_ZOOM=5;
+  // 소품이 필드 밖으로 멀리 퍼진 시나리오는 많이 축소해야 전체가 보여서, 하한을 넉넉히 둡니다.
+  const MIN_ZOOM=0.05, MAX_ZOOM=5;
   const [stageView,setStageView]=useState({scale:1,tx:0,ty:0}); // tx,ty는 픽셀 단위 이동량
   const stageSceneRef=useRef(null);
   const stageViewRef=useRef(stageView);
@@ -4793,6 +5046,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     setDiceCutins(prev=>{ const next={...prev}; delete next[label]; return next; });
   };
   const [seenHandoutCount,setSeenHandoutCount]=useState(0); // 핸드아웃 새 알림 점: 확인하면 사라지도록
+  useEffect(()=>{ if(!isGM&&showRoster&&collectionTab==="handouts") setSeenHandoutCount(myHandouts.length); },[isGM,showRoster,collectionTab,myHandouts.length]);
   const [seenOnlineIds,setSeenOnlineIds]=useState([]); // 참가자 온라인 알림 점: 확인하면 사라지도록
   const layerFileInputRef=useRef(null);
   useEffect(()=>{
@@ -4882,16 +5136,15 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const importItemsIntoScene=async(targetRoomId,{items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName,frame)=>{
     const combined={...(items||{}),...(markers||{})};
     const fw=fieldWidth||100, fh=fieldHeight||100;
-    // ⚠️ 코코포리아의 "order"는 소품 목록 패널에 뜨는 순서일 뿐, 실제 화면에 쌓이는 순서는
-    // "z" 값이 결정합니다. 둘이 서로 다른 경우(목록에서는 위인데 화면에서는 아래 깔리는 등)가
-    // 꽤 있어서, order로 정렬하면 실제 코코포리아 화면과 다른 순서로 겹쳐 보이는 문제가
-    // 있었습니다. z를 우선으로 쓰고, z가 없는 항목(마커 등)만 order로 보완합니다.
-    const maxOrder=Math.max(0,...Object.values(items||{}).map(it=>(it.z??it.order??0)));
+    // 전경은 모든 소품보다 앞에 와야 하므로, 마커까지 포함해 가장 큰 z보다 하나 위로 둡니다.
+    const maxZ=Math.max(0,...Object.values(combined).map(it=>it.z??it.order??0));
     const fieldRect={x:-fw/2,y:-fh/2,width:fw,height:fh,angle:0};
     if(foregroundUrl&&fileByName[foregroundUrl]){
-      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,z:maxOrder+1,order:maxOrder+1};
+      combined["__foreground__"]={...fieldRect,locked:true,imageUrl:foregroundUrl,z:maxZ+1};
     }
     const sorted=Object.entries(combined).map(([,v])=>v)
+      // 쌓임 순서는 z 값이 기준입니다(코코포리아에서 실제로 앞뒤를 정하는 값).
+      // order는 목록에서의 정렬 번호라 앞뒤와 다를 수 있어서, z가 있으면 z를 먼저 씁니다.
       .sort((a,b)=>(b.z??b.order??0)-(a.z??a.order??0));
     const {minX,minY,boundW,boundH}=frame||computeSceneBBox({items,markers,foregroundUrl,fieldWidth,fieldHeight},fileByName);
     const stageEl=document.querySelector(".stage-scene");
@@ -5074,7 +5327,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   useEffect(()=>{
     if(!char?.id)return;
     const unsub=storeListenDoc(`char:${room.id}:${char.id}`,updated=>{
-      if(updated) setChar(updated);
+      // GM이 이 캐릭터를 지웠거나 다른 사람에게 배정을 옮겼으면 더 이상 내 캐릭터가 아니므로
+      // 손에서 내려놓습니다. (남은 내 캐릭터가 있으면 아래에서 자동으로 다시 골라줍니다)
+      if(!updated||updated.ownerCode!==userCode){ setChar(null); return; }
+      setChar(updated);
     });
     return()=>unsub();
   },[room.id,char?.id]);
@@ -5162,7 +5418,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
       const sp=wt?"npc":gmTab;
       ok=await doSend(sp,t,name,avatar,undefined,gmTab==="npc"?npcNameColor:"",wt);
     }else{
-      if(!char){ setCreatingChar(true); return; } // 캐릭터가 아직 없으면 만들기 창부터 열어줍니다.
+      if(!char){
+        // GM은 바로 만들 수 있고, 플레이어는 GM이 배정해 줄 때까지 기다립니다.
+        if(isGM) setCreatingChar(true);
+        else window.alert("아직 받은 캐릭터가 없어요.\nGM이 캐릭터를 배정해 주면 그 캐릭터로 말할 수 있어요.");
+        return;
+      }
       ok=await doSend("ic",t,char.name,char.avatar,undefined,char.nameColor,wt);
     }
     if(ok){setText("");setTimeout(()=>inputRef.current?.focus(),10);}
@@ -5579,6 +5840,14 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           )}
         </div>
 
+        <button type="button" className={"chat-icon-btn"+(showRoster?" on":"")} style={{position:"relative"}}
+          onClick={()=>setShowRoster(v=>!v)}
+          title={isGM?"모아보기 (모든 캐릭터·핸드아웃)":"내 캐릭터·핸드아웃"}>
+          <Folder size={18}/>
+          {!isGM&&myHandouts.length>seenHandoutCount&&
+            <span style={{position:"absolute",top:4,right:4,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
+        </button>
+
         <button type="button" className={"chat-icon-btn"+(showPartyStatus?" on":"")}
           onClick={()=>setShowPartyStatus(v=>!v)} title="파티 상태 (모두의 체력·정신·이성)">
           <Heart size={18}/>
@@ -5781,28 +6050,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
       {/* 헤더는 좌측 세로 아이콘 바(chat-icon-rail)로 옮겨갔습니다. 참가자 목록/광기·이성 처리 로직은 그대로 유지됩니다. */}
 
-      {/* 채팅방 상단: 왼쪽에 캐릭터·핸드아웃 버튼, 오른쪽에 접속 멤버 수 알약 (높이를 서로 맞췄습니다) */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6,marginBottom:6,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <button type="button" onClick={()=>setShowCharSheet(v=>!v)} title={char?.name||"캐릭터 시트"}
-            style={{display:"flex",alignItems:"center",gap:5,height:32,padding:"0 12px",borderRadius:999,
-              border:"1px solid "+(showCharSheet?"var(--accent-soft)":"var(--border)"),
-              background:showCharSheet?"var(--bg-panel)":"var(--surface)",
-              color:showCharSheet?"var(--accent-deep)":"var(--text-dim)",fontSize:12,cursor:"pointer"}}>
-            <Sparkles size={13}/> 캐릭터
-          </button>
-          <button type="button" onClick={openHandoutIcon}
-            title={isGM?"핸드아웃 관리":`핸드아웃${myHandouts.length>0?` (${myHandouts.length})`:""}`}
-            style={{display:"flex",alignItems:"center",gap:5,height:32,padding:"0 12px",borderRadius:999,
-              border:"1px solid "+(myHandouts.length>0?"var(--accent-soft)":"var(--border)"),
-              background:myHandouts.length>0?"var(--bg-panel)":"var(--surface)",
-              color:myHandouts.length>0?"var(--accent-deep)":"var(--text-dim)",fontSize:12,cursor:"pointer",position:"relative"}}>
-            <Folder size={13}/> 핸드아웃
-            {!isGM&&myHandouts.length>seenHandoutCount&&
-              <span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"#e0507a",border:"1.5px solid var(--surface)"}}/>}
-          </button>
-        </div>
-
+      {/* 채팅방 상단: 접속 멤버 수 알약 (캐릭터·핸드아웃 버튼은 좌측 바의 "모아보기"로 옮겨갔습니다) */}
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginBottom:6,flexShrink:0}}>
         <div style={{position:"relative"}} ref={participantsRef}>
           <button type="button" onClick={()=>{setShowParticipants(v=>!v);setSeenOnlineIds(onlineOthers);}}
             title="접속 중인 참가자"
@@ -6039,12 +6288,19 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
                     {c.name}
                   </button>
                 ))}
-                <button type="button" onClick={()=>{setCreatingChar(true);setShowCharMenu(false);}}
-                  style={{display:"flex",alignItems:"center",gap:5,width:"100%",padding:"7px 8px",background:"none",border:"none",
-                    borderTop:myChars.length>0?"1px solid var(--border-soft)":"none",marginTop:myChars.length>0?4:0,
-                    cursor:"pointer",fontSize:12.5,color:"var(--accent-deep)",fontWeight:600,textAlign:"left"}}>
-                  <Plus size={12}/> 캐릭터 만들기
-                </button>
+                {isGM?(
+                  <button type="button" onClick={()=>{setCreatingChar(true);setShowCharMenu(false);}}
+                    style={{display:"flex",alignItems:"center",gap:5,width:"100%",padding:"7px 8px",background:"none",border:"none",
+                      borderTop:myChars.length>0?"1px solid var(--border-soft)":"none",marginTop:myChars.length>0?4:0,
+                      cursor:"pointer",fontSize:12.5,color:"var(--accent-deep)",fontWeight:600,textAlign:"left"}}>
+                    <Plus size={12}/> 캐릭터 만들기
+                  </button>
+                ):myChars.length===0&&(
+                  // 플레이어는 직접 만들지 않고, GM이 만들어서 배정해 준 캐릭터를 씁니다.
+                  <div style={{padding:"8px 9px",fontSize:11.5,color:"var(--text-faint)",lineHeight:1.5}}>
+                    아직 받은 캐릭터가 없어요.<br/>GM이 캐릭터를 배정해 주면 여기에 나타나요.
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -6270,10 +6526,25 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           </div>
         </div>
       )}
-      {showHandoutViewer&&<HandoutViewerModal handouts={myHandouts} onClose={()=>setShowHandoutViewer(false)}
-        onSelect={h=>openHandout(h)}/>}
       {creatingChar&&<CharacterEditModal initial={{id:newId(),sheet:blankCharSheet(),createdAt:Date.now()}} roomId={room.id} userCode={userCode}
         onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
+
+      {showRoster&&<CollectionPanel onClose={()=>setShowRoster(false)} isGM={isGM}
+        tab={collectionTab} setTab={setCollectionTab}
+        rosterProps={{assignOptions,allChars,creatorCode:room.creatorCode,isOnline,userCode,
+          onCreateFor:rosterCreateFor,onOpen:rosterOpen,onReassign:rosterReassign}}
+        myChars={myChars} activeCharId={char?.id}
+        onPickChar={c=>{setChar(c);setSpeaker("ic");}}
+        onOpenSheet={c=>{setChar(c);setShowCharSheet(true);}}
+        handouts={isGM?handouts:myHandouts} onOpenHandout={openHandout}
+        onManageHandouts={()=>setShowHandoutManager(true)}
+        unseenHandouts={myHandouts.length>seenHandoutCount} displayNameOf={displayNameOf}/>}
+      {isGM&&rosterEdit&&<CharacterEditModal key={rosterEdit.id}
+        initial={{id:rosterEdit.id,sheet:rosterEdit.sheet,createdAt:rosterEdit.createdAt}}
+        roomId={room.id} userCode={userCode}
+        ownerCode={rosterEdit.ownerCode} assignOptions={assignOptions}
+        onDelete={rosterEdit.isNew?null:()=>rosterDelete(rosterEdit.id)}
+        onClose={()=>setRosterEdit(null)} onSaved={()=>setRosterEdit(null)}/>}
       {showCharSheet&&char&&<DicePanel char={char} onRollToChat={sendDice} roomId={room.id} onClose={()=>setShowCharSheet(false)}
         secretRoll={secretRoll} setSecretRoll={setSecretRoll}/>}
     </div>
