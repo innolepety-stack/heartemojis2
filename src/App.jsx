@@ -115,6 +115,20 @@ const SKILL_LIST = [
 ];
 // 화면에 보여줄 때는 가나다순으로 정렬해서 찾기 편하게 합니다. (기준값 등 계산 로직은 SKILL_LIST를 그대로 씁니다)
 const SKILL_LIST_SORTED = [...SKILL_LIST].sort((a,b)=>a[0].localeCompare(b[0],"ko"));
+// 기본값이 능력치에 따라 바뀌는 기능치: 회피 = 민첩 ÷ 2, 언어(모국어) = 교육.
+// 시트에 저장된 값이 기본값보다 낮으면(예전 시트·민첩을 나중에 바꾼 경우 등) 기본값으로 봅니다.
+// 그래서 누가 시트를 열든, 민첩만 바뀌면 회피가 바로 따라오고 기능 점수도 쓰지 않아요.
+function skillBase(name,characteristics){
+  if(name==="회피") return Math.floor((characteristics?.DEX||0)/2);
+  if(name==="언어(모국어)") return characteristics?.EDU||0;
+  const row=SKILL_LIST.find(([n])=>n===name);
+  return row?row[1]:0;
+}
+function skillValue(name,skills,characteristics){
+  const base=skillBase(name,characteristics);
+  const cur=skills?.[name];
+  return (typeof cur==="number"&&cur>base)?cur:base;
+}
 
 const CHAR_KEYS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"];
 // 방에 채팅이 아무리 쌓여도 접속할 때마다 그 전부를 다시 내려받지 않도록, 서버에서
@@ -951,13 +965,31 @@ function CharacteristicsGrid({characteristics,setCharacteristics,allowRoll,onRol
   );
 }
 
-function DerivedStats({characteristics,derived,setDerived,allowRoll,onRollCheck}){
+// 최대 체력·정신·이성은 능력치에서 바로 계산합니다. (건강+크기)÷10, 정신÷5, 정신(POW)
+function derivedMax(c){
+  return {
+    maxHP:Math.floor(((c?.CON||0)+(c?.SIZ||0))/10),
+    maxMP:Math.floor((c?.POW||0)/5),
+    maxSAN:Math.min(c?.POW||0,99),
+  };
+}
+// 지금 체력·정신·이성: 깎인 적이 없으면(=저장된 값이 저장된 최대치 이상) 새 최대치를 그대로 따라가고,
+// 깎여 있으면 깎인 값을 유지합니다. 그래서 능력치를 고치면 시트 어디서든 바로 반영돼요.
+function effectiveDerived(derived,characteristics){
+  const d=derived||{};
+  const m=derivedMax(characteristics);
+  const cur=(k,mk)=>{
+    const v=d[k];
+    if(typeof v!=="number"||typeof d[mk]!=="number"||v>=d[mk]) return m[mk];
+    return Math.min(v,m[mk]);
+  };
+  return {...d,...m,HP:cur("HP","maxHP"),MP:cur("MP","maxMP"),SAN:cur("SAN","maxSAN"),Luck:d.Luck??0};
+}
+function DerivedStats({characteristics,derived:rawDerived,setDerived,allowRoll,onRollCheck}){
+  const derived=effectiveDerived(rawDerived,characteristics);
   const recompute=()=>{
-    const maxHP=Math.floor((characteristics.CON+characteristics.SIZ)/10);
-    const maxMP=Math.floor(characteristics.POW/5);
-    const maxSAN=Math.min(characteristics.POW,99);
-    const Luck=rollN(3)*5;
-    setDerived({HP:maxHP,maxHP,MP:maxMP,maxMP,SAN:maxSAN,maxSAN,Luck});
+    const m=derivedMax(characteristics);
+    setDerived({HP:m.maxHP,MP:m.maxMP,SAN:m.maxSAN,...m,Luck:rollN(3)*5});
   };
   const rollLuck=()=>setDerived({...derived,Luck:rollN(3)*5});
   const field=(key,maxKey,label,rollLabel)=>(
@@ -979,7 +1011,7 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll,onRollCheck}
           </button>
         )}
         <input className="coc-mono" type="number" value={derived[key]}
-          onChange={e=>setDerived({...derived,[key]:parseInt(stripLeadingZero(e))||0})}
+          onChange={e=>setDerived({...derived,[key]:parseInt(stripLeadingZero(e))||0})} /* 최대치도 지금 계산값으로 함께 저장 */
           onWheel={e=>e.currentTarget.blur()}
           onFocus={e=>e.target.select()}
           style={{width:40,background:"transparent",border:"none",color:"var(--accent-deep)",fontSize:16,textAlign:"right",outline:"none"}}/>
@@ -1000,7 +1032,9 @@ function DerivedStats({characteristics,derived,setDerived,allowRoll,onRollCheck}
   );
 }
 
-function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false,onRollCheck,cols,alwaysOpen=false}){
+function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=false,compact=false,onRollCheck,cols,alwaysOpen=false,characteristics}){
+  // 고치는 중에는 친 그대로 보여주고(예: 4 → 45), 칸을 벗어나면 기본값 규칙을 적용해 보여줍니다.
+  const [editing,setEditing]=useState(null); // {name, text}
   const [openState,setOpen]=useState(false);
   const open=alwaysOpen||openState;
   const gridCols=`repeat(${cols||(compact?1:2)},1fr)`;
@@ -1032,16 +1066,22 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
             {SKILL_LIST_SORTED.map(([name])=>(
               <div key={name} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,background:"var(--bg-panel)",border:"1px solid var(--border-soft)",borderRadius:6,padding:"4px 7px"}}>
                 {onRollCheck&&(
-                  <button type="button" title="판정 굴리기" onClick={()=>onRollCheck(name,skills[name]??0)}
+                  <button type="button" title="판정 굴리기" onClick={()=>onRollCheck(name,skillValue(name,skills,characteristics))}
                     style={{background:"none",border:"none",cursor:"pointer",color:"var(--accent-deep)",padding:0,display:"flex",flexShrink:0}}>
                     <Dice5 size={11}/>
                   </button>
                 )}
                 <span style={{fontSize:13.5,color:"var(--text-dim)",flex:1}}>{name}</span>
-                <input className="coc-mono" type="number" step={5} min={0} max={99} value={skills[name]??0} readOnly={readOnly}
-                  onChange={e=>setSkills({...skills,[name]:Math.max(0,Math.min(99,parseInt(stripLeadingZero(e))||0))})}
+                <input className="coc-mono" type="number" step={5} min={0} max={99} readOnly={readOnly}
+                  value={editing&&editing.name===name?editing.text:skillValue(name,skills,characteristics)}
+                  onChange={e=>{
+                    const v=Math.max(0,Math.min(99,parseInt(stripLeadingZero(e))||0));
+                    setEditing({name,text:String(v)});
+                    setSkills({...skills,[name]:v});
+                  }}
                   onWheel={e=>e.currentTarget.blur()}
-                  onFocus={e=>e.target.select()}
+                  onFocus={e=>{ if(!readOnly) setEditing({name,text:String(skillValue(name,skills,characteristics))}); e.target.select(); }}
+                  onBlur={()=>setEditing(null)}
                   style={{width:52,background:"transparent",border:"none",color:"var(--text)",textAlign:"right",outline:"none",fontSize:13.5,flexShrink:0}}/>
               </div>
             ))}
@@ -1097,8 +1137,9 @@ function SkillsGrid({skills,setSkills,customSkills=[],setCustomSkills,readOnly=f
 function calcSkillPoints(sheet){
   const total=(sheet.characteristics?.INT||0)*4+(sheet.characteristics?.EDU||0)*2;
   let spent=0;
-  SKILL_LIST.forEach(([name,base])=>{
-    const cur=sheet.skills?.[name]??base;
+  SKILL_LIST.forEach(([name])=>{
+    const base=skillBase(name,sheet.characteristics);
+    const cur=skillValue(name,sheet.skills,sheet.characteristics);
     if(cur>base) spent+=(cur-base);
   });
   (sheet.customSkills||[]).forEach(c=>{ if(c.value>0) spent+=c.value; });
@@ -1125,21 +1166,6 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
       </div>
     </div>
   );
-  // 회피의 기본값은 "민첩 ÷ 2"입니다. 민첩을 고치면 회피도 자동으로 따라 바뀌어요.
-  // 다만 기능 점수를 써서 기본값보다 올려둔 경우에는, 올린 값을 지우지 않고 그대로 둡니다.
-  const dex=sheet.characteristics?.DEX||0;
-  const dodgeBase=Math.floor(dex/2);
-  const prevDodgeBase=useRef(dodgeBase);
-  useEffect(()=>{
-    if(readOnly)return;
-    const prev=prevDodgeBase.current;
-    prevDodgeBase.current=dodgeBase;
-    if(prev===dodgeBase)return;               // 민첩이 안 바뀌었으면 건드리지 않음
-    const cur=sheet.skills?.["회피"];
-    if(cur===undefined||cur===null||cur===prev){ // 손대지 않았던 경우에만 갱신
-      setSheet({...sheet,skills:{...sheet.skills,"회피":dodgeBase}});
-    }
-  },[dodgeBase,readOnly]); // eslint-disable-line
 
   if(readOnly) return(
     <div>
@@ -1153,7 +1179,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
       <div className="coc-divider"/>
       <DerivedStats characteristics={sheet.characteristics} derived={sheet.derived} setDerived={()=>{}} allowRoll={false}/>
       <div className="coc-divider"/>
-      <SkillsGrid skills={sheet.skills} setSkills={()=>{}} customSkills={sheet.customSkills||[]} setCustomSkills={()=>{}} readOnly compact={compact}/>
+      <SkillsGrid skills={sheet.skills} characteristics={sheet.characteristics} setSkills={()=>{}} customSkills={sheet.customSkills||[]} setCustomSkills={()=>{}} readOnly compact={compact}/>
       {sheet.notes&&<><div className="coc-divider"/><div className="coc-label" style={{marginBottom:5}}>메모</div><div style={{fontSize:14,color:"var(--text-dim)",whiteSpace:"pre-wrap"}}>{sheet.notes}</div></>}
     </div>
   );
@@ -1182,7 +1208,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
           </div>
         );
       })()}
-      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})}
+      <SkillsGrid skills={sheet.skills} characteristics={sheet.characteristics} setSkills={s=>setSheet({...sheet,skills:s})}
         customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})}
         cols={2} onRollCheck={onRollCheck} alwaysOpen/>
       <div className="coc-divider"/>
@@ -1210,7 +1236,7 @@ function SheetEditor({sheet,setSheet,allowRoll=true,readOnly=false,compact=false
           </div>
         );
       })()}
-      <SkillsGrid skills={sheet.skills} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})} compact={compact} onRollCheck={onRollCheck}/>
+      <SkillsGrid skills={sheet.skills} characteristics={sheet.characteristics} setSkills={s=>setSheet({...sheet,skills:s})} customSkills={sheet.customSkills||[]} setCustomSkills={cs=>setSheet({...sheet,customSkills:cs})} compact={compact} onRollCheck={onRollCheck}/>
       <div className="coc-divider"/>
       <div className="coc-label" style={{marginBottom:5}}>메모 / 배경</div>
       <textarea className="coc-textarea" rows={3} value={sheet.notes} onChange={e=>setSheet({...sheet,notes:e.target.value})} placeholder=""/>
