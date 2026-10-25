@@ -4917,13 +4917,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     }
     setClearingChat(false);
   };
-  const clearChatBtn=isGM&&(
-    <button type="button" onClick={clearAllChat} disabled={clearingChat} title="채팅 기록 삭제"
-      style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 7px",borderRadius:999,cursor:"pointer",
-        border:"1px solid #e8c4c4",background:"var(--surface)",color:"#c05050",fontSize:10.5,fontWeight:700,flexShrink:0}}>
-      <Trash2 size={10}/>{clearingChat?"삭제 중...":"채팅 삭제"}
-    </button>
-  );
   const deleteMsg=async msg=>{
     if(!window.confirm("이 메시지를 삭제하시겠습니까?"))return;
     const tid=msg.tabId||"main";
@@ -5218,7 +5211,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <div className="coc-display" style={{fontSize:14.5,color:"var(--accent-deep)"}}>{room.title}</div>
             {isGM&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
-            {clearChatBtn}
           </div>
           <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
@@ -5323,7 +5315,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <div style={{display:"flex",alignItems:"center",gap:7}}>
             <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>{room.title}</div>
             {isGM&&<span style={{fontSize:10.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
-            {clearChatBtn}
           </div>
           <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
@@ -5680,6 +5671,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             )}
           </div>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
+          {/* GM 전용: 지금 보고 있는 탭의 채팅 기록 삭제 */}
+          {isGM&&<button type="button" className="coc-btn small" onClick={clearAllChat} disabled={clearingChat} title="이 탭의 채팅 기록 삭제"
+            style={{...speakerBtnStyle(false),color:"#c05050",borderColor:"#e8c4c4"}}>
+            <Trash2 size={11}/> {clearingChat?"삭제 중...":"채팅 삭제"}
+          </button>}
 
           {/* 귓속말 — 고른 사람에게만 보이는 메시지를 보냅니다.
               플레이어는 캐릭터 버튼 옆에서 GM에게만, GM은 GM 버튼 옆에서 아무에게나 보낼 수 있어요. */}
