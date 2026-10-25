@@ -4888,6 +4888,42 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     storeSet(key,updated,true);
     setEditingMsg(null);setEditText("");
   };
+  // GM 전용: 지금 보고 있는 탭의 채팅 기록만 지웁니다. (되돌릴 수 없어요)
+  const [clearingChat,setClearingChat]=useState(false);
+  const clearAllChat=async()=>{
+    if(clearingChat)return;
+    const tid=activeTab||"main";
+    const tabLabel=(tabs.find(t=>t.id===tid)?.label)||(tid==="main"?"메인":tid);
+    if(!window.confirm(`'${tabLabel}' 탭의 채팅 기록을 모두 삭제할까요?\n되돌릴 수 없어요.`))return;
+    setClearingChat(true);
+    try{
+      const base=`chat:${room.id}:`;
+      const {keys}=await storeListKeys(base,true);
+      // 메인 탭: chat:방:메시지아이디 / 다른 탭: chat:방:탭아이디:메시지아이디
+      const mine=keys.filter(k=>{
+        const rest=k.slice(base.length);
+        return tid==="main"?!rest.includes(":"):rest.startsWith(tid+":");
+      });
+      const all=[...mine,`activity:${room.id}:${tid}`];
+      if((noticeRefDoc?.tabId||"main")===tid&&noticeRefDoc) all.push(`choicenotice:${room.id}`); // 이 탭에 걸린 공지도 정리
+      for(let i=0;i<all.length;i+=50){
+        await Promise.all(all.slice(i,i+50).map(k=>storeDelete(k,true)));
+      }
+      tabMsgMapsRef.current={...tabMsgMapsRef.current,[tid]:new Map()};
+      setTabMsgMaps(prev=>({...prev,[tid]:new Map()}));
+      if((stickyChoice?.tabId||"main")===tid) setStickyChoice(null);
+    }catch(err){
+      alert("삭제 중 문제가 생겼어요: "+(err?.message||String(err)));
+    }
+    setClearingChat(false);
+  };
+  const clearChatBtn=isGM&&(
+    <button type="button" onClick={clearAllChat} disabled={clearingChat} title="채팅 기록 삭제"
+      style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 7px",borderRadius:999,cursor:"pointer",
+        border:"1px solid #e8c4c4",background:"var(--surface)",color:"#c05050",fontSize:10.5,fontWeight:700,flexShrink:0}}>
+      <Trash2 size={10}/>{clearingChat?"삭제 중...":"채팅 삭제"}
+    </button>
+  );
   const deleteMsg=async msg=>{
     if(!window.confirm("이 메시지를 삭제하시겠습니까?"))return;
     const tid=msg.tabId||"main";
@@ -5182,6 +5218,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <div className="coc-display" style={{fontSize:14.5,color:"var(--accent-deep)"}}>{room.title}</div>
             {isGM&&<span style={{fontSize:10,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
+            {clearChatBtn}
           </div>
           <div className="coc-mono" style={{fontSize:10,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
@@ -5286,6 +5323,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
           <div style={{display:"flex",alignItems:"center",gap:7}}>
             <div className="coc-display" style={{fontSize:15,color:"var(--accent-deep)"}}>{room.title}</div>
             {isGM&&<span style={{fontSize:10.5,fontWeight:700,color:"var(--accent-deep)",fontFamily:"JetBrains Mono,monospace",letterSpacing:"0.05em"}}>GM</span>}
+            {clearChatBtn}
           </div>
           <div className="coc-mono" style={{fontSize:10.5,color:"var(--text-faint)"}}>{fmtDate(room.date)}</div>
         </div>
