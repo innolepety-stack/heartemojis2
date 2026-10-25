@@ -3311,7 +3311,15 @@ function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
   const posKey=`handout:${handout.id}`;
   const [folded,setFolded]=usePersistedFold(posKey);
   const saved=loadPanelBox(posKey);
-  const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:null);
+  // 처음 여는 핸드아웃은, 마지막으로 핸드아웃 창을 옮겨 둔 자리에 띄웁니다.
+  // (한 번도 옮긴 적이 없으면 채팅창이 아니라 무대 쪽 왼편 위에 떠요)
+  const [pos,setPos]=useState(()=>{
+    if(saved&&Number.isFinite(saved.x)) return {x:saved.x,y:saved.y};
+    const last=loadPanelBox("handout:last");
+    const step=(index%6)*26;
+    if(last&&Number.isFinite(last.x)) return {x:last.x+step,y:last.y+step};
+    return {x:84+step,y:80+step};
+  });
   // 사진이 잘 보이도록 가로는 넉넉하게 잡고, 세로는 내용 길이에 맞춰 자동으로 정합니다.
   // (예전엔 세로가 고정값이라 사진이나 글이 짧으면 아래에 빈 공간이 남았어요.)
   // 손잡이로 직접 조절하면 그때부터는 정한 크기를 그대로 씁니다.
@@ -3368,6 +3376,11 @@ function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
     const d=drag.current;
     const wasMoved=d.moved;
     drag.current.on=false;
+    // 옮긴 자리를 이 핸드아웃 것으로, 그리고 "다음에 새로 받을 핸드아웃 자리"로 함께 기억합니다.
+    if(wasMoved) setPos(p=>{
+      if(p){ saveBox(p); savePanelBox("handout:last",{x:p.x,y:p.y}); }
+      return p;
+    });
     return wasMoved;
   };
   // 접힌 바: 끌면 이동, 그냥 누르면 다시 펼치기
@@ -3709,6 +3722,8 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const [editingMsg,setEditingMsg]=useState(null);
   const [editText,setEditText]=useState("");
   const [bgmUrl,setBgmUrl]=useState("");
+  // GM이 BGM을 튼 시각. 모두가 "그 시각부터 지금까지 흐른 시간"만큼 감아서 같은 부분을 듣습니다.
+  const [bgmStartedAt,setBgmStartedAt]=useState(0);
   const [bgmInput,setBgmInput]=useState("");
   const [showBgm,setShowBgm]=useState(false);
   const bgmPopoverRef=useRef(null);
@@ -4180,7 +4195,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   },[room.id,activeTab,userCode,soundEnabled,popupEnabled]);
 
   useEffect(()=>{
-    const unsub=storeListenDoc(`bgm:${room.id}`,d=>{ if(d) setBgmUrl(d.url||""); });
+    const unsub=storeListenDoc(`bgm:${room.id}`,d=>{ if(d){ setBgmUrl(d.url||""); setBgmStartedAt(d.startedAt||0); } });
     return()=>unsub();
   },[room.id]);
 
@@ -4766,8 +4781,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return()=>unsub();
   },[room.id,char?.id]);
 
-  const handleSetBgm=async()=>{const url=bgmInput.trim();setBgmUrl(url);await storeSet(`bgm:${room.id}`,{url},true);setBgmInput("");};
-  const handleStopBgm=async()=>{setBgmUrl("");await storeSet(`bgm:${room.id}`,{url:""},true);};
+  const handleSetBgm=async()=>{
+    const url=bgmInput.trim(); const startedAt=Date.now();
+    setBgmUrl(url); setBgmStartedAt(startedAt);
+    await storeSet(`bgm:${room.id}`,{url,startedAt},true); setBgmInput("");
+  };
+  const handleStopBgm=async()=>{setBgmUrl("");setBgmStartedAt(0);await storeSet(`bgm:${room.id}`,{url:"",startedAt:0},true);};
 
   const sendPlayerCommand=(func,args=[])=>{
     try{ iframeRef.current?.contentWindow?.postMessage(JSON.stringify({event:"command",func,args}),"*"); }catch{}
@@ -4783,7 +4802,48 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
   const handleBgmIframeLoad=()=>{
     setTimeout(()=>sendPlayerCommand("setVolume",[bgmVolume]),500);
     setTimeout(()=>sendPlayerCommand("setVolume",[bgmVolume]),1500);
+    // 유튜브 플레이어에게 "재생 정보(길이·현재 위치)를 계속 알려 달라"고 요청합니다.
+    const listen=()=>{ try{ iframeRef.current?.contentWindow?.postMessage(JSON.stringify({event:"listening",id:"bgm",channel:"widget"}),"*"); }catch{} };
+    listen(); setTimeout(listen,800); setTimeout(listen,2000);
   };
+
+  // BGM 맞춰 듣기: GM이 튼 시각을 기준으로 "지금 몇 초 지점이어야 하는지"를 계산해서,
+  // 내 플레이어 위치와 2초 넘게 차이 나면 그 지점으로 감습니다. (곡이 반복되면 반복된 만큼 나눠서 계산)
+  const bgmInfoRef=useRef({duration:0,currentTime:0,at:0});
+  useEffect(()=>{
+    bgmInfoRef.current={duration:0,currentTime:0,at:0};
+    if(!bgmUrl||!bgmStarted||!bgmStartedAt) return;
+    const expectedPos=()=>{
+      const d=bgmInfoRef.current.duration;
+      if(!d) return null;
+      return ((Date.now()-bgmStartedAt)/1000)%d;
+    };
+    const sync=(force)=>{
+      const want=expectedPos();
+      if(want==null) return;
+      const info=bgmInfoRef.current;
+      // 마지막 보고 이후 흐른 시간만큼 더해서 지금 위치를 추정합니다.
+      const now=info.currentTime+(info.at?(Date.now()-info.at)/1000:0);
+      let diff=Math.abs(now-want);
+      if(info.duration) diff=Math.min(diff,info.duration-diff);
+      if(force||diff>2) sendPlayerCommand("seekTo",[want,true]);
+    };
+    let synced=false;
+    const onMsg=e=>{
+      let host=""; try{ host=new URL(e.origin).hostname; }catch{ return; }
+      if(!/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
+      let data=e.data;
+      try{ if(typeof data==="string") data=JSON.parse(data); }catch{ return; }
+      const info=data&&data.info;
+      if(!info) return;
+      if(typeof info.duration==="number"&&info.duration>0) bgmInfoRef.current.duration=info.duration;
+      if(typeof info.currentTime==="number"){ bgmInfoRef.current.currentTime=info.currentTime; bgmInfoRef.current.at=Date.now(); }
+      if(!synced&&bgmInfoRef.current.duration){ synced=true; sync(true); }
+    };
+    window.addEventListener("message",onMsg);
+    const t=setInterval(()=>sync(false),15000);
+    return()=>{ window.removeEventListener("message",onMsg); clearInterval(t); };
+  },[bgmUrl,bgmStarted,bgmStartedAt]); // eslint-disable-line
 
   const addTab=async()=>{
     const label=newTabName.trim();if(!label)return;
@@ -6167,7 +6227,8 @@ function scriptSrcsOf(html){
   return out.filter(src=>src.startsWith(window.location.origin)).sort().join("|");
 }
 function UpdateBanner(){
-  const [hasUpdate,setHasUpdate]=useState(false);
+  // 주소 끝에 ?updatetest 를 붙이면 안내 모양을 미리 볼 수 있어요.
+  const [hasUpdate,setHasUpdate]=useState(()=>{ try{ return new URLSearchParams(window.location.search).has("updatetest"); }catch{ return false; } });
   const [hidden,setHidden]=useState(false);
   useEffect(()=>{
     const current=Array.from(document.querySelectorAll("script[src]")).map(s=>s.src)
