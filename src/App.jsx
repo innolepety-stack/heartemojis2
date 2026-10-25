@@ -5671,11 +5671,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             )}
           </div>
           {isGM&&<button type="button" className="coc-btn small" style={speakerBtnStyle(speaker==="gm")} onClick={()=>setSpeaker("gm")}><Crown size={11}/> GM</button>}
-          {/* GM 전용: 지금 보고 있는 탭의 채팅 기록 삭제 */}
-          {isGM&&<button type="button" className="coc-btn small" onClick={clearAllChat} disabled={clearingChat} title="이 탭의 채팅 기록 삭제"
-            style={{...speakerBtnStyle(false),color:"#c05050",borderColor:"#e8c4c4"}}>
-            <Trash2 size={11}/> {clearingChat?"삭제 중...":"채팅 삭제"}
-          </button>}
 
           {/* 귓속말 — 고른 사람에게만 보이는 메시지를 보냅니다.
               플레이어는 캐릭터 버튼 옆에서 GM에게만, GM은 GM 버튼 옆에서 아무에게나 보낼 수 있어요. */}
@@ -5717,6 +5712,12 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               )}
             </div>
           )}
+
+          {/* GM 전용: 지금 보고 있는 탭의 채팅 기록 삭제 */}
+          {isGM&&<button type="button" className="coc-btn small" onClick={clearAllChat} disabled={clearingChat} title="이 탭의 채팅 기록 삭제"
+            style={{...speakerBtnStyle(false),color:"#c05050",borderColor:"#e8c4c4"}}>
+            <Trash2 size={11}/> {clearingChat?"삭제 중...":"삭제"}
+          </button>}
 
           {/* 글자 크기 조절 — 캐릭터/GM 버튼 맞은편(오른쪽 끝)에 동그랗게 */}
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
