@@ -6252,7 +6252,7 @@ function UpdateBanner(){
   },[]);
   if(!hasUpdate||hidden) return null;
   return(
-    <div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:100000,
+    <div style={{position:"fixed",top:18,left:"50%",transform:"translateX(-50%)",zIndex:100000,
       display:"flex",alignItems:"center",gap:7,padding:"5px 7px 5px 13px",borderRadius:999,
       background:"var(--accent, #2e9bdb)",color:"#fff",boxShadow:"0 4px 14px rgba(0,0,0,0.2)",
       fontSize:12,fontWeight:600,maxWidth:"calc(100vw - 24px)",whiteSpace:"nowrap"}}>
