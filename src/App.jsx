@@ -2392,7 +2392,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,on
   const wrapRef=useRef(null);
   const codeRef=useRef(null);
   const [pos,setPos]=useState(savedBox&&Number.isFinite(savedBox.x)?{x:savedBox.x,y:savedBox.y}:null);
-  const [size,setSize]=useState(savedBox&&savedBox.w?{w:savedBox.w,h:savedBox.h}:{w:460,h:520});
+  const [size,setSize]=useState(savedBox&&savedBox.w?{w:Math.max(320,savedBox.w),h:Math.max(300,savedBox.h||520)}:{w:460,h:520});
   const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
@@ -3304,7 +3304,7 @@ function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
   // 사진이 잘 보이도록 가로는 넉넉하게 잡고, 세로는 내용 길이에 맞춰 자동으로 정합니다.
   // (예전엔 세로가 고정값이라 사진이나 글이 짧으면 아래에 빈 공간이 남았어요.)
   // 손잡이로 직접 조절하면 그때부터는 정한 크기를 그대로 씁니다.
-  const [size,setSize]=useState(saved&&saved.w?{w:saved.w,h:saved.h||560}:{w:460,h:560});
+  const [size,setSize]=useState(saved&&saved.w?{w:Math.max(280,saved.w),h:saved.h||560}:{w:460,h:560});
   const [autoHeight,setAutoHeight]=useState(!(saved&&saved.h));
   const rememberFoldAnchor=useFoldAnchor(wrapRef,folded,setPos);
   const saveBox=(nextPos,nextSize)=>{
@@ -3325,7 +3325,7 @@ function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
     const r=resizeDrag.current;
     if(!r.on)return;
     setSize({
-      w:Math.max(200,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
+      w:Math.max(280,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
       h:Math.max(160,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
     });
   };
@@ -3446,8 +3446,13 @@ function DicePanel({char,onRollToChat,roomId,onClose,secretRoll,setSecretRoll}){
   const wrapRef=useRef(null);
   // 창 크기(가로·세로). 기본은 기능치 2열이 딱 들어가는 폭입니다. 이보다 좁히면 내용이
   // 찌그러지는 대신 아래에 가로 스크롤 바가 생겨서, 옆으로 밀어 나머지를 볼 수 있어요.
-  const SHEET_MIN_CONTENT=440; // 이 폭 아래로는 내용을 줄이지 않고 가로 스크롤로 넘깁니다.
-  const [size,setSize]=useState(savedBox&&savedBox.w?{w:savedBox.w,h:savedBox.h}:{w:470,h:560});
+  const SHEET_MIN_CONTENT=440; // 시트 내용이 잘리지 않는 최소 폭
+  // 창도 이 폭(+여백·스크롤바) 아래로는 줄어들지 않게 해서, 오른쪽 수치가 잘리지 않도록 합니다.
+  // (화면 자체가 이보다 좁은 모바일에서만 가로 스크롤로 넘깁니다)
+  const SHEET_MIN_W=SHEET_MIN_CONTENT+44;
+  const [size,setSize]=useState(savedBox&&savedBox.w
+    ?{w:Math.max(SHEET_MIN_W,savedBox.w),h:savedBox.h}
+    :{w:SHEET_MIN_W,h:560});
   const resizeDrag=useRef({on:false,sx:0,sy:0,ow:0,oh:0});
   const onResizePointerDown=e=>{
     e.stopPropagation();
@@ -3458,7 +3463,7 @@ function DicePanel({char,onRollToChat,roomId,onClose,secretRoll,setSecretRoll}){
     const r=resizeDrag.current;
     if(!r.on)return;
     setSize({
-      w:Math.max(240,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
+      w:Math.max(SHEET_MIN_W,Math.min(window.innerWidth-20,r.ow+(e.clientX-r.sx))),
       h:Math.max(240,Math.min(window.innerHeight-20,r.oh+(e.clientY-r.sy))),
     });
   };
@@ -6122,6 +6127,56 @@ function TranscriptPage({roomId,viewer,dark,color}){
   return <div style={{fontFamily:"sans-serif",padding:24,color:"#888"}}>{msg}</div>;
 }
 
+/* 사이트 업데이트 알림: 몇 분마다(그리고 창으로 돌아올 때마다) 사이트 첫 페이지를 다시 받아 와서,
+   지금 열려 있는 화면이 쓰는 스크립트 파일 이름과 다르면 새 버전이 올라온 것으로 보고 위에 안내를 띄웁니다.
+   (Vercel은 배포할 때마다 스크립트 파일 이름이 바뀌어요) */
+function scriptSrcsOf(html){
+  const out=[];
+  const re=/<script[^>]*\ssrc=["']([^"']+)["'][^>]*>/gi;
+  let m; while((m=re.exec(html))) out.push(new URL(m[1],window.location.origin).href);
+  return out.filter(src=>src.startsWith(window.location.origin)).sort().join("|");
+}
+function UpdateBanner(){
+  const [hasUpdate,setHasUpdate]=useState(false);
+  const [hidden,setHidden]=useState(false);
+  useEffect(()=>{
+    const current=Array.from(document.querySelectorAll("script[src]")).map(s=>s.src)
+      .filter(src=>src.startsWith(window.location.origin)).sort().join("|");
+    if(!current) return;
+    let stopped=false;
+    const check=async()=>{
+      if(stopped||document.visibilityState!=="visible") return;
+      try{
+        const res=await fetch(`${window.location.origin}/?_v=${Date.now()}`,{cache:"no-store"});
+        if(!res.ok) return;
+        const latest=scriptSrcsOf(await res.text());
+        if(latest&&latest!==current){ setHasUpdate(true); setHidden(false); }
+      }catch{}
+    };
+    const t=setInterval(check,3*60*1000);
+    const onVis=()=>{ if(document.visibilityState==="visible") check(); };
+    document.addEventListener("visibilitychange",onVis);
+    window.addEventListener("focus",check);
+    return()=>{ stopped=true; clearInterval(t); document.removeEventListener("visibilitychange",onVis); window.removeEventListener("focus",check); };
+  },[]);
+  if(!hasUpdate||hidden) return null;
+  return(
+    <div style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:100000,
+      display:"flex",alignItems:"center",gap:10,padding:"9px 10px 9px 16px",borderRadius:999,
+      background:"var(--accent, #2e9bdb)",color:"#fff",boxShadow:"0 6px 22px rgba(0,0,0,0.25)",
+      fontSize:13,fontWeight:600,maxWidth:"calc(100vw - 24px)"}}>
+      <span>새 업데이트가 있어요. 새로고침해 주세요!</span>
+      <button type="button" onClick={()=>window.location.reload()}
+        style={{border:"none",borderRadius:999,padding:"5px 12px",background:"#fff",color:"var(--accent-deep, #1d6fa0)",
+          fontWeight:700,fontSize:12.5,cursor:"pointer",flexShrink:0}}>새로고침</button>
+      <button type="button" onClick={()=>setHidden(true)} title="닫기"
+        style={{border:"none",background:"none",color:"#fff",cursor:"pointer",padding:2,display:"flex",flexShrink:0}}>
+        <X size={14}/>
+      </button>
+    </div>
+  );
+}
+
 export default function App(){
   const tp=typeof window!=="undefined"?new URLSearchParams(window.location.search):null;
   if(tp&&tp.get("transcript")){
@@ -6130,6 +6185,7 @@ export default function App(){
   }
   return (
     <ErrorBoundary>
+      <UpdateBanner/>
       <AppInner/>
     </ErrorBoundary>
   );
