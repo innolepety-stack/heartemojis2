@@ -1725,7 +1725,8 @@ function chatTextToHtml(text,theme){
     last=m.index+m[0].length;
   }
   if(last<text.length) out+=escapeHtmlExport(text.slice(last));
-  return out.replace(/\n/g,"<br>");
+  // 길게 이어진 문장부호(????? 등) 사이에 줄바꿈 가능 지점을 넣어 빈 공간이 생기지 않게 합니다.
+  return out.replace(/\n/g,"<br>").replace(/[?!~…]{2,}|\.{2,}/g,m=>m.split("").join("<wbr>"));
 }
 async function fetchRoomTranscript(room,viewerCode){
   const [msgEntries,tabsData]=await Promise.all([
@@ -2231,7 +2232,17 @@ function FormattedText({text,style={},maxChars}){
   let parts=parseFormat(text||"");
   if(typeof maxChars==="number") parts=truncateParts(parts,maxChars);
   // 엔터(줄바꿈)는 어디에 보여주든 실제 줄바꿈으로 나오도록 <br/>로 바꿉니다.
-  const br=v=>String(v).split("\n").map((seg,j)=>j===0?seg:<React.Fragment key={j}><br/>{seg}</React.Fragment>);
+  // "?????"·"!!!!"·"~~~~"처럼 같은 문장부호가 길게 이어지면 브라우저가 그 앞 글자와 한 덩어리로 보고
+  // 통째로 다음 줄로 넘겨서 윗줄에 큰 빈 공간이 생겨요. 이어진 부호 사이사이에 "여기서 줄을 바꿔도 됨"
+  // 표시(<wbr/>, 눈에 보이지 않고 복사해도 안 따라옴)를 넣어서 남은 자리까지 채운 뒤 넘어가게 합니다.
+  const softBreak=(seg,keyBase)=>{
+    const pieces=String(seg).split(/([?!.~…]{2,})/);
+    if(pieces.length===1) return seg;
+    return pieces.map((p,k)=>/^[?!.~…]{2,}$/.test(p)
+      ? <React.Fragment key={keyBase+"-"+k}>{p.split("").map((ch,x)=>x===0?ch:<React.Fragment key={x}><wbr/>{ch}</React.Fragment>)}</React.Fragment>
+      : p);
+  };
+  const br=v=>String(v).split("\n").map((seg,j)=>j===0?softBreak(seg,j):<React.Fragment key={j}><br/>{softBreak(seg,j)}</React.Fragment>);
   return(
     <span style={style}>
       {parts.map((p,i)=>{
