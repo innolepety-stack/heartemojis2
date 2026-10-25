@@ -3874,9 +3874,11 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
 
   // 핸드아웃: GM이 만들고 특정 참가자에게 공개하는 자료(텍스트+사진). 방 전체를 실시간 구독합니다.
   const [handouts,setHandouts]=useState([]);
+  const [handoutsLoaded,setHandoutsLoaded]=useState(false); // 서버에서 첫 목록을 받았는지
   useEffect(()=>{
     const unsub=storeListenPrefix(`handout:${room.id}:`,list=>{
       setHandouts(list.map(x=>x.value).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+      setHandoutsLoaded(true);
     });
     return()=>unsub();
   },[room.id]);
@@ -3967,22 +3969,33 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     try{ const raw=localStorage.getItem(seenHandoutKey); seenHandoutRef.current=raw?JSON.parse(raw):null; }
     catch{ seenHandoutRef.current=null; }
   }
-  // 방에 막 들어온 직후 도착하는 건 "원래 있던 것"으로 봅니다. 이 시각 이후에 새로 생긴 것만 띄워요.
-  const handoutReadyAtRef=useRef(Date.now()+1500);
+  // 받는 즉시 화면에 띄웁니다. (자리를 비운 사이에 받은 것도 다시 들어오면 떠요)
+  // 예전엔 이 방에서 핸드아웃을 한 번도 받은 적이 없으면 "처음 여는 방"으로 착각해서,
+  // 첫 핸드아웃이 조용히 넘어가고 안 뜨는 문제가 있었어요.
   useEffect(()=>{
-    if(myHandouts.length===0)return;
+    if(!handoutsLoaded)return;                       // 서버 목록이 오기 전엔 판단하지 않음
+    const firstVisit=seenHandoutRef.current===null;  // 이 기기로 이 방을 처음 연 경우
     const seen=seenHandoutRef.current||[];
     const newOnes=myHandouts.filter(h=>!seen.includes(h.id));
-    if(newOnes.length===0)return;
-    // 아직 "정착" 전이거나 이 방을 처음 여는 경우엔 조용히 본 것으로만 기록합니다.
-    const quiet=Date.now()<handoutReadyAtRef.current||seenHandoutRef.current===null;
+    // 공개가 취소된 건 "본 목록"에서 빼 둡니다. 그래야 GM이 다시 공개하면 또 떠요.
+    const myIds=new Set(myHandouts.map(h=>h.id));
+    const kept=seen.filter(id=>myIds.has(id));
+    if(newOnes.length===0){
+      if(firstVisit||kept.length!==seen.length){
+        seenHandoutRef.current=kept;
+        try{ localStorage.setItem(seenHandoutKey,JSON.stringify(kept)); }catch{}
+      }
+      return;
+    }
+    // 처음 여는 방이면, 이미 받아 둔 것들은 한꺼번에 튀어나오지 않게 조용히 본 것으로만 기록합니다.
+    const quiet=firstVisit;
     if(!quiet){
       setOpenHandoutIds(prev=>[...prev,...newOnes.map(h=>h.id).filter(id=>!prev.includes(id))]);
     }
-    const merged=[...seen,...newOnes.map(h=>h.id)];
+    const merged=[...kept,...newOnes.map(h=>h.id)];
     seenHandoutRef.current=merged;
     try{ localStorage.setItem(seenHandoutKey,JSON.stringify(merged)); }catch{}
-  },[myHandouts]); // eslint-disable-line
+  },[myHandouts,handoutsLoaded]); // eslint-disable-line
 
   // 입력창 높이 — 위쪽 손잡이를 끌어서 조절합니다. 입력창이 커지면 그만큼 채팅 목록이
   // 좁아지고, 줄이면 채팅 목록이 넓어져요. (채팅 영역은 남는 공간을 채우는 구조라 자동입니다)
@@ -6047,6 +6060,12 @@ function AppInner(){
   const baseTheme=themeKey==="custom"?deriveThemeFromColor(customColor):(THEMES[themeKey]||THEMES.sky);
   const theme=dark?toDarkTheme(baseTheme):baseTheme;
   const rootStyle=themeVars(theme,dark);
+  // 업데이트 알림처럼 앱 바깥에 뜨는 것도 테마색을 쓰도록, 테마 변수를 문서 전체에도 걸어 둡니다.
+  const rootStyleKey=JSON.stringify(rootStyle);
+  useEffect(()=>{
+    const el=document.documentElement;
+    Object.entries(rootStyle).forEach(([k,v])=>{ if(k.startsWith("--")) el.style.setProperty(k,String(v)); });
+  },[rootStyleKey]); // eslint-disable-line
 
   if(!authChecked) return(
     <div className="coc-root" style={rootStyle}>
@@ -6172,17 +6191,17 @@ function UpdateBanner(){
   },[]);
   if(!hasUpdate||hidden) return null;
   return(
-    <div style={{position:"fixed",top:10,left:"50%",transform:"translateX(-50%)",zIndex:100000,
-      display:"flex",alignItems:"center",gap:10,padding:"9px 10px 9px 16px",borderRadius:999,
-      background:"var(--accent, #2e9bdb)",color:"#fff",boxShadow:"0 6px 22px rgba(0,0,0,0.25)",
-      fontSize:13,fontWeight:600,maxWidth:"calc(100vw - 24px)"}}>
+    <div style={{position:"fixed",top:8,left:"50%",transform:"translateX(-50%)",zIndex:100000,
+      display:"flex",alignItems:"center",gap:7,padding:"5px 7px 5px 13px",borderRadius:999,
+      background:"var(--accent, #2e9bdb)",color:"#fff",boxShadow:"0 4px 14px rgba(0,0,0,0.2)",
+      fontSize:12,fontWeight:600,maxWidth:"calc(100vw - 24px)",whiteSpace:"nowrap"}}>
       <span>새 업데이트가 있어요. 새로고침해 주세요!</span>
       <button type="button" onClick={()=>window.location.reload()}
-        style={{border:"none",borderRadius:999,padding:"5px 12px",background:"#fff",color:"var(--accent-deep, #1d6fa0)",
-          fontWeight:700,fontSize:12.5,cursor:"pointer",flexShrink:0}}>새로고침</button>
+        style={{border:"none",borderRadius:999,padding:"3px 10px",background:"#fff",color:"var(--accent-deep, #1d6fa0)",
+          fontWeight:700,fontSize:11.5,cursor:"pointer",flexShrink:0}}>새로고침</button>
       <button type="button" onClick={()=>setHidden(true)} title="닫기"
         style={{border:"none",background:"none",color:"#fff",cursor:"pointer",padding:2,display:"flex",flexShrink:0}}>
-        <X size={14}/>
+        <X size={12}/>
       </button>
     </div>
   );
