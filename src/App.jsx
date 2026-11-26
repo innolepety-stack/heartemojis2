@@ -376,6 +376,9 @@ input[type=number] { -moz-appearance: textfield; }
   background: #eef1f5; margin: 18px 6px 6px; padding: 18px 16px 20px;
   box-shadow: inset 6px 6px 0 #ffffff, inset -6px -6px 0 #bcc4cf,
     0 -6px 0 #1e2128, 0 6px 0 #1e2128, -6px 0 0 #1e2128, 6px 0 0 #1e2128; }
+.phone-close { position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; padding: 0; border: none; cursor: pointer;
+  font-family: inherit; font-size: 15px; line-height: 18px; color: #fff; background: #e0507a;
+  box-shadow: inset -2px -2px 0 #a8355a, inset 2px 2px 0 #f58aa8, 0 -2px 0 #1e2128, 0 2px 0 #1e2128, -2px 0 0 #1e2128, 2px 0 0 #1e2128; }
 /* 안테나 */
 .phone-body::before { content: ""; position: absolute; top: -24px; right: 26px; width: 12px; height: 18px;
   background: #bcc4cf; box-shadow: 0 -6px 0 #1e2128, -6px 0 0 #1e2128, 6px 0 0 #1e2128, inset 3px 0 0 #eef1f5; }
@@ -2222,51 +2225,104 @@ function SmsSignal({size=1}){
   );
 }
 // 채팅에 남는 문자 카드
-function SmsCard({line}){
+function SmsCard({line,onDelete}){
   let d=null; try{ d=JSON.parse(line); }catch{}
   if(!d) return <div style={{whiteSpace:"pre-wrap"}}>{line}</div>;
   return(
+    <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
     <div className="sms-lcd sms-card" style={{maxWidth:332,width:"calc(100% - 8px)",padding:"0.85em 1em 0.75em"}}>
       <SmsStatusBar/>
       {d.to&&<div style={{fontSize:"0.78em",opacity:0.75,marginBottom:"0.35em"}}>TO. {d.to}</div>}
       <div style={{fontSize:"1.02em",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word",minHeight:"1.6em"}}>{d.body}</div>
       {d.from&&<div style={{textAlign:"right",marginTop:"0.55em",fontSize:"0.9em"}}>{d.from}</div>}
     </div>
+    {onDelete&&(
+      <button type="button" onClick={onDelete} title="문자 삭제"
+        style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",padding:"4px 2px",display:"flex",flexShrink:0}}>
+        <Trash2 size={12}/>
+      </button>
+    )}
+    </div>
   );
 }
-// 휴대 전화 창: 액정에 직접 써서 보냅니다.
-function PhonePanel({onClose,isGM,defaultFrom,players,displayNameOf,onSend}){
-  const [from,setFrom]=useState(defaultFrom||"");
-  const [to,setTo]=useState("");
+// 휴대 전화 창: 폰 모양만 화면에 떠 있고, 폰을 잡고 끌어서 옮길 수 있어요. (위치는 기억됩니다)
+// 받는 이 = 게임 중인 사람 중에서 고르기 (고르면 그 사람과 GM에게만 보여요, "전체"면 모두에게)
+// 보낸 이 = 캐릭터를 고르면 그 캐릭터의 이름·사진으로 채팅에 나와요. GM은 직접 입력도 할 수 있어요.
+function PhonePanel({onClose,isGM,fromOptions,defaultFromId,toOptions,onSend}){
+  const wrapRef=useRef(null);
+  const [z,bringToFront]=usePanelFront();
+  const saved=loadPanelBox("phone");
+  const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:{x:84,y:90});
+  const [fromId,setFromId]=useState(defaultFromId||(fromOptions[0]?.id)||(isGM?"__custom":""));
+  const [customFrom,setCustomFrom]=useState("");
+  const [toCode,setToCode]=useState("");
   const [body,setBody]=useState("");
-  const [visibleTo,setVisibleTo]=useState([]); // 비어 있으면 모두에게
   const [sending,setSending]=useState(false);
   const [sentFlash,setSentFlash]=useState(false);
-  useEffect(()=>{ if(!isGM) setFrom(defaultFrom||""); },[defaultFrom,isGM]);
-  const toggle=code=>setVisibleTo(v=>v.includes(code)?v.filter(c=>c!==code):[...v,code]);
+  // 고를 수 있는 캐릭터 목록이 바뀌었는데 지금 고른 게 없어졌으면 기본값으로 돌려놓습니다.
+  useEffect(()=>{
+    if(fromId==="__custom")return;
+    if(!fromOptions.some(o=>o.id===fromId)) setFromId(defaultFromId||(fromOptions[0]?.id)||(isGM?"__custom":""));
+  },[fromOptions.map(o=>o.id).join(","),defaultFromId]); // eslint-disable-line
+
+  const clamp=(x,y)=>{
+    const el=wrapRef.current; const w=el?el.offsetWidth:280, h=el?el.offsetHeight:420;
+    return {x:Math.max(4,Math.min(window.innerWidth-w-4,x)),y:Math.max(24,Math.min(window.innerHeight-h-4,y))};
+  };
+  useEffect(()=>{
+    const fix=()=>setPos(p=>clamp(p.x,p.y));
+    const t=setTimeout(fix,0); window.addEventListener("resize",fix);
+    return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
+  },[]); // eslint-disable-line
+  const drag=useRef({on:false,sx:0,sy:0,ox:0,oy:0});
+  const onPointerDown=e=>{
+    bringToFront();
+    // 글 쓰는 칸·버튼을 누른 건 끌기가 아니에요.
+    if(e.target.closest("input,textarea,select,button"))return;
+    drag.current={on:true,sx:e.clientX,sy:e.clientY,ox:pos.x,oy:pos.y};
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove=e=>{
+    const d=drag.current; if(!d.on)return;
+    setPos(clamp(d.ox+e.clientX-d.sx,d.oy+e.clientY-d.sy));
+  };
+  const onPointerUp=()=>{
+    if(!drag.current.on)return;
+    drag.current.on=false;
+    setPos(p=>{ savePanelBox("phone",{x:p.x,y:p.y}); return p; });
+  };
+
+  const fromChar=fromOptions.find(o=>o.id===fromId);
+  const fromName=fromId==="__custom"?customFrom.trim():(fromChar?.name||"");
   const send=async()=>{
     if(!body.trim()||sending)return;
     setSending(true);
-    await onSend({from:from.trim(),to:to.trim(),body,visibleTo});
+    const to=toOptions.find(o=>o.code===toCode);
+    await onSend({fromName,fromAvatar:fromId==="__custom"?"":(fromChar?.avatar||""),toCode,toLabel:to?.label||"",body});
     setSending(false); setBody(""); setSentFlash(true);
     setTimeout(()=>setSentFlash(false),1400);
   };
-  const lcdInput={background:"transparent",border:"none",outline:"none",color:"inherit",font:"inherit",
-    padding:0,width:"100%",minWidth:0};
+  const lcdInput={background:"transparent",border:"none",outline:"none",color:"inherit",font:"inherit",padding:0,width:"100%",minWidth:0};
+  const lcdSelect={...lcdInput,cursor:"pointer",appearance:"none",WebkitAppearance:"none"};
   return(
-    <FloatingPanel title="휴대 전화" icon={Smartphone} onClose={onClose} storageKey="phone"
-      defaultAnchor={{position:"fixed",left:84,top:90}} width="min(94vw, 300px)" maxHeight="90vh">
-      <div className="phone-body">
+    <div ref={wrapRef} style={{position:"fixed",left:pos.x,top:pos.y,zIndex:z,width:"min(92vw, 272px)",touchAction:"none",cursor:"grab"}}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+      <div className="phone-body" style={{margin:"18px 6px 6px"}}>
+        <button type="button" className="phone-close" onClick={onClose} title="닫기">×</button>
         <div className="phone-speaker"/>
         <div className="phone-bezel">
-          <div className="sms-lcd phone-lcd">
+          <div className="sms-lcd phone-lcd" style={{cursor:"auto"}}>
             <SmsStatusBar fontSize={12}/>
             {sentFlash
-              ? <div style={{height:150,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,letterSpacing:1}}>전송 완료!</div>
+              ? <div style={{height:168,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,letterSpacing:1}}>전송 완료!</div>
               : <>
                   <div style={{display:"flex",gap:6,fontSize:12,marginBottom:5,alignItems:"center"}}>
                     <span style={{flexShrink:0,opacity:0.75}}>TO.</span>
-                    <input value={to} onChange={e=>setTo(e.target.value)} placeholder="받는 이" style={lcdInput} maxLength={30}/>
+                    <select value={toCode} onChange={e=>setToCode(e.target.value)} style={lcdSelect}>
+                      <option value="">전체</option>
+                      {toOptions.map(o=><option key={o.code} value={o.code}>{o.label}</option>)}
+                    </select>
+                    <span style={{flexShrink:0,opacity:0.6,fontSize:10}}>▼</span>
                   </div>
                   <textarea value={body} onChange={e=>setBody(e.target.value.slice(0,SMS_MAX))} rows={5}
                     placeholder="메시지를 입력하세요"
@@ -2275,41 +2331,28 @@ function PhonePanel({onClose,isGM,defaultFrom,players,displayNameOf,onSend}){
                       borderTop:"2px dashed rgba(27,43,72,0.35)",borderBottom:"2px dashed rgba(27,43,72,0.35)",padding:"6px 0"}}/>
                   <div style={{display:"flex",gap:6,fontSize:12,marginTop:6,alignItems:"center"}}>
                     <span style={{flexShrink:0,opacity:0.75}}>FROM.</span>
-                    <input value={from} onChange={e=>setFrom(e.target.value)} placeholder="보내는 이" style={{...lcdInput,textAlign:"right"}} maxLength={30}/>
+                    <select value={fromId} onChange={e=>setFromId(e.target.value)} style={{...lcdSelect,textAlign:"right",textAlignLast:"right"}}>
+                      {fromOptions.length===0&&!isGM&&<option value="">(캐릭터 없음)</option>}
+                      {fromOptions.map(o=><option key={o.id} value={o.id}>{o.name||"(이름 없음)"}</option>)}
+                      {isGM&&<option value="__custom">직접 입력</option>}
+                    </select>
+                    <span style={{flexShrink:0,opacity:0.6,fontSize:10}}>▼</span>
                   </div>
+                  {fromId==="__custom"&&(
+                    <input value={customFrom} onChange={e=>setCustomFrom(e.target.value)} placeholder="보내는 이 이름" maxLength={30}
+                      style={{...lcdInput,textAlign:"right",fontSize:12,marginTop:4,borderBottom:"2px dashed rgba(27,43,72,0.35)",paddingBottom:2}}/>
+                  )}
                   <div style={{textAlign:"right",fontSize:11,opacity:0.7,marginTop:3}}>{body.length} / {SMS_MAX}</div>
                 </>}
           </div>
         </div>
         <div className="phone-keys">
-          <button type="button" className="phone-key" onClick={()=>{setBody("");setTo("");}}>지우기</button>
+          <button type="button" className="phone-key" onClick={()=>setBody("")}>지우기</button>
           <div className="phone-dpad"/>
-          <button type="button" className="phone-key send" onClick={send} disabled={!body.trim()||sending}>{sending?"...":"발송"}</button>
+          <button type="button" className="phone-key send" onClick={send} disabled={!body.trim()||sending||!fromName}>{sending?"...":"발송"}</button>
         </div>
       </div>
-      {players.length>0&&(
-        <div style={{marginTop:12}}>
-          <div className="coc-label" style={{marginBottom:6}}>보이는 사람</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-            <button type="button" onClick={()=>setVisibleTo([])}
-              style={{fontSize:11.5,padding:"4px 10px",borderRadius:999,cursor:"pointer",
-                background:visibleTo.length===0?"var(--accent)":"var(--surface)",color:visibleTo.length===0?"#fff":"var(--text-dim)",
-                border:"1px solid "+(visibleTo.length===0?"var(--accent)":"var(--border)")}}>모두</button>
-            {players.map(code=>{
-              const on=visibleTo.includes(code);
-              return(
-                <button key={code} type="button" onClick={()=>toggle(code)}
-                  style={{fontSize:11.5,padding:"4px 10px",borderRadius:999,cursor:"pointer",
-                    background:on?"var(--accent)":"var(--surface)",color:on?"#fff":"var(--text-dim)",
-                    border:"1px solid "+(on?"var(--accent)":"var(--border)")}}>
-                  {on&&"✓ "}{displayNameOf?displayNameOf(code):code}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </FloatingPanel>
+    </div>
   );
 }
 
@@ -2544,7 +2587,7 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
         <div style={{display:"flex",flexDirection:"column",gap:"0.5em"}}>
           {lines.map((line,i)=>{
             if(isDice) return <DiceCard key={i} line={line}/>;
-            if(isSms) return <SmsCard key={i} line={line}/>;
+            if(isSms) return <SmsCard key={i} line={line} onDelete={(isMine||isGM)?()=>onDelete(items[i]):null}/>;
             const editable=isMine&&!isDice;
             return (
               <div key={i} style={{fontSize:"inherit",lineHeight:1.5,whiteSpace:"pre-wrap",wordBreak:"break-word",cursor:editable?"pointer":"default"}}
@@ -5131,17 +5174,17 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
     return doSend("dice",JSON.stringify({skillName,value,roll:r,label,color,bg}),
       sheet?.name||userCode,sheet?.avatar||"",undefined,wt);
   };
-  // 문자 보내기: "보이는 사람"을 고르면 귓속말처럼 그 사람들(과 GM)에게만 보여요.
-  const sendSms=({from,to,body,visibleTo})=>{
+  // 문자 보내기: 받는 이를 고르면 그 사람(과 GM)에게만, "전체"면 모두에게 보여요.
+  const sendSms=({fromName,fromAvatar,toCode,toLabel,body})=>{
     let wt;
-    if(visibleTo&&visibleTo.length){
-      const set=new Set(visibleTo);
+    if(toCode){
+      const set=new Set([toCode]);
       if(!isGM&&room.creatorCode) set.add(room.creatorCode);
       set.delete(userCode);
       wt=set.size?Array.from(set):undefined;
     }
-    const name=from||(isGM?"알 수 없음":(char?.name||userCode));
-    return doSend("sms",JSON.stringify({from:from||"",to:to||"",body}),name,isGM?"":(char?.avatar||""),undefined,wt);
+    const name=fromName||(isGM?"알 수 없음":(char?.name||userCode));
+    return doSend("sms",JSON.stringify({from:name,to:toLabel||"",body}),name,fromAvatar||"",undefined,wt);
   };
   const sendDice=r=>{
     var wt;
@@ -6163,8 +6206,10 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         onClose={()=>setCreatingChar(false)} onSaved={c=>{setChar(c);setCreatingChar(false);}}/>}
 
       {showPhone&&<PhonePanel onClose={()=>setShowPhone(false)} isGM={isGM}
-        defaultFrom={isGM?"":(char?.name||"")}
-        players={otherParticipants} displayNameOf={displayNameOf} onSend={sendSms}/>}
+        fromOptions={(isGM?allChars:myChars).map(c=>({id:c.id,name:c.name,avatar:c.avatar}))}
+        defaultFromId={char?.id||""}
+        toOptions={otherParticipants.map(code=>({code,label:displayNameOf(code)}))}
+        onSend={sendSms}/>}
       {showRoster&&<CollectionPanel onClose={()=>setShowRoster(false)} isGM={isGM}
         tab={collectionTab} setTab={setCollectionTab}
         allChars={allChars} onCreateChar={()=>rosterCreateFor("")} onOpenChar={rosterOpen}
