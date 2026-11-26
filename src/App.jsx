@@ -227,10 +227,10 @@ const CSS = `
 .chat-font, .chat-font * { font-family: 'RIDIBatang', 'Noto Sans KR', sans-serif !important; }
 .chat-font .coc-mono { font-family: 'JetBrains Mono', monospace !important; }
 /* ───────── 픽셀 모드 ─────────
-   설정 > 스타일 > 픽셀. 모서리를 각지게, 테두리를 한 칸씩 깎은 계단 모양으로, 글씨를 도트 글꼴로 바꿉니다.
-   색은 지금 테마색·다크 모드를 그대로 따라가요. 채팅 본문(대사·서술)과 입력창은 읽기 편하게 원래 글꼴을
-   유지하고, "채팅 글씨도 도트로"를 켜면 그것까지 바꿉니다. */
-.pixel-mode { --px: var(--accent-deep); --px-soft: var(--border); }
+   설정 > 스타일 > 픽셀. 스타듀 밸리 같은 도트 게임 UI: 둥근 모서리 대신 한 칸씩 계단으로 깎인 모서리,
+   두 겹(테두리 + 외곽선) 픽셀 테두리, 위·왼쪽은 밝고 아래·오른쪽은 어두운 입체감, 도트 글씨.
+   색은 전부 고른 테마색과 다크 모드에서 가져와요. (테두리 = 테마색, 외곽선 = 진한 테마색)
+   채팅 본문(대사·서술)과 입력창은 읽기 편하게 원래 글꼴을 유지하고, "채팅 글씨도 도트로"를 켜면 그것까지 바꿉니다. */
 .pixel-mode *, .pixel-mode .chat-font * , .pixel-mode.chat-font * { font-family: 'Galmuri11', 'JetBrains Mono', monospace !important; letter-spacing: 0 !important; }
 .pixel-mode .msg-list-area *, .pixel-mode .vn-line, .pixel-mode .vn-line *, .pixel-mode .chat-input-text {
   font-family: 'RIDIBatang', 'Noto Sans KR', sans-serif !important; }
@@ -238,26 +238,29 @@ const CSS = `
 .pixel-mode.pixel-chat .msg-list-area *, .pixel-mode.pixel-chat .vn-line, .pixel-mode.pixel-chat .vn-line *, .pixel-mode.pixel-chat .chat-input-text {
   font-family: 'Galmuri11', 'JetBrains Mono', monospace !important; }
 .pixel-mode * { border-radius: 0 !important; }
+.pixel-mode { -webkit-font-smoothing: none; }
+/* 판(카드·창·모달): 안쪽 밝은 줄 + 테마색 테두리 + 계단 모서리 외곽선 + 도트 그림자 */
 .pixel-mode .coc-card, .pixel-mode .coc-modal, .pixel-mode .float-panel {
-  border: none !important;
-  box-shadow: 0 -3px 0 var(--px), 0 3px 0 var(--px), -3px 0 0 var(--px), 3px 0 0 var(--px), 7px 7px 0 rgba(0,0,0,0.14) !important; }
-.pixel-mode .msg-list-area.coc-card { box-shadow: 0 -3px 0 var(--px-soft), 0 3px 0 var(--px-soft), -3px 0 0 var(--px-soft), 3px 0 0 var(--px-soft) !important; }
-.pixel-mode .coc-btn { border: none !important; transition: none !important;
-  box-shadow: 0 -2px 0 var(--px), 0 2px 0 var(--px), -2px 0 0 var(--px), 2px 0 0 var(--px), 0 5px 0 var(--px) !important; margin-bottom: 3px; }
-.pixel-mode .coc-btn.ghost { box-shadow: 0 -2px 0 var(--px-soft), 0 2px 0 var(--px-soft), -2px 0 0 var(--px-soft), 2px 0 0 var(--px-soft), 0 5px 0 var(--px-soft) !important; }
+  border: none !important; box-shadow: inset 0 0 0 3px var(--accent-soft), inset 6px 6px 0 rgba(255,255,255,0.25), 0 -4px 0 0 var(--accent), 0 4px 0 0 var(--accent), -4px 0 0 0 var(--accent), 4px 0 0 0 var(--accent), 4px 4px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -4px 4px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 4px -4px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -4px -4px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -12px 0 -4px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 12px 0 -4px color-mix(in srgb, var(--accent-deep) 65%, #000), -12px 0 0 -4px color-mix(in srgb, var(--accent-deep) 65%, #000), 12px 0 0 -4px color-mix(in srgb, var(--accent-deep) 65%, #000), 8px 12px 0 -4px rgba(0,0,0,0.22) !important; }
+.pixel-mode .msg-list-area.coc-card { box-shadow: inset 3px 3px 0 rgba(0,0,0,0.05), 0 -3px 0 0 var(--border), 0 3px 0 0 var(--border), -3px 0 0 0 var(--border), 3px 0 0 0 var(--border), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000) !important; }
+/* 버튼: 누르면 한 칸 쏙 */
+.pixel-mode .coc-btn { border: none !important; transition: none !important; box-shadow: inset 3px 3px 0 rgba(255,255,255,0.45), inset -3px -4px 0 rgba(0,0,0,0.22), 0 -3px 0 0 var(--accent-deep), 0 3px 0 0 var(--accent-deep), -3px 0 0 0 var(--accent-deep), 3px 0 0 0 var(--accent-deep), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 8px 0 -3px rgba(0,0,0,0.28) !important; margin: 6px 6px 9px; }
+.pixel-mode .coc-btn.ghost { box-shadow: inset 3px 3px 0 rgba(255,255,255,0.7), inset -3px -4px 0 rgba(0,0,0,0.1), 0 -3px 0 0 var(--border), 0 3px 0 0 var(--border), -3px 0 0 0 var(--border), 3px 0 0 0 var(--border), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 8px 0 -3px rgba(0,0,0,0.2) !important; }
 .pixel-mode .coc-btn:hover { transform: none !important; opacity: 1; filter: brightness(1.06); }
-.pixel-mode .coc-btn:active:not(:disabled) { transform: translateY(3px) !important;
-  box-shadow: 0 -2px 0 var(--px), 0 2px 0 var(--px), -2px 0 0 var(--px), 2px 0 0 var(--px) !important; }
-.pixel-mode .coc-input, .pixel-mode .coc-textarea { border: none !important;
-  box-shadow: inset 3px 3px 0 rgba(0,0,0,0.07), 0 -2px 0 var(--px-soft), 0 2px 0 var(--px-soft), -2px 0 0 var(--px-soft), 2px 0 0 var(--px-soft) !important; margin: 2px 0; }
-.pixel-mode .coc-input:focus, .pixel-mode .coc-textarea:focus {
-  box-shadow: inset 3px 3px 0 rgba(0,0,0,0.07), 0 -2px 0 var(--accent), 0 2px 0 var(--accent), -2px 0 0 var(--accent), 2px 0 0 var(--accent) !important; }
-.pixel-mode .chat-icon-btn { border: none !important; transition: none !important;
-  box-shadow: 0 -2px 0 var(--px-soft), 0 2px 0 var(--px-soft), -2px 0 0 var(--px-soft), 2px 0 0 var(--px-soft) !important; }
-.pixel-mode .chat-icon-btn.on, .pixel-mode .chat-icon-btn:hover {
-  box-shadow: 0 -2px 0 var(--px), 0 2px 0 var(--px), -2px 0 0 var(--px), 2px 0 0 var(--px), inset 2px 2px 0 rgba(255,255,255,0.5) !important; }
-.pixel-mode .coc-label { letter-spacing: 0.04em !important; }
-.pixel-mode img { image-rendering: auto; }
+.pixel-mode .coc-btn:active:not(:disabled) { transform: translateY(4px) !important; box-shadow: inset 3px 3px 0 rgba(0,0,0,0.22), 0 -3px 0 0 var(--accent-deep), 0 3px 0 0 var(--accent-deep), -3px 0 0 0 var(--accent-deep), 3px 0 0 0 var(--accent-deep), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000) !important; }
+/* 입력칸: 안쪽으로 파인 칸 */
+.pixel-mode .coc-input, .pixel-mode .coc-textarea { border: none !important; box-shadow: inset 4px 4px 0 rgba(0,0,0,0.09), 0 -3px 0 0 var(--border), 0 3px 0 0 var(--border), -3px 0 0 0 var(--border), 3px 0 0 0 var(--border), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000) !important; margin-top: 6px; margin-bottom: 6px; }
+.pixel-mode .coc-input:focus, .pixel-mode .coc-textarea:focus { box-shadow: inset 4px 4px 0 rgba(0,0,0,0.09), 0 -3px 0 0 var(--accent), 0 3px 0 0 var(--accent), -3px 0 0 0 var(--accent), 3px 0 0 0 var(--accent), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000) !important; }
+/* 왼쪽 메뉴 아이콘 버튼 */
+.pixel-mode .chat-icon-btn { border: none !important; transition: none !important; box-shadow: inset 3px 3px 0 rgba(255,255,255,0.7), inset -3px -3px 0 rgba(0,0,0,0.1), 0 -3px 0 0 var(--border), 0 3px 0 0 var(--border), -3px 0 0 0 var(--border), 3px 0 0 0 var(--border), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 7px 0 -3px rgba(0,0,0,0.2) !important; margin: 3px; }
+.pixel-mode .chat-icon-btn:hover { filter: brightness(1.04); }
+.pixel-mode .chat-icon-btn.on { background: var(--bg-panel) !important; transform: translateY(3px); box-shadow: inset 3px 3px 0 rgba(0,0,0,0.12), 0 -3px 0 0 var(--accent), 0 3px 0 0 var(--accent), -3px 0 0 0 var(--accent), 3px 0 0 0 var(--accent), 3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px 3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), -3px -3px 0 0 color-mix(in srgb, var(--accent-deep) 65%, #000), 0 -9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 0 9px 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), -9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000), 9px 0 0 -3px color-mix(in srgb, var(--accent-deep) 65%, #000) !important; }
+.pixel-mode input[type=checkbox], .pixel-mode input[type=radio], .pixel-mode input[type=range] { accent-color: var(--accent); }
+/* 스크롤바도 네모난 도트 막대로 */
+.pixel-mode ::-webkit-scrollbar { width: 12px; height: 12px; }
+.pixel-mode ::-webkit-scrollbar-track { background: var(--bg-panel); box-shadow: inset 2px 0 0 var(--border); }
+.pixel-mode ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 0 !important;
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.45), inset -3px -3px 0 var(--accent-deep), inset 0 0 0 1px color-mix(in srgb, var(--accent-deep) 65%, #000); }
 /* 휴대 전화·문자 카드는 채팅 글꼴 설정보다 우선해서 언제나 도트 글꼴(갈무리)로 */
 .sms-lcd, .sms-lcd *, .phone-body, .phone-body *, .phone-mini, .phone-mini *,
 .chat-font .sms-lcd, .chat-font .sms-lcd *, .chat-font .phone-body, .chat-font .phone-body *, .chat-font .phone-mini, .chat-font .phone-mini * {
@@ -6424,7 +6427,7 @@ function AppInner(){
   // 다크 모드는 이 기기(브라우저)에 저장됩니다.
   const [dark,setDark]=useState(()=>loadDarkPref());
   const [pixelPrefs]=usePixelPrefs();
-  const rootClass="coc-root"+(pixelPrefs.pixel?" pixel-mode":"")+(pixelPrefs.pixel&&pixelPrefs.pixelChat?" pixel-chat":"");
+  const rootClass="coc-root"+(dark?" dark":"")+(pixelPrefs.pixel?" pixel-mode":"")+(pixelPrefs.pixel&&pixelPrefs.pixelChat?" pixel-chat":"");
   const handleDark=v=>{ setDark(v); saveDarkPref(v); };
 
   // 앱을 처음 열었을 때, 이 기기에 저장된 로그인 정보가 있으면 자동으로 다시 로그인합니다.
