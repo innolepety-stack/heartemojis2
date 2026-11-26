@@ -239,24 +239,24 @@ const CSS = `
   font-family: 'Galmuri11', 'JetBrains Mono', monospace !important; }
 .pixel-mode * { border-radius: 0 !important; }
 .pixel-mode { -webkit-font-smoothing: none; }
-/* 판·버튼·입력칸 모두 휴대 전화와 같은 테두리: 한 칸 깎인 모서리의 진한 외곽선 + 위·왼쪽 밝은 줄, 아래·오른쪽 그늘 */
-.pixel-mode { --px-line: color-mix(in srgb, var(--accent-deep) 28%, #1e2128); }
-.pixel-mode.dark { --px-line: color-mix(in srgb, var(--accent-deep) 45%, #000); }
+/* 판·버튼·입력칸 모두 휴대 전화와 같은 테두리: 한 칸 깎인 모서리의 (테마색보다 살짝 진한) 외곽선 + 위·왼쪽 밝은 줄, 아래·오른쪽 그늘 */
+.pixel-mode { --px-line: color-mix(in srgb, var(--accent) 82%, #000); }
+.pixel-mode.dark { --px-line: color-mix(in srgb, var(--accent) 82%, #000); }
 .pixel-mode .coc-card, .pixel-mode .coc-modal, .pixel-mode .float-panel {
-  border: none !important; box-shadow: inset 3px 3px 0 rgba(255,255,255,0.55), inset -3px -3px 0 rgba(0,0,0,0.13), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line) !important; }
-.pixel-mode .coc-btn { border: none !important; transition: none !important; box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), inset -3px -3px 0 rgba(0,0,0,0.22), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line), 0 6px 0 rgba(0,0,0,0.22) !important; margin: 3px 3px 6px; }
+  border: none !important; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.55), inset -2px -2px 0 rgba(0,0,0,0.13), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line) !important; }
+.pixel-mode .coc-btn { border: none !important; transition: none !important; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.4), inset -2px -2px 0 rgba(0,0,0,0.22), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line), 0 4px 0 rgba(0,0,0,0.22) !important; margin: 2px 2px 4px; }
 .pixel-mode .coc-btn:hover { transform: none !important; opacity: 1; filter: brightness(1.05); }
-.pixel-mode .coc-btn:active:not(:disabled) { transform: translateY(3px) !important; box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), inset -3px -3px 0 rgba(0,0,0,0.22), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line) !important; }
-.pixel-mode .coc-input, .pixel-mode .coc-textarea { border: none !important; box-shadow: inset 3px 3px 0 rgba(0,0,0,0.12), inset -3px -3px 0 rgba(255,255,255,0.35), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line) !important; margin-top: 3px; margin-bottom: 3px; }
-.pixel-mode .coc-input:focus, .pixel-mode .coc-textarea:focus { box-shadow: inset 3px 3px 0 rgba(0,0,0,0.12), inset -3px -3px 0 rgba(255,255,255,0.35), inset 0 0 0 1px var(--accent), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line) !important; }
-.pixel-mode .chat-icon-btn { border: none !important; transition: none !important; box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), inset -3px -3px 0 rgba(0,0,0,0.22), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line), 0 6px 0 rgba(0,0,0,0.22) !important; margin: 3px 3px 6px; }
+.pixel-mode .coc-btn:active:not(:disabled) { transform: translateY(2px) !important; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.4), inset -2px -2px 0 rgba(0,0,0,0.22), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line) !important; }
+.pixel-mode .coc-input, .pixel-mode .coc-textarea { border: none !important; box-shadow: inset 2px 2px 0 rgba(0,0,0,0.12), inset -2px -2px 0 rgba(255,255,255,0.35), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line) !important; margin-top: 2px; margin-bottom: 2px; }
+.pixel-mode .coc-input:focus, .pixel-mode .coc-textarea:focus { box-shadow: inset 2px 2px 0 rgba(0,0,0,0.12), inset -2px -2px 0 rgba(255,255,255,0.35), inset 0 0 0 1px var(--accent), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line) !important; }
+.pixel-mode .chat-icon-btn { border: none !important; transition: none !important; box-shadow: inset 2px 2px 0 rgba(255,255,255,0.4), inset -2px -2px 0 rgba(0,0,0,0.22), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line), 0 4px 0 rgba(0,0,0,0.22) !important; margin: 2px 2px 4px; }
 .pixel-mode .chat-icon-btn:hover { filter: brightness(1.04); }
-.pixel-mode .chat-icon-btn.on { background: var(--bg-panel) !important; transform: translateY(3px); box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), inset -3px -3px 0 rgba(0,0,0,0.22), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line) !important; }
+.pixel-mode .chat-icon-btn.on { background: var(--bg-panel) !important; transform: translateY(2px); box-shadow: inset 2px 2px 0 rgba(255,255,255,0.4), inset -2px -2px 0 rgba(0,0,0,0.22), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line) !important; }
 .pixel-mode input[type=checkbox], .pixel-mode input[type=radio], .pixel-mode input[type=range] { accent-color: var(--accent); }
 .pixel-mode.dark .coc-card, .pixel-mode.dark .coc-modal, .pixel-mode.dark .float-panel {
-  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.12), inset -3px -3px 0 rgba(0,0,0,0.3), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line) !important; }
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.12), inset -2px -2px 0 rgba(0,0,0,0.3), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line) !important; }
 .pixel-mode.dark .chat-icon-btn:not(.on), .pixel-mode.dark .coc-btn.ghost {
-  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.14), inset -3px -3px 0 rgba(0,0,0,0.3), 0 -3px 0 var(--px-line), 0 3px 0 var(--px-line), -3px 0 0 var(--px-line), 3px 0 0 var(--px-line), 0 6px 0 rgba(0,0,0,0.35) !important; }
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.14), inset -2px -2px 0 rgba(0,0,0,0.3), 0 -2px 0 var(--px-line), 0 2px 0 var(--px-line), -2px 0 0 var(--px-line), 2px 0 0 var(--px-line), 0 4px 0 rgba(0,0,0,0.35) !important; }
 /* 스크롤바도 네모난 도트 막대로 */
 .pixel-mode ::-webkit-scrollbar { width: 12px; height: 12px; }
 .pixel-mode ::-webkit-scrollbar-track { background: var(--bg-panel); box-shadow: inset 2px 0 0 var(--border); }
