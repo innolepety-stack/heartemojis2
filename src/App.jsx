@@ -101,6 +101,30 @@ function loadDarkPref() {
 function saveDarkPref(v) {
   try { localStorage.setItem(DARK_PREF_KEY, v ? "1" : "0"); } catch {}
 }
+// 픽셀 모드 — 다크 모드처럼 이 기기에 저장됩니다. 설정 화면과 앱 전체가 같은 값을 보도록,
+// 바뀔 때마다 신호를 보내서 다른 곳도 바로 따라 바뀌게 합니다.
+const PIXEL_KEY="heartEmojiPixel", PIXEL_CHAT_KEY="heartEmojiPixelChat";
+function readPixelPrefs(){
+  try{ return {pixel:localStorage.getItem(PIXEL_KEY)==="1",pixelChat:localStorage.getItem(PIXEL_CHAT_KEY)==="1"}; }
+  catch{ return {pixel:false,pixelChat:false}; }
+}
+function usePixelPrefs(){
+  const [prefs,setPrefs]=useState(readPixelPrefs);
+  useEffect(()=>{
+    const h=()=>setPrefs(readPixelPrefs());
+    window.addEventListener("heartemoji-pixel",h);
+    return()=>window.removeEventListener("heartemoji-pixel",h);
+  },[]);
+  const update=patch=>{
+    try{
+      if("pixel" in patch) localStorage.setItem(PIXEL_KEY,patch.pixel?"1":"0");
+      if("pixelChat" in patch) localStorage.setItem(PIXEL_CHAT_KEY,patch.pixelChat?"1":"0");
+    }catch{}
+    setPrefs(p=>({...p,...patch}));
+    window.dispatchEvent(new Event("heartemoji-pixel"));
+  };
+  return [prefs,update];
+}
 
 const SKILL_LIST = [
   ["회계", 5], ["감정", 5], ["고고학", 1], ["관찰력", 25], ["근접전(격투)", 25],
@@ -202,6 +226,38 @@ const CSS = `
 }
 .chat-font, .chat-font * { font-family: 'RIDIBatang', 'Noto Sans KR', sans-serif !important; }
 .chat-font .coc-mono { font-family: 'JetBrains Mono', monospace !important; }
+/* ───────── 픽셀 모드 ─────────
+   설정 > 스타일 > 픽셀. 모서리를 각지게, 테두리를 한 칸씩 깎은 계단 모양으로, 글씨를 도트 글꼴로 바꿉니다.
+   색은 지금 테마색·다크 모드를 그대로 따라가요. 채팅 본문(대사·서술)과 입력창은 읽기 편하게 원래 글꼴을
+   유지하고, "채팅 글씨도 도트로"를 켜면 그것까지 바꿉니다. */
+.pixel-mode { --px: var(--accent-deep); --px-soft: var(--border); }
+.pixel-mode *, .pixel-mode .chat-font * , .pixel-mode.chat-font * { font-family: 'Galmuri11', 'JetBrains Mono', monospace !important; letter-spacing: 0 !important; }
+.pixel-mode .msg-list-area *, .pixel-mode .vn-line, .pixel-mode .vn-line *, .pixel-mode .chat-input-text {
+  font-family: 'RIDIBatang', 'Noto Sans KR', sans-serif !important; }
+.pixel-mode .msg-list-area .msg-name, .pixel-mode .msg-list-area .coc-mono,
+.pixel-mode.pixel-chat .msg-list-area *, .pixel-mode.pixel-chat .vn-line, .pixel-mode.pixel-chat .vn-line *, .pixel-mode.pixel-chat .chat-input-text {
+  font-family: 'Galmuri11', 'JetBrains Mono', monospace !important; }
+.pixel-mode * { border-radius: 0 !important; }
+.pixel-mode .coc-card, .pixel-mode .coc-modal, .pixel-mode .float-panel {
+  border: none !important;
+  box-shadow: 0 -3px 0 var(--px), 0 3px 0 var(--px), -3px 0 0 var(--px), 3px 0 0 var(--px), 7px 7px 0 rgba(0,0,0,0.14) !important; }
+.pixel-mode .msg-list-area.coc-card { box-shadow: 0 -3px 0 var(--px-soft), 0 3px 0 var(--px-soft), -3px 0 0 var(--px-soft), 3px 0 0 var(--px-soft) !important; }
+.pixel-mode .coc-btn { border: none !important; transition: none !important;
+  box-shadow: 0 -2px 0 var(--px), 0 2px 0 var(--px), -2px 0 0 var(--px), 2px 0 0 var(--px), 0 5px 0 var(--px) !important; margin-bottom: 3px; }
+.pixel-mode .coc-btn.ghost { box-shadow: 0 -2px 0 var(--px-soft), 0 2px 0 var(--px-soft), -2px 0 0 var(--px-soft), 2px 0 0 var(--px-soft), 0 5px 0 var(--px-soft) !important; }
+.pixel-mode .coc-btn:hover { transform: none !important; opacity: 1; filter: brightness(1.06); }
+.pixel-mode .coc-btn:active:not(:disabled) { transform: translateY(3px) !important;
+  box-shadow: 0 -2px 0 var(--px), 0 2px 0 var(--px), -2px 0 0 var(--px), 2px 0 0 var(--px) !important; }
+.pixel-mode .coc-input, .pixel-mode .coc-textarea { border: none !important;
+  box-shadow: inset 3px 3px 0 rgba(0,0,0,0.07), 0 -2px 0 var(--px-soft), 0 2px 0 var(--px-soft), -2px 0 0 var(--px-soft), 2px 0 0 var(--px-soft) !important; margin: 2px 0; }
+.pixel-mode .coc-input:focus, .pixel-mode .coc-textarea:focus {
+  box-shadow: inset 3px 3px 0 rgba(0,0,0,0.07), 0 -2px 0 var(--accent), 0 2px 0 var(--accent), -2px 0 0 var(--accent), 2px 0 0 var(--accent) !important; }
+.pixel-mode .chat-icon-btn { border: none !important; transition: none !important;
+  box-shadow: 0 -2px 0 var(--px-soft), 0 2px 0 var(--px-soft), -2px 0 0 var(--px-soft), 2px 0 0 var(--px-soft) !important; }
+.pixel-mode .chat-icon-btn.on, .pixel-mode .chat-icon-btn:hover {
+  box-shadow: 0 -2px 0 var(--px), 0 2px 0 var(--px), -2px 0 0 var(--px), 2px 0 0 var(--px), inset 2px 2px 0 rgba(255,255,255,0.5) !important; }
+.pixel-mode .coc-label { letter-spacing: 0.04em !important; }
+.pixel-mode img { image-rendering: auto; }
 /* 휴대 전화·문자 카드는 채팅 글꼴 설정보다 우선해서 언제나 도트 글꼴(갈무리)로 */
 .sms-lcd, .sms-lcd *, .phone-body, .phone-body *, .phone-mini, .phone-mini *,
 .chat-font .sms-lcd, .chat-font .sms-lcd *, .chat-font .phone-body, .chat-font .phone-body *, .chat-font .phone-mini, .chat-font .phone-mini * {
@@ -1390,6 +1446,7 @@ function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleD
   soundEnabled, onChangeSound, popupEnabled, onChangePopup, notifPermission, requestNotifPermission}){
   const [hexInput, setHexInput] = useState(customColor);
   useEffect(()=>{ setHexInput(customColor); }, [customColor]);
+  const [pixelPrefs,setPixelPrefs]=usePixelPrefs();
 
   const applyHexInput = () => {
     const h = hexInput.trim();
@@ -1436,6 +1493,32 @@ function SettingsTab({currentTheme, customColor, onSelectCustom, dark, onToggleD
             </button>
           ))}
         </div>
+
+        <div className="coc-label" style={{marginBottom:6}}>스타일</div>
+        <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+          {[{v:false,label:"기본",Icon:Sparkles},{v:true,label:"픽셀",Icon:Smartphone}].map(o=>{
+            const on=pixelPrefs.pixel===o.v;
+            return(
+              <button key={o.label} type="button" onClick={()=>setPixelPrefs({pixel:o.v})}
+                style={{
+                  display:"flex",alignItems:"center",gap:8,padding:"10px 18px",
+                  borderRadius:10,border:"2px solid "+(on?"var(--accent)":"var(--border)"),
+                  background:on?"var(--bg-panel)":"var(--surface)",cursor:"pointer",transition:"all 0.15s",
+                }}>
+                <o.Icon size={15} color={on?"var(--accent-deep)":"var(--text-dim)"}/>
+                <span style={{fontSize:14.5,fontWeight:on?700:400,color:on?"var(--accent-deep)":"var(--text-dim)"}}>{o.label}</span>
+                {on&&<Check size={13} color="var(--accent)"/>}
+              </button>
+            );
+          })}
+        </div>
+        {pixelPrefs.pixel&&(
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13.5,color:"var(--text-dim)",cursor:"pointer",marginBottom:22}}>
+            <input type="checkbox" checked={pixelPrefs.pixelChat} onChange={e=>setPixelPrefs({pixelChat:e.target.checked})}/>
+            채팅 글씨도 도트로
+          </label>
+        )}
+        {!pixelPrefs.pixel&&<div style={{marginBottom:12}}/>}
 
         <div style={{height:1,background:"var(--border-soft)",margin:"2px 0 18px"}}/>
 
@@ -2598,8 +2681,8 @@ function MessageBlock({group,myUserCode,isGM,onEdit,onDelete,onPickChoice,scale=
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",gap:"0.5em",alignItems:"center",marginBottom:"0.21em"}}>
           {/* NPC도 일반 캐릭터와 동일하게 */}
-          {(speaker==="ic"||speaker==="npc"||isDice||isSms)&&<span style={{color:nameCol,fontWeight:600,fontSize:"0.86em"}}>{characterName}</span>}
-          {speaker==="ooc"&&<span style={{color:"var(--text-dim)",fontSize:"0.86em"}}>{characterName} <span className="coc-mono" style={{fontSize:"0.68em"}}>OOC</span></span>}
+          {(speaker==="ic"||speaker==="npc"||isDice||isSms)&&<span className="msg-name" style={{color:nameCol,fontWeight:600,fontSize:"0.86em"}}>{characterName}</span>}
+          {speaker==="ooc"&&<span className="msg-name" style={{color:"var(--text-dim)",fontSize:"0.86em"}}>{characterName} <span className="coc-mono" style={{fontSize:"0.68em"}}>OOC</span></span>}
           <span className="coc-mono" style={{fontSize:"0.71em",color:"var(--text-faint)"}}>{fmtTime(timestamp)}</span>
           {isWhisper&&(
             <span title={whisperTo.map(nameOf).join(", ")}
@@ -2729,7 +2812,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,on
   const anchor=pos ? {position:"fixed",left:pos.x,top:pos.y} : {position:"fixed",left:76,top:80};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
@@ -2739,7 +2822,7 @@ function DecoratePanel({onClose,onSendText,diceCutins,onSetCutin,onClearCutin,on
   );
 
   return(
-    <div ref={wrapRef} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" onPointerDownCapture={bringToFront}
       style={{...anchor,width:size.w,height:size.h,display:"flex",flexDirection:"column",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
         boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
@@ -3021,7 +3104,7 @@ function MapSettingsPanel({onClose,
     :{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)"};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
@@ -3033,7 +3116,7 @@ function MapSettingsPanel({onClose,
   const TABS=[["scene","배경",ImageIcon],["layer","레이어",Layers],["scenes","장면",Clapperboard]];
 
   return(
-    <div ref={wrapRef} onPointerDownCapture={bringToFront} style={{...anchor,width:"min(94vw, 280px)",maxHeight:"78vh",display:"flex",flexDirection:"column",
+    <div ref={wrapRef} className="float-panel" onPointerDownCapture={bringToFront} style={{...anchor,width:"min(94vw, 280px)",maxHeight:"78vh",display:"flex",flexDirection:"column",
       background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
       boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
       <div {...dragProps}
@@ -3243,7 +3326,7 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
     color:"var(--text-faint)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
@@ -3254,7 +3337,7 @@ function FloatingPanel({title,icon:Icon,onClose,defaultAnchor,width="min(94vw, 3
   );
 
   return(
-    <div ref={wrapRef} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" onPointerDownCapture={bringToFront}
       style={{...anchor,width,maxHeight,display:"flex",flexDirection:"column",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
         boxShadow:"0 10px 36px rgba(0,0,0,0.24)",zIndex:z,overflow:"hidden",touchAction:"none"}}>
@@ -3645,7 +3728,7 @@ function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
     :{position:"fixed",right:18+step,top:70+step};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 12px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
@@ -3656,7 +3739,7 @@ function HandoutFloatingDetail({handout,onClose,index=0,onEdit}){
   );
 
   return(
-    <div ref={wrapRef} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" onPointerDownCapture={bringToFront}
       style={{...anchor,width:Math.min(size.w,window.innerWidth-16),
         height:autoHeight?"auto":size.h,maxHeight:"92vh",
         display:"flex",flexDirection:"column",
@@ -3812,7 +3895,7 @@ function DicePanel({char,onRollToChat,roomId,onClose,secretRoll,setSecretRoll}){
     : {position:"fixed",right:18,top:70};
 
   if(folded) return(
-    <div ref={wrapRef} {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" {...dragProps} onPointerUp={onFoldedBarUp} onPointerDownCapture={bringToFront}
       title="눌러서 펼치기 · 끌어서 위치 옮기기"
       style={{...anchor,maxWidth:220,display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:999,
         background:"var(--accent)",color:"#fff",opacity:0.8,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
@@ -3825,7 +3908,7 @@ function DicePanel({char,onRollToChat,roomId,onClose,secretRoll,setSecretRoll}){
   );
 
   return(
-    <div ref={wrapRef} onPointerDownCapture={bringToFront}
+    <div ref={wrapRef} className="float-panel" onPointerDownCapture={bringToFront}
       style={{...anchor,width:Math.min(size.w,window.innerWidth-16),height:size.h,maxHeight:"90vh",
         display:"flex",flexDirection:"column",position:"fixed",
         background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,
@@ -6135,7 +6218,7 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
               <div style={{width:34,height:3,borderRadius:2,background:"var(--border)"}}/>
             </div>
             <div style={{display:"flex",gap:7}}>
-              <textarea ref={inputRef} className="coc-input" value={text}
+              <textarea ref={inputRef} className="coc-input chat-input-text" value={text}
                 onChange={e=>setText(e.target.value)} onKeyDown={handleKeyDown}
                 placeholder={placeholder()} style={{flex:1,resize:"none",fontSize:12.5,height:inputHeight}}/>
               <button type="button" className="coc-btn" style={{flexShrink:0,alignSelf:"flex-end",padding:"10px 14px"}} onClick={send}><Send size={13}/></button>
@@ -6340,6 +6423,8 @@ function AppInner(){
   };
   // 다크 모드는 이 기기(브라우저)에 저장됩니다.
   const [dark,setDark]=useState(()=>loadDarkPref());
+  const [pixelPrefs]=usePixelPrefs();
+  const rootClass="coc-root"+(pixelPrefs.pixel?" pixel-mode":"")+(pixelPrefs.pixel&&pixelPrefs.pixelChat?" pixel-chat":"");
   const handleDark=v=>{ setDark(v); saveDarkPref(v); };
 
   // 앱을 처음 열었을 때, 이 기기에 저장된 로그인 정보가 있으면 자동으로 다시 로그인합니다.
@@ -6396,13 +6481,13 @@ function AppInner(){
   },[rootStyleKey]); // eslint-disable-line
 
   if(!authChecked) return(
-    <div className="coc-root" style={rootStyle}>
+    <div className={rootClass} style={rootStyle}>
       <style>{CSS}</style>
     </div>
   );
 
   if(!user) return(
-    <div className="coc-root" style={rootStyle}>
+    <div className={rootClass} style={rootStyle}>
       <style>{CSS}</style>
       <AuthScreen onLogin={setUser}/>
     </div>
@@ -6439,7 +6524,7 @@ function AppInner(){
   }
 
   return(
-    <div className="coc-root" style={rootStyle}>
+    <div className={rootClass} style={rootStyle}>
       <style>{CSS}</style>
       {/* 게임방 안에서는 화면을 꽉 쓰도록 바깥 여백을 줄입니다. (로비는 그대로 넉넉하게) */}
       <div style={{position:"relative",zIndex:1,padding:activeRoom?"8px 10px":"20px 16px 56px"}}>
