@@ -379,6 +379,11 @@ input[type=number] { -moz-appearance: textfield; }
 .phone-close { position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; padding: 0; border: none; cursor: pointer;
   font-family: inherit; font-size: 15px; line-height: 18px; color: #fff; background: #e0507a;
   box-shadow: inset -2px -2px 0 #a8355a, inset 2px 2px 0 #f58aa8, 0 -2px 0 #1e2128, 0 2px 0 #1e2128, -2px 0 0 #1e2128, 2px 0 0 #1e2128; }
+.phone-close.fold { left: 34px; background: #f7f9fb; color: #2a2e36;
+  box-shadow: inset -2px -2px 0 #b9c1cc, inset 2px 2px 0 #ffffff, 0 -2px 0 #1e2128, 0 2px 0 #1e2128, -2px 0 0 #1e2128, 2px 0 0 #1e2128; }
+.phone-mini { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px 6px 10px; margin: 4px; cursor: grab;
+  font-family: 'Galmuri11', 'JetBrains Mono', monospace; font-size: 12px; color: #1b2b48; background: #eef1f5; user-select: none;
+  box-shadow: inset 3px 3px 0 #ffffff, inset -3px -3px 0 #bcc4cf, 0 -3px 0 #1e2128, 0 3px 0 #1e2128, -3px 0 0 #1e2128, 3px 0 0 #1e2128; }
 /* 안테나 */
 .phone-body::before { content: ""; position: absolute; top: -24px; right: 26px; width: 12px; height: 18px;
   background: #bcc4cf; box-shadow: 0 -6px 0 #1e2128, -6px 0 0 #1e2128, 6px 0 0 #1e2128, inset 3px 0 0 #eef1f5; }
@@ -2253,6 +2258,7 @@ function PhonePanel({onClose,isGM,fromOptions,defaultFromId,toOptions,onSend}){
   const [z,bringToFront]=usePanelFront();
   const saved=loadPanelBox("phone");
   const [pos,setPos]=useState(saved&&Number.isFinite(saved.x)?{x:saved.x,y:saved.y}:{x:84,y:90});
+  const [folded,setFolded]=usePersistedFold("phone"); // 접으면 작은 바만 남아요
   const [fromId,setFromId]=useState(defaultFromId||(fromOptions[0]?.id)||(isGM?"__custom":""));
   const [customFrom,setCustomFrom]=useState("");
   const [toCode,setToCode]=useState("");
@@ -2274,23 +2280,31 @@ function PhonePanel({onClose,isGM,fromOptions,defaultFromId,toOptions,onSend}){
     const t=setTimeout(fix,0); window.addEventListener("resize",fix);
     return()=>{clearTimeout(t);window.removeEventListener("resize",fix);};
   },[]); // eslint-disable-line
-  const drag=useRef({on:false,sx:0,sy:0,ox:0,oy:0});
+  const drag=useRef({on:false,moved:false,sx:0,sy:0,ox:0,oy:0});
   const onPointerDown=e=>{
     bringToFront();
     // 글 쓰는 칸·버튼을 누른 건 끌기가 아니에요.
     if(e.target.closest("input,textarea,select,button"))return;
-    drag.current={on:true,sx:e.clientX,sy:e.clientY,ox:pos.x,oy:pos.y};
+    drag.current={on:true,moved:false,sx:e.clientX,sy:e.clientY,ox:pos.x,oy:pos.y};
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onPointerMove=e=>{
     const d=drag.current; if(!d.on)return;
-    setPos(clamp(d.ox+e.clientX-d.sx,d.oy+e.clientY-d.sy));
+    const dx=e.clientX-d.sx, dy=e.clientY-d.sy;
+    if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true;
+    if(!d.moved)return;
+    setPos(clamp(d.ox+dx,d.oy+dy));
   };
   const onPointerUp=()=>{
-    if(!drag.current.on)return;
+    if(!drag.current.on)return null;   // 버튼을 누른 경우 등, 끌기가 시작되지 않았음
     drag.current.on=false;
-    setPos(p=>{ savePanelBox("phone",{x:p.x,y:p.y}); return p; });
+    const moved=drag.current.moved;
+    if(moved) setPos(p=>{ savePanelBox("phone",{x:p.x,y:p.y}); return p; });
+    return moved;
   };
+  // 접힌 바: 끌면 이동, 그냥 누르면 다시 펼치기
+  const onMiniUp=()=>{ if(onPointerUp()===false) setFolded(false); };
+  useEffect(()=>{ const t=setTimeout(()=>setPos(p=>clamp(p.x,p.y)),0); return()=>clearTimeout(t); },[folded]); // eslint-disable-line
 
   const fromChar=fromOptions.find(o=>o.id===fromId);
   const fromName=fromId==="__custom"?customFrom.trim():(fromChar?.name||"");
@@ -2304,11 +2318,20 @@ function PhonePanel({onClose,isGM,fromOptions,defaultFromId,toOptions,onSend}){
   };
   const lcdInput={background:"transparent",border:"none",outline:"none",color:"inherit",font:"inherit",padding:0,width:"100%",minWidth:0};
   const lcdSelect={...lcdInput,cursor:"pointer",appearance:"none",WebkitAppearance:"none"};
+  if(folded) return(
+    <div ref={wrapRef} className="phone-mini" title="눌러서 펼치기 · 끌어서 옮기기"
+      style={{position:"fixed",left:pos.x,top:pos.y,zIndex:z,touchAction:"none"}}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onMiniUp} onPointerCancel={onPointerUp}>
+      <Smartphone size={13}/><span>휴대 전화</span>
+      <button type="button" className="phone-close" style={{position:"static",marginLeft:4}} onClick={onClose} title="닫기">×</button>
+    </div>
+  );
   return(
     <div ref={wrapRef} style={{position:"fixed",left:pos.x,top:pos.y,zIndex:z,width:"min(92vw, 272px)",touchAction:"none",cursor:"grab"}}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
       <div className="phone-body" style={{margin:"18px 6px 6px"}}>
         <button type="button" className="phone-close" onClick={onClose} title="닫기">×</button>
+        <button type="button" className="phone-close fold" onClick={()=>setFolded(true)} title="접기">–</button>
         <div className="phone-speaker"/>
         <div className="phone-bezel">
           <div className="sms-lcd phone-lcd" style={{cursor:"auto"}}>
