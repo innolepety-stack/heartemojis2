@@ -202,6 +202,10 @@ const CSS = `
 }
 .chat-font, .chat-font * { font-family: 'RIDIBatang', 'Noto Sans KR', sans-serif !important; }
 .chat-font .coc-mono { font-family: 'JetBrains Mono', monospace !important; }
+/* 휴대 전화·문자 카드는 채팅 글꼴 설정보다 우선해서 언제나 도트 글꼴(갈무리)로 */
+.sms-lcd, .sms-lcd *, .phone-body, .phone-body *, .phone-mini, .phone-mini *,
+.chat-font .sms-lcd, .chat-font .sms-lcd *, .chat-font .phone-body, .chat-font .phone-body *, .chat-font .phone-mini, .chat-font .phone-mini * {
+  font-family: 'Galmuri11', 'JetBrains Mono', monospace !important; }
 * { box-sizing: border-box; }
 /* 브라우저가 기본으로 주는 body 여백(보통 8px) 때문에 화면 딱 맞춤 레이아웃에서도
    아주 살짝 스크롤이 생기는 경우가 있어서, 여백을 0으로 리셋합니다. */
