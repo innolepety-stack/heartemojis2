@@ -378,6 +378,8 @@ input[type=number] { -moz-appearance: textfield; }
 .chat-icon-btn:hover { border-color: var(--accent-soft); color: var(--accent-deep); }
 .chat-icon-btn.on { color: var(--accent-deep); border-color: var(--accent-soft); background: var(--bg-panel); }
 .chat-icon-btn.danger:hover { border-color: #e0507a; color: #e0507a; }
+.chat-font-size-ctl { opacity: 0.55; transition: opacity 0.15s; }
+.chat-font-size-ctl:hover { opacity: 1; }
 .chat-icon-btn .dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: #e0507a; border: 1.5px solid var(--surface); }
 .rail-title { display: flex; flex-direction: column; gap: 1px; margin-right: 4px; flex-shrink: 0; }
 /* 레일 버튼 옆에 뜨는 작은 창(BGM 등): 모바일에선 버튼 아래, PC에선 버튼 오른쪽에 붙습니다. */
@@ -6039,7 +6041,24 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
         </div>
         {/* "OO님이 입력 중..." 표시 전용 자리. 항상 이 자리가 고정으로 있고 텍스트만 나타났다 사라져서,
             떴다 안 떴다 할 때 채팅창이나 아래 탭이 밀리지 않습니다. */}
-        <div style={{position:"absolute",left:12,right:12,bottom:6,fontSize:11,color:"var(--text-faint)",pointerEvents:"none",height:14,overflow:"hidden"}}>
+        {/* 글자 크기 조절 — 채팅 목록 오른쪽 아래 구석에 작게 떠 있어요. (예전엔 말하는 사람 버튼 줄에 있어서 줄이 넘쳐 채팅창이 좁아졌어요) */}
+          <div className="chat-font-size-ctl" style={{position:"absolute",right:12,bottom:4,display:"flex",alignItems:"center",gap:3,zIndex:2}}>
+            <button type="button" title="글자 작게" onClick={()=>changeChatFont(-1)} disabled={chatFontSize<=CHAT_FONT_MIN}
+              style={{width:22,height:22,borderRadius:"50%",border:"1px solid var(--border)",background:"var(--surface)",
+                color:chatFontSize<=CHAT_FONT_MIN?"var(--border)":"var(--text-dim)",
+                cursor:chatFontSize<=CHAT_FONT_MIN?"default":"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
+              <Minus size={11}/>
+            </button>
+            <button type="button" title="글자 크게" onClick={()=>changeChatFont(1)} disabled={chatFontSize>=CHAT_FONT_MAX}
+              style={{width:22,height:22,borderRadius:"50%",border:"1px solid var(--border)",background:"var(--surface)",
+                color:chatFontSize>=CHAT_FONT_MAX?"var(--border)":"var(--text-dim)",
+                cursor:chatFontSize>=CHAT_FONT_MAX?"default":"pointer",
+                display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
+              <Plus size={11}/>
+            </button>
+          </div>
+        <div style={{position:"absolute",left:12,right:70,bottom:6,fontSize:11,color:"var(--text-faint)",pointerEvents:"none",height:14,overflow:"hidden"}}>
           {typingNames.length>0&&(typingNames.length===1?`${typingNames[0]}님이 입력 중...`:`${typingNames.join(", ")}님이 입력 중...`)}
         </div>
       </div>
@@ -6160,23 +6179,6 @@ function ChatScreen({room,userCode,profile,onBack,dark,onToggleDark,customColor,
             <Trash2 size={11}/> {clearingChat?"삭제 중...":"삭제"}
           </button>}
 
-          {/* 글자 크기 조절 — 캐릭터/GM 버튼 맞은편(오른쪽 끝)에 동그랗게 */}
-          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
-            <button type="button" title="글자 작게" onClick={()=>changeChatFont(-1)} disabled={chatFontSize<=CHAT_FONT_MIN}
-              style={{width:26,height:26,borderRadius:"50%",border:"1px solid var(--border)",background:"var(--surface)",
-                color:chatFontSize<=CHAT_FONT_MIN?"var(--border)":"var(--text-dim)",
-                cursor:chatFontSize<=CHAT_FONT_MIN?"default":"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
-              <Minus size={13}/>
-            </button>
-            <button type="button" title="글자 크게" onClick={()=>changeChatFont(1)} disabled={chatFontSize>=CHAT_FONT_MAX}
-              style={{width:26,height:26,borderRadius:"50%",border:"1px solid var(--border)",background:"var(--surface)",
-                color:chatFontSize>=CHAT_FONT_MAX?"var(--border)":"var(--text-dim)",
-                cursor:chatFontSize>=CHAT_FONT_MAX?"default":"pointer",
-                display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>
-              <Plus size={13}/>
-            </button>
-          </div>
         </div>
         {/* GM 전용: 서술·판정·대사·선택지 네 칸이 바게트처럼 하나로 이어진 바 */}
         {isGM&&speaker==="gm"&&(
