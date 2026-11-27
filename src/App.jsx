@@ -328,6 +328,14 @@ input[type=number] { -moz-appearance: textfield; }
     filter: blur(18px); transform: scale(1.08);
   }
 }
+/* 좁은 화면(1024px 미만): 위쪽 아이콘 줄 + 채팅창을 합쳐서 화면 높이에 딱 맞춥니다.
+   예전엔 채팅창만 화면 높이만큼 잡혀서, 위 아이콘 줄만큼 페이지가 길어지고
+   맨 아래 보내기 칸이 화면 밖으로 밀려나 스크롤해야 보였어요. */
+@media (max-width: 1023px) {
+  .chat-desktop-wrap { display: flex; flex-direction: column; height: calc(100dvh - 16px); }
+  .chat-desktop-wrap > .chat-icon-rail { flex: 0 0 auto; }
+  .chat-desktop-wrap > .chat-font { flex: 1 1 auto; min-height: 0; height: auto !important; width: 100%; }
+}
 /* 채팅창 폭 조절 핸들: 데스크톱 2단 레이아웃에서만 보입니다. */
 .chat-resize-handle { display: none; }
 @media (min-width: 1024px) {
